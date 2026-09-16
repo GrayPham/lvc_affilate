@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chromiumoxide::Page;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::emulation::{
-    SetLocaleOverrideParams, SetTimezoneOverrideParams,
+    SetLocaleOverrideParams, SetTimezoneOverrideParams, SetUserAgentOverrideParams,
 };
 use futures::StreamExt;
 use lvc_core::Cookie;
@@ -31,10 +31,13 @@ pub const TIMEZONE: &str = "Asia/Tokyo";
 /// `pub` nen khong doc, ghi de tung co, hay xoa mot co don le duoc; `ArgsBuilder` noi bo
 /// la `HashMap` GOP gia tri theo khoa chu khong GHI DE). Bo do co san `--enable-automation`
 /// va `--lang=en_US`. De giu dung 2 ngu nghia bat buoc cua ke hoach (bo --enable-automation,
-/// khoa ja-JP), ta goi `disable_default_args()` roi lap lai 23 co con lai (tham khao source
+/// khoa ja-JP), ta goi `disable_default_args()` roi lap lai cac co con lai (tham khao source
 /// chromiumoxide-0.9.1/src/browser/config.rs, khong co tren docs.rs vi private) TRU
-/// "enable-automation", va doi "lang" thanh `LOCALE`. Xem bao cao Task 4 de biet chi tiet.
-const DEFAULT_ARGS_SANS_AUTOMATION: [&str; 22] = [
+/// "enable-automation", va doi "lang" thanh `LOCALE` (dat rieng, khong nam trong mang nay).
+/// Review Task 3-6 (I-4): bo them "disable-popup-blocking" va "disable-default-apps" —
+/// patchright liet ca hai vao "Command Flags Leaks" can go bo de khong bi soi. Vay con lai
+/// 20/24 co goc (24 - enable-automation - lang - popup-blocking - default-apps = 20).
+const DEFAULT_ARGS_SANS_AUTOMATION: [&str; 20] = [
     "disable-background-networking",
     "enable-features=NetworkService,NetworkServiceInProcess",
     "disable-background-timer-throttling",
@@ -42,12 +45,10 @@ const DEFAULT_ARGS_SANS_AUTOMATION: [&str; 22] = [
     "disable-breakpad",
     "disable-client-side-phishing-detection",
     "disable-component-extensions-with-background-pages",
-    "disable-default-apps",
     "disable-dev-shm-usage",
     "disable-features=TranslateUI",
     "disable-hang-monitor",
     "disable-ipc-flooding-protection",
-    "disable-popup-blocking",
     "disable-prompt-on-repost",
     "disable-renderer-backgrounding",
     "disable-sync",
@@ -59,6 +60,23 @@ const DEFAULT_ARGS_SANS_AUTOMATION: [&str; 22] = [
     "enable-blink-features=IdleDetection",
 ];
 
+/// Driver chromiumoxide (CDP thuan) cho `BrowserDriver`. Review Task 3-6 (I-5): ghi lai o day
+/// nhung khac biet CO SAN so voi patchright/Playwright ma driver nay KHONG the tat qua API
+/// cong khai cua chromiumoxide 0.9 — de neu Task 7 that bai (bi Dola chan) thi biet quy ve dau
+/// truoc:
+/// 1. `Runtime.enable` + `Log.enable` + `Performance.enable` duoc chromiumoxide gui cung luc
+///    voi `Target.setAutoAttach` cho MOI target/frame moi (`handler/target.rs::page_init_commands`,
+///    `handler/frame.rs`), khong co co nao de tat qua `BrowserConfig`. Day chinh la dieu
+///    patchright tranh duoc bang mot co che CDP session khac han — day la GIA THIET CHINH cua
+///    thi nghiem P1 (chromiumoxide "lo" nhieu hon patchright ngay tu tang giao thuc).
+/// 2. `--disable-extensions` luon duoc chromiumoxide them khi khong cau hinh extension nao
+///    (`browser/config.rs::launch`), khong tat duoc qua `BrowserConfig`.
+/// 3. Dung `--remote-debugging-port` (mo mot cong TCP) de noi CDP; patchright dung pipe
+///    (stdio), khong mo cong mang nao — de bi phat hien hon tu ben ngoai may.
+/// 4. `Page::enable_stealth_mode()` co san cua chromiumoxide KHONG duoc goi (xem C-1, review
+///    Task 3-6): than ham no tu lam nhieu dieu con te hon — UA gia nam 2022 khong khop build
+///    Chrome that dang chay, giao dien JS thay `navigator.webdriver`/`plugins` khong native,
+///    va lam vo `WebGLRenderingContext.getParameter`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ChromiumDriver;
 
@@ -72,8 +90,17 @@ impl ChromiumDriver {
     fn config(opts: &LaunchOpts) -> Result<BrowserConfig, BrowserError> {
         let mut b = BrowserConfig::builder()
             .user_data_dir(&opts.profile_dir)
-            .hide() // bo navigator.webdriver (--disable-blink-features=AutomationControlled)
+            .hide() // bo navigator.webdriver that (--disable-blink-features=AutomationControlled)
+            // Review Task 3-6 (minor): hide() chi tu null viewport NEU no dang la
+            // Some(Viewport::default()) — ep ro bang .viewport(None) o day de khong phu thuoc
+            // vao trung hop do. Viewport khac None se khien chromiumoxide tu goi
+            // Emulation.setDeviceMetricsOverride VA setTouchEmulationEnabled(true) — dau hieu
+            // "desktop co cam ung" rat de bi phat hien, khac may that.
+            .viewport(None)
             .window_size(1280, 900)
+            // Review Task 3-6 (minor): giu Security.setIgnoreCertificateErrors nhu mac dinh
+            // (khong goi), giong Python — tranh che loi proxy/MITM that trong Task 7.
+            .respect_https_errors()
             .disable_default_args(); // xem ghi chu DEFAULT_ARGS_SANS_AUTOMATION o tren
         for a in DEFAULT_ARGS_SANS_AUTOMATION {
             b = b.arg(a);
@@ -85,7 +112,14 @@ impl ChromiumDriver {
             // chi con dung 1 cap "--" sau khi render.
             b = b.arg(a.trim_start_matches("--"));
         }
-        if !opts.headless {
+        if opts.headless {
+            // Review Task 3-6 (minor): Playwright them co nay o che do headless de gia lap
+            // thiet bi khong co cam ung (chuot/ban phim), khop may desktop that hon mac dinh
+            // cua headless Chrome.
+            b = b.arg(
+                "blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
+            );
+        } else {
             b = b.with_head();
         }
         if opts.window_offscreen && !opts.headless {
@@ -126,6 +160,21 @@ impl BrowserDriver for ChromiumDriver {
         let page = browser.new_page("about:blank").await?;
         page.execute(SetLocaleOverrideParams::builder().locale(LOCALE).build())
             .await?;
+        // Review Task 3-6 (I-1): navigator.language(s) VA header Accept-Language deu bat nguon
+        // tu danh sach accept-languages cua renderer, chu KHONG phai tu SetLocaleOverrideParams
+        // (cai do chi doi ICU cho Intl/Date). --lang=ja-JP chon UI locale "ja" co danh sach
+        // accept-languages mac dinh la "ja,en-US,en" -> navigator.language tra ve "ja". Cach
+        // Playwright dat duoc "ja-JP" chinh xac la goi Emulation.setUserAgentOverride voi
+        // userAgent="" (chuoi rong = KHONG ghi de UA, Chromium bo qua phan do) va
+        // acceptLanguage=locale — khong dung script tiem nao ca.
+        page.execute(
+            SetUserAgentOverrideParams::builder()
+                .user_agent("")
+                .accept_language(LOCALE)
+                .build()
+                .map_err(BrowserError::Launch)?,
+        )
+        .await?;
         page.execute(
             SetTimezoneOverrideParams::builder()
                 .timezone_id(TIMEZONE)
@@ -133,7 +182,10 @@ impl BrowserDriver for ChromiumDriver {
                 .map_err(BrowserError::Launch)?,
         )
         .await?;
-        page.enable_stealth_mode().await?;
+        // Review Task 3-6 (C-1): KHONG goi page.enable_stealth_mode() — than ham cua no (xem
+        // doc ChromiumDriver o tren) tu tao nhieu dau hieu bi phat hien hon la an toan. Co san
+        // --disable-blink-features=AutomationControlled (qua .hide() o config()) da du de
+        // navigator.webdriver tra ve false/undefined mot cach NATIVE.
         Ok(ChromiumSession {
             browser,
             page,
@@ -148,9 +200,16 @@ impl BrowserDriver for ChromiumDriver {
     ) -> Result<(), BrowserError> {
         use chromiumoxide::cdp::browser_protocol::network::CookieParam;
         for c in cookies {
+            // Review Task 3-6 (I-2): Page::set_cookie CHI tu suy ra url tu trang hien tai neu
+            // CookieParam.url dang None, va tu choi khi trang la about:blank/data: — day la
+            // luat cua wrapper chromiumoxide, khong phai CDP. Dat url tuong minh o day de
+            // add_cookies() dung duoc ngay sau launch(), khong can ghe qua trang khach truoc
+            // (Python khong bao gio tai dola.com khi chua co cookie).
+            let url = format!("https://{}/", c.domain.trim_start_matches('.'));
             let mut b = CookieParam::builder()
                 .name(&c.name)
                 .value(&c.value)
+                .url(url)
                 .domain(&c.domain)
                 .path(&c.path)
                 .secure(c.secure)
@@ -225,6 +284,11 @@ impl BrowserDriver for ChromiumDriver {
 
     async fn close(&self, mut s: ChromiumSession) -> Result<(), BrowserError> {
         let _ = s.browser.close().await;
+        // Review Task 3-6 (I-3): Browser::close chi doi phan hoi CDP Browser.close; drop
+        // ChromiumSession ngay sau do co the kich hoat kill_on_drop trong luc Chrome van dang
+        // ghi profile (cookie SQLite commit theo lo, exit_type chi ghi khi thoat sach). Doi
+        // them (co timeout de khong treo mai neu tien trinh da bi giet) truoc khi huy handler.
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), s.browser.wait()).await;
         s.handler.abort();
         Ok(())
     }

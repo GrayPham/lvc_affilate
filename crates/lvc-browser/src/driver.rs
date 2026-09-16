@@ -35,7 +35,10 @@ pub struct SessionProbe {
 /// `submit`/`poll_and_download` thêm ở P2.
 #[async_trait]
 pub trait BrowserDriver: Send + Sync {
-    type Session: Send;
+    // Review Task 3-6 (minor): moi ham tru launch/close deu giu &Session qua diem await, nen
+    // Session can Sync (khong chi Send) de future cua chung Send duoc khi goi tu ngu canh da
+    // luong (vd tokio::spawn boc ngoai).
+    type Session: Send + Sync;
 
     /// # Errors
     /// Khong khoi dong duoc trinh duyet (thieu Chrome, profile dang bi khoa, CDP loi).

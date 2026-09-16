@@ -32,8 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
 
-    // Cookie can domain hop le -> goto dola truoc (se ve trang khach), set cookie, roi reload
-    d.goto(&s, "https://www.dola.com/").await?;
+    // Review Task 3-6 (I-2): KHONG con ghe dola.com nhu khach truoc nua — add_cookies() gio
+    // tu dat CookieParam.url tuong minh nen dat cookie duoc ngay sau launch(), giong Python
+    // (add_account.py khong bao gio tai dola.com khi chua co cookie).
     d.add_cookies(&s, &cookies).await?;
     d.goto(&s, "https://www.dola.com/chat").await?;
     tokio::time::sleep(std::time::Duration::from_secs(4)).await; // Python: 4s cho SPA

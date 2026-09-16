@@ -1,20 +1,23 @@
 use lvc_browser::{BrowserDriver, LaunchOpts, chromium::ChromiumDriver};
 use lvc_core::{Cookie, SessionState};
 
-#[tokio::test]
-#[ignore = "can Chrome/Chromium tren may; chay: cargo test -p lvc-browser -- --ignored"]
-async fn launch_headless_va_dong() {
-    let dir = tempfile::tempdir().unwrap();
-    let opts = LaunchOpts {
+fn opts_headless(dir: &tempfile::TempDir) -> LaunchOpts {
+    LaunchOpts {
         profile_dir: dir.path().join("p"),
         headless: true,
         proxy_server: None,
         window_offscreen: false,
         chrome_executable: None,
-    };
+    }
+}
+
+#[tokio::test]
+#[ignore = "can Chrome/Chromium tren may; chay: cargo test -p lvc-browser -- --ignored"]
+async fn navigator_webdriver_la_false() {
+    let dir = tempfile::tempdir().unwrap();
     let d = ChromiumDriver;
-    let s = d.launch(&opts).await.expect("launch");
-    // navigator.webdriver phai la undefined/false sau stealth
+    let s = d.launch(&opts_headless(&dir)).await.expect("launch");
+    // navigator.webdriver phai la undefined/false (native, khong qua script tiem — xem C-1)
     let wd: serde_json::Value = s
         .page
         .evaluate("navigator.webdriver")
@@ -26,6 +29,15 @@ async fn launch_headless_va_dong() {
         wd.is_null() || wd == serde_json::Value::Bool(false),
         "navigator.webdriver = {wd}"
     );
+    d.close(s).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "can Chrome/Chromium tren may; chay: cargo test -p lvc-browser -- --ignored"]
+async fn navigator_language_la_ja_jp() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = ChromiumDriver;
+    let s = d.launch(&opts_headless(&dir)).await.expect("launch");
     let lang: String = s
         .page
         .evaluate("navigator.language")
@@ -34,6 +46,14 @@ async fn launch_headless_va_dong() {
         .into_value()
         .unwrap();
     assert_eq!(lang, "ja-JP");
+    let langs: Vec<String> = s
+        .page
+        .evaluate("navigator.languages")
+        .await
+        .unwrap()
+        .into_value()
+        .unwrap();
+    assert_eq!(langs.first().map(String::as_str), Some("ja-JP"));
     d.close(s).await.unwrap();
 }
 
@@ -41,21 +61,12 @@ async fn launch_headless_va_dong() {
 #[ignore = "can Chrome/Chromium tren may; chay: cargo test -p lvc-browser -- --ignored"]
 async fn cookie_dieu_huong_probe_screenshot() {
     let dir = tempfile::tempdir().unwrap();
-    let opts = LaunchOpts {
-        profile_dir: dir.path().join("p"),
-        headless: true,
-        proxy_server: None,
-        window_offscreen: false,
-        chrome_executable: None,
-    };
     let d = ChromiumDriver;
-    let s = d.launch(&opts).await.expect("launch");
+    let s = d.launch(&opts_headless(&dir)).await.expect("launch");
 
-    // example.com truoc de co goc hop le cho cookie domain=example.com
-    d.goto(&s, "https://example.com/")
-        .await
-        .expect("goto example.com");
-
+    // Review Task 3-6 (I-2): dat cookie TRUOC khi dieu huong, khop dung thu tu cua
+    // examples/probe_login.rs (launch -> add_cookies -> goto). add_cookies() tu dat
+    // CookieParam.url nen khong can trang nao dang mo san.
     let cookie = Cookie {
         name: "lvc_probe_test".to_string(),
         value: "1".to_string(),
@@ -68,6 +79,12 @@ async fn cookie_dieu_huong_probe_screenshot() {
     d.add_cookies(&s, std::slice::from_ref(&cookie))
         .await
         .expect("add_cookies");
+
+    // goto sau khi da co cookie — chi de doc lai qua page.get_cookies() (cookie do
+    // theo "tab hien tai") va cho probe_session() co mot URL that de doc.
+    d.goto(&s, "https://example.com/")
+        .await
+        .expect("goto example.com");
 
     let seen = s.page.get_cookies().await.expect("get_cookies");
     assert!(
