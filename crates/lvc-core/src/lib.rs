@@ -4,7 +4,9 @@
 pub mod error;
 pub mod limits;
 pub mod mode;
+pub mod value;
 
 pub use error::{CoreError, SceneError};
 pub use limits::Limits;
 pub use mode::Mode;
+pub use value::{LogoMode, Model, Ratio};
