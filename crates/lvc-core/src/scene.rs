@@ -196,4 +196,14 @@ mod tests {
         r.account = Some("x".repeat(33));
         assert!(Scene::normalize(&r, &Limits::default(), None).is_err());
     }
+
+    #[test]
+    fn do_dai_prompt_dem_theo_ky_tu_khong_phai_byte() {
+        // "猫が歩く" = 4 ký tự nhưng 12 byte. Nếu đếm theo byte, mọi prompt
+        // tiếng Việt/tiếng Nhật sẽ bị từ chối oan.
+        let l = Limits { prompt_max_chars: 4, ..Limits::default() };
+        assert!(Scene::normalize(&raw("猫が歩く"), &l, None).is_ok());
+        // 5 ký tự thì vượt thật
+        assert!(Scene::normalize(&raw("猫が歩く猫"), &l, None).is_err());
+    }
 }
