@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+accounts/
+downloads/
+uploads/
+logs/
+.env.local
+accounts_creds.json
