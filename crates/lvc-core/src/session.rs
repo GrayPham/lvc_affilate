@@ -17,7 +17,8 @@ pub const LOGIN_MARKERS: [&str; 9] = [
 
 /// JS chạy trong trang: gom nhãn lá (≤40 ký tự, không con) + có ô nhập không.
 /// Khớp Python `browser.py` `SESSION_PROBE_JS` từng ký tự.
-pub const SESSION_PROBE_JS: &str = r#"() => {
+pub const SESSION_PROBE_JS: &str = r#"
+() => {
   const texts = [];
   for (const el of document.querySelectorAll('button, a, [role="button"], h1, h2, h3, div, span')) {
     const t = (el.textContent || '').trim();
@@ -26,7 +27,8 @@ pub const SESSION_PROBE_JS: &str = r#"() => {
   }
   const composer = !!(document.querySelector('textarea') || document.querySelector('[contenteditable="true"]'));
   return {texts, composer};
-}"#;
+}
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -150,6 +152,8 @@ mod tests {
 
     #[test]
     fn probe_js_khop_python() {
+        assert!(SESSION_PROBE_JS.starts_with('\n'));
+        assert!(SESSION_PROBE_JS.ends_with("}\n"));
         assert!(SESSION_PROBE_JS.contains("el.childElementCount === 0"));
         assert!(SESSION_PROBE_JS.contains("[contenteditable=\"true\"]"));
         assert!(SESSION_PROBE_JS.contains("texts.length > 400"));

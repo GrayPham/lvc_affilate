@@ -61,6 +61,10 @@ fn split_cols(line: &str) -> Vec<String> {
         }
     }
     out.push(cur);
+    // KHÁC Python có chủ ý: re.split để lại token rỗng đầu dòng khi dòng #HttpOnly_
+    // có khoảng trắng thừa sau tiền tố → parts[:6] lệch một cột → Python làm rơi cookie.
+    // Bỏ token rỗng ở đây giữ được cookie đó. Không có file nào bị đọc chéo giữa hai
+    // tool, nên rộng hơn Python là an toàn.
     out.into_iter().filter(|s| !s.is_empty()).collect()
 }
 
@@ -92,6 +96,9 @@ pub fn parse_netscape(text: &str) -> Vec<Cookie> {
         if domain.is_empty() || name.is_empty() {
             continue;
         }
+        // Epoch cookie thực tế < 2^53 nên f64→i64 chính xác; với chuỗi lạ ("1e300", "inf")
+        // Rust bão hoà về i64::MAX thay vì lỗi như Python — chấp nhận được, cookie đó chỉ
+        // có hạn xa vô lý chứ không hỏng gì.
         #[allow(clippy::cast_possible_truncation)]
         let expires = expiry
             .parse::<f64>()
@@ -253,5 +260,16 @@ mod tests {
         assert_eq!(sessionid_expires(&c), Some(1_800_000_000));
         let s = parse_netscape(".dola.com\tTRUE\t/\tTRUE\t0\tsessionid\tx\n");
         assert_eq!(sessionid_expires(&s), None);
+    }
+
+    #[test]
+    fn httponly_co_khoang_trang_thua_sau_tien_to_van_doc_duoc_khac_python() {
+        // Python: token rỗng đầu dòng làm parts[:6] lệch → domain='' → rơi cookie.
+        let txt = "#HttpOnly_  .dola.com  TRUE  /  TRUE  0  sessionid  val\n";
+        let c = parse_netscape(txt);
+        assert_eq!(c.len(), 1, "Rust giữ cookie mà Python làm rơi");
+        assert_eq!(c[0].domain, ".dola.com");
+        assert_eq!(c[0].name, "sessionid");
+        assert!(c[0].http_only);
     }
 }
