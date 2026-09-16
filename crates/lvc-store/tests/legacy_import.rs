@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use lvc_core::TaskStatus;
 use lvc_store::{Db, import_legacy};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{ConnectOptions, Executor};
@@ -131,4 +132,48 @@ async fn thieu_file_cu_thi_bao_skipped_chu_khong_loi() {
         2,
         "thieu ca tasks.db lan pool_usage.db"
     );
+}
+
+#[tokio::test]
+async fn schema_cu_thieu_cot_van_nhap_duoc_voi_mac_dinh() {
+    // Mo phong may cua nguoi dung chay ban Python RAT cu: tasks.db chi co 4 cot,
+    // khong co ratio/duration/model/mode/logo/status/reference_images va khong co
+    // bat ky cot nao migrate them sau nay. Khong co pool_usage.db.
+    let dir = tempfile::tempdir().unwrap();
+    let tasks_db = dir.path().join("tasks.db");
+    let opts = SqliteConnectOptions::new()
+        .filename(&tasks_db)
+        .create_if_missing(true);
+    let mut conn = opts.connect().await.unwrap();
+    conn.execute(
+        "CREATE TABLE tasks (id TEXT PRIMARY KEY, prompt TEXT, created_at REAL, updated_at REAL)",
+    )
+    .await
+    .unwrap();
+    conn.execute("INSERT INTO tasks VALUES ('video_ancient', 'prompt co', 1.0, 2.0)")
+        .await
+        .unwrap();
+
+    let db = Db::open_memory().await.unwrap();
+    let report = import_legacy(&db, dir.path()).await.unwrap();
+    assert_eq!(report.tasks, 1);
+    assert_eq!(report.skipped, vec!["pool_usage.db"]);
+
+    let t = lvc_store::TaskRepo::new(&db)
+        .get("video_ancient")
+        .await
+        .unwrap()
+        .expect("task tu schema cu phai nhap duoc");
+    assert_eq!(t.prompt, "prompt co");
+    assert_eq!(t.ratio, "9:16");
+    assert_eq!(t.duration, 10);
+    assert_eq!(t.model, "seedance-2.0");
+    assert_eq!(t.mode, "fast");
+    assert_eq!(t.logo, "off");
+    assert_eq!(
+        t.status,
+        TaskStatus::Failed,
+        "task khong co status phai thanh failed de khong bi tu dong chay lai"
+    );
+    assert_eq!(t.reference_images, Vec::<String>::new());
 }
