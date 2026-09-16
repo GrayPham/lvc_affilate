@@ -1,0 +1,91 @@
+use lvc_core::{Limits, RawScene, Scene, TaskStatus};
+use lvc_store::{BatchRef, Db, TaskRepo};
+
+fn scene(prompt: &str) -> Scene {
+    let raw = RawScene {
+        prompt: Some(prompt.into()),
+        ..RawScene::default()
+    };
+    Scene::normalize(&raw, &Limits::default(), None).unwrap()
+}
+
+#[tokio::test]
+async fn tao_roi_doc_lai_giu_nguyen_truong() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    let s = scene("con meo di bo");
+    repo.create("video_a1", &s, None).await.unwrap();
+
+    let got = repo.get("video_a1").await.unwrap().expect("phai co");
+    assert_eq!(got.prompt, "con meo di bo");
+    assert_eq!(got.status, TaskStatus::Queued);
+    assert_eq!(got.ratio, "9:16");
+    assert_eq!(got.duration, 10);
+    assert_eq!(got.reference_images, Vec::<String>::new());
+    assert!(got.created_at > 0.0);
+}
+
+#[tokio::test]
+async fn luu_reference_images_dang_json() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    let mut s = scene("x");
+    s.reference_images = vec!["upload:a.jpg".into(), "https://x/y.png".into()];
+    repo.create("video_b", &s, None).await.unwrap();
+
+    let got = repo.get("video_b").await.unwrap().unwrap();
+    assert_eq!(
+        got.reference_images,
+        vec!["upload:a.jpg", "https://x/y.png"]
+    );
+}
+
+#[tokio::test]
+async fn huy_la_failed_cong_failure_code_cancelled() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    repo.create("video_c", &scene("x"), None).await.unwrap();
+    repo.set_status("video_c", TaskStatus::Failed, Some("cancelled"), None)
+        .await
+        .unwrap();
+
+    let got = repo.get("video_c").await.unwrap().unwrap();
+    assert_eq!(got.status, TaskStatus::Failed);
+    assert_eq!(got.failure_code.as_deref(), Some("cancelled"));
+}
+
+#[tokio::test]
+async fn batch_luu_index_va_ten() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    let b = BatchRef {
+        batch_id: "batch_1".into(),
+        batch_name: "Du an A".into(),
+        scene_index: 2,
+    };
+    repo.create("video_d", &scene("x"), Some(&b)).await.unwrap();
+
+    let got = repo.get("video_d").await.unwrap().unwrap();
+    assert_eq!(got.batch_id.as_deref(), Some("batch_1"));
+    assert_eq!(got.scene_index, Some(2));
+}
+
+#[tokio::test]
+async fn khong_co_thi_tra_none() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    assert!(repo.get("khong_ton_tai").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn list_recent_moi_nhat_truoc_va_kep_limit() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    for i in 0..5 {
+        repo.create(&format!("video_{i}"), &scene(&format!("p{i}")), None)
+            .await
+            .unwrap();
+    }
+    let rows = repo.list_recent(3).await.unwrap();
+    assert_eq!(rows.len(), 3);
+}
