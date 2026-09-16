@@ -14,7 +14,7 @@ pub fn py_repr(s: &str) -> String {
 /// Lỗi miền. Thông điệp khớp từng ký tự với bản Python.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CoreError {
-    #[error("mode must be fast, pro or pro_max (got {})", py_repr(.0))]
+    #[error("mode must be fast, pro, pro_max or agent (got {})", py_repr(.0))]
     InvalidMode(String),
     #[error("ratio must be one of 9:16, 16:9, 1:1, 4:3, 3:4 (got {})", py_repr(.0))]
     InvalidRatio(String),
@@ -87,7 +87,7 @@ mod tests {
     fn thong_diep_khop_ban_python() {
         assert_eq!(
             CoreError::InvalidMode("xyz".into()).to_string(),
-            "mode must be fast, pro or pro_max (got 'xyz')"
+            "mode must be fast, pro, pro_max or agent (got 'xyz')"
         );
         assert_eq!(
             CoreError::InvalidLogo("x".into()).to_string(),
