@@ -83,6 +83,13 @@ pub fn parse_txt(text: &str, limits: &Limits) -> Result<Vec<Scene>, SceneError> 
 
 /// Ngược lại `parse_txt`: chỉ ghi khoá khác mặc định, theo thứ tự
 /// ratio, dur, model, mode, logo, acc, refs.
+///
+/// Giới hạn kế thừa nguyên vẹn từ bản Python: nếu `prompt` bắt đầu bằng `#`,
+/// dòng ghi ra sẽ bị `parse_txt` coi là comment và bỏ qua toàn bộ — cảnh đó
+/// KHÔNG round-trip được (`parse_txt(format_txt(&[s])) != vec![s]`). Đây là
+/// hành vi gốc, không phải lỗi mới; bộ điều khiển đã quyết định không thêm ký
+/// tự thoát `\#` vì sẽ làm hỏng file TXT của bản Python. Người gọi không được
+/// dựa vào việc round-trip cho prompt dạng này.
 #[must_use]
 pub fn format_txt(scenes: &[Scene]) -> String {
     let mut lines = Vec::with_capacity(scenes.len());
@@ -203,5 +210,28 @@ mod tests {
         let original = parse_txt(r"a \| b | mode=pro", &Limits::default()).unwrap();
         let round = parse_txt(&format_txt(&original), &Limits::default()).unwrap();
         assert_eq!(original, round);
+    }
+
+    #[test]
+    fn prompt_bat_dau_bang_thang_khong_round_trip_duoc_ghim_gioi_han() {
+        // Ghim gioi han ke thua tu ban Python: format_txt ghi prompt nguyen
+        // van, con parse_txt coi dong bat dau bang '#' la comment. Neu hanh vi
+        // nay thay doi (co y hay khong), test nay se do va bao ngay.
+        let scene = Scene {
+            prompt: "#1 canh mo dau".to_string(),
+            ratio: Ratio::default(),
+            duration: DEFAULT_DURATION,
+            model: Model::default(),
+            mode: Mode::default(),
+            logo: LogoMode::default(),
+            reference_images: Vec::new(),
+            account: String::new(),
+        };
+        let text = format_txt(std::slice::from_ref(&scene));
+        let parsed = parse_txt(&text, &Limits::default()).unwrap();
+        assert!(
+            parsed.is_empty(),
+            "prompt bat dau bang # bi parse_txt nuot mat, dung nhu ban Python"
+        );
     }
 }

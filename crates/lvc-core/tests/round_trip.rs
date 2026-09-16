@@ -15,7 +15,11 @@ fn any_ratio() -> impl Strategy<Value = Ratio> {
 
 fn any_scene() -> impl Strategy<Value = Scene> {
     (
-        // prompt: khong xuong dong, khong rong sau khi trim, co the chua dau gach dung
+        // prompt: khong xuong dong, khong rong sau khi trim, co the chua dau gach dung.
+        // CO Y khong cho '#' vao bo ky tu: prompt bat dau bang '#' khong the
+        // round-trip (parse_txt coi ca dong la comment) — gioi han da duoc ghim
+        // rieng o scene_txt::tests::prompt_bat_dau_bang_thang_..., proptest nay
+        // chi kiem tra pham vi con lai thuc su round-trip duoc.
         "[a-zA-Z0-9 |]{1,40}",
         any_ratio(),
         prop_oneof![Just(10u16), Just(15u16), Just(30u16)],
@@ -26,7 +30,9 @@ fn any_scene() -> impl Strategy<Value = Scene> {
             Just(LogoMode::Crop),
             Just(LogoMode::Delogo)
         ],
-        prop::collection::vec("[a-z0-9.]{1,10}", 0..3),
+        // "|" trong gia tri ref phai duoc escape/unescape dung khi round-trip,
+        // nen mo rong bo ky tu de proptest thuc su di qua nhanh escape do.
+        prop::collection::vec("[a-z0-9.|]{1,10}", 0..3),
         prop_oneof![Just(String::new()), "[a-z][a-z0-9_-]{0,10}"],
     )
         .prop_filter("prompt khong rong sau trim", |(p, ..)| !p.trim().is_empty())
