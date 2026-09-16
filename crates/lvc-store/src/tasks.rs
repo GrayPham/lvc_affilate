@@ -1,4 +1,4 @@
-use lvc_core::{Scene, TaskStatus};
+use lvc_core::{FailureCode, Scene, TaskStatus};
 use sqlx::Row;
 
 use crate::{Db, StoreError};
@@ -22,7 +22,7 @@ pub struct TaskRow {
     pub mode: String,
     pub logo: String,
     pub status: TaskStatus,
-    pub failure_code: Option<String>,
+    pub failure_code: Option<FailureCode>,
     pub error: Option<String>,
     pub account: Option<String>,
     pub account_pref: Option<String>,
@@ -57,8 +57,12 @@ fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Result<TaskRow, StoreError> {
         model: row.try_get("model")?,
         mode: row.try_get("mode")?,
         logo: row.try_get("logo")?,
+        // Moi duong ghi (repo + bo nhap du lieu cu) da chuan hoa status roi nen
+        // unwrap_or o day chi la phong thu.
         status: TaskStatus::parse(&status_str).unwrap_or(TaskStatus::Failed),
-        failure_code: row.try_get("failure_code")?,
+        failure_code: row
+            .try_get::<Option<String>, _>("failure_code")?
+            .and_then(|s| FailureCode::parse(&s)),
         error: row.try_get("error")?,
         account: row.try_get("account")?,
         account_pref: row.try_get("account_pref")?,
@@ -137,27 +141,31 @@ impl TaskRepo {
 
     /// Huỷ task = `Failed` + `failure_code = "cancelled"` (không có trạng thái `cancelled`).
     ///
+    /// Trả về `true` khi có đúng một dòng khớp `id` và được cập nhật, `false`
+    /// khi `id` không tồn tại — bộ lập lịch ở phase sau cần biết việc chuyển
+    /// trạng thái có thực sự xảy ra hay không.
+    ///
     /// # Errors
     /// `StoreError::Sqlx` khi ghi thất bại.
     pub async fn set_status(
         &self,
         id: &str,
         status: TaskStatus,
-        failure_code: Option<&str>,
+        failure_code: Option<FailureCode>,
         error: Option<&str>,
-    ) -> Result<(), StoreError> {
-        sqlx::query(
+    ) -> Result<bool, StoreError> {
+        let result = sqlx::query(
             "UPDATE tasks SET status = ?2, failure_code = ?3, error = ?4, updated_at = ?5
              WHERE id = ?1",
         )
         .bind(id)
         .bind(status.as_str())
-        .bind(failure_code)
+        .bind(failure_code.map(FailureCode::as_str))
         .bind(error)
         .bind(now())
         .execute(self.db.pool())
         .await?;
-        Ok(())
+        Ok(result.rows_affected() > 0)
     }
 
     /// # Errors

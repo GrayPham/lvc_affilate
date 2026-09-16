@@ -1,4 +1,4 @@
-use lvc_core::{Limits, RawScene, Scene, TaskStatus};
+use lvc_core::{FailureCode, Limits, RawScene, Scene, TaskStatus};
 use lvc_store::{BatchRef, Db, TaskRepo};
 
 fn scene(prompt: &str) -> Scene {
@@ -45,13 +45,31 @@ async fn huy_la_failed_cong_failure_code_cancelled() {
     let db = Db::open_memory().await.unwrap();
     let repo = TaskRepo::new(&db);
     repo.create("video_c", &scene("x"), None).await.unwrap();
-    repo.set_status("video_c", TaskStatus::Failed, Some("cancelled"), None)
+    let matched = repo
+        .set_status(
+            "video_c",
+            TaskStatus::Failed,
+            Some(FailureCode::Cancelled),
+            None,
+        )
         .await
         .unwrap();
+    assert!(matched, "phai khop dung 1 dong khi id ton tai");
 
     let got = repo.get("video_c").await.unwrap().unwrap();
     assert_eq!(got.status, TaskStatus::Failed);
-    assert_eq!(got.failure_code.as_deref(), Some("cancelled"));
+    assert_eq!(got.failure_code, Some(FailureCode::Cancelled));
+}
+
+#[tokio::test]
+async fn set_status_tren_id_khong_ton_tai_tra_false() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    let matched = repo
+        .set_status("khong_ton_tai", TaskStatus::Failed, None, None)
+        .await
+        .unwrap();
+    assert!(!matched, "id khong ton tai thi khong duoc bao thanh cong");
 }
 
 #[tokio::test]

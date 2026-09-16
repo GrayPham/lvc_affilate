@@ -3,6 +3,7 @@
 
 pub mod bulk;
 pub mod error;
+pub mod failure;
 pub mod limits;
 pub mod mode;
 pub mod pro_prompt;
@@ -13,6 +14,7 @@ pub mod value;
 
 pub use bulk::{bulk_scenes, split_bulk};
 pub use error::{CoreError, SceneError};
+pub use failure::FailureCode;
 pub use limits::Limits;
 pub use mode::Mode;
 pub use pro_prompt::{pro_max_prompt, pro_prompt};
