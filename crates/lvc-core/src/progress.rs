@@ -57,9 +57,11 @@ pub fn batch_progress(statuses: &[TaskStatus]) -> BatchProgress {
     }
     if p.total > 0 {
         let done = p.completed + p.failed;
-        // dung chuyen doi chinh xac theo cau hoi
+        // total là độ dài slice nên luôn < 2^53 → f64 biểu diễn chính xác
         #[allow(clippy::cast_precision_loss)]
         let pct = (100.0 * done as f64 / p.total as f64).round();
+        // done = completed + failed <= total (mỗi task rơi đúng một nhóm),
+        // nên pct ∈ [0.0, 100.0]: không tràn u8, không âm
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let percent = u8::try_from(pct as u64).unwrap_or(100);
         p.percent = percent;
@@ -102,5 +104,15 @@ mod tests {
         assert_eq!(TaskStatus::parse("completed"), Some(TaskStatus::Completed));
         assert_eq!(TaskStatus::parse("failed"), Some(TaskStatus::Failed));
         assert_eq!(TaskStatus::parse("cancelled"), None, "huy = failed + failure_code");
+    }
+
+    #[test]
+    fn percent_lam_tron_nua_len_khac_python() {
+        // Python dùng banker's rounding (làm tròn về số chẵn): round(12.5) = 12.
+        // Rust f64::round() làm tròn ra xa 0: 12.5 → 13. Giữ hành vi Rust vì
+        // percent chỉ để hiển thị thanh tiến độ, và 13% đúng kỳ vọng người dùng.
+        let mut v = vec![TaskStatus::Completed];
+        v.extend(std::iter::repeat_n(TaskStatus::Queued, 7));
+        assert_eq!(batch_progress(&v).percent, 13);
     }
 }
