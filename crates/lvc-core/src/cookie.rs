@@ -1,7 +1,7 @@
 //! Cookie Dola từ định dạng Netscape cookies.txt (HOP-DONG v1.3, ADR-005). Thuần.
 //!
-//! 7 cột cách TAB: domain, include_subdomains, path, secure, expiry(epoch, 0=phiên), name, value.
-//! `#HttpOnly_` là cookie HttpOnly (curl/wget), `#` khác là chú thích.
+//! 7 cột cách TAB: domain, `include_subdomains`, path, secure, expiry(epoch, 0=phiên), name, value.
+//! `#HttpOnly_` là cookie `HttpOnly` (curl/wget), `#` khác là chú thích.
 //! Extension export hay mất tab khi copy-dán → chấp nhận tách bằng ≥2 khoảng trắng.
 
 use serde::{Deserialize, Serialize};
@@ -92,6 +92,7 @@ pub fn parse_netscape(text: &str) -> Vec<Cookie> {
         if domain.is_empty() || name.is_empty() {
             continue;
         }
+        #[allow(clippy::cast_possible_truncation)]
         let expires = expiry
             .parse::<f64>()
             .ok()
