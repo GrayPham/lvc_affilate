@@ -178,6 +178,7 @@ mod tests {
         }
         assert_eq!(Model::Seedance20.as_str(), "seedance-2.0");
         assert_eq!(Model::Seedance20.wire_str(), "seedance_v2.0");
+        assert_eq!(Model::Seedance25.as_str(), "seedance-2.5");
         assert_eq!(Model::Seedance25.wire_str(), "seedance_v2.5");
         assert_eq!(
             Model::parse("3.0").unwrap_err().to_string(),
