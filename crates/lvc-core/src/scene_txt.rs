@@ -157,13 +157,10 @@ mod tests {
         let e = parse_txt("x | bogus=1", &Limits::default()).unwrap_err();
         assert_eq!(
             e.to_string(),
-            r#"line 1: unknown key "bogus" (allowed: ratio, dur, model, mode, logo, refs, acc)"#
+            "line 1: unknown key 'bogus' (allowed: ratio, dur, model, mode, logo, refs, acc)"
         );
         let e = parse_txt("x | noequals", &Limits::default()).unwrap_err();
-        assert_eq!(
-            e.to_string(),
-            r#"line 1: expected key=value, got "noequals""#
-        );
+        assert_eq!(e.to_string(), "line 1: expected key=value, got 'noequals'");
     }
 
     #[test]

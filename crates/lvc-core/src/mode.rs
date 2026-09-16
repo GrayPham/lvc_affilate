@@ -111,7 +111,7 @@ mod tests {
         let err = Mode::parse("bogus").unwrap_err();
         assert_eq!(
             err.to_string(),
-            r#"mode must be fast, pro or pro_max (got "bogus")"#
+            "mode must be fast, pro or pro_max (got 'bogus')"
         );
     }
 

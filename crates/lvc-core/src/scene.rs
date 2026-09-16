@@ -195,10 +195,10 @@ mod tests {
         let mut r = raw("x");
         r.duration = Some("7".into());
         let e = Scene::normalize(&r, &Limits::default(), None).unwrap_err();
-        assert_eq!(e.to_string(), r#"dur must be 10, 15 or 30 (got "7")"#);
+        assert_eq!(e.to_string(), "dur must be 10, 15 or 30 (got '7')");
         r.duration = Some("abc".into());
         let e = Scene::normalize(&r, &Limits::default(), None).unwrap_err();
-        assert_eq!(e.to_string(), r#"dur must be 10, 15 or 30 (got "abc")"#);
+        assert_eq!(e.to_string(), "dur must be 10, 15 or 30 (got 'abc')");
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
         let e = Scene::normalize(&r, &Limits::default(), None).unwrap_err();
         assert_eq!(
             e.to_string(),
-            r#"acc must be an account name (letters, digits, _ -; got "bad name")"#
+            "acc must be an account name (letters, digits, _ -; got 'bad name')"
         );
         r.account = Some("x".repeat(33));
         assert!(Scene::normalize(&r, &Limits::default(), None).is_err());

@@ -1,17 +1,28 @@
 use std::fmt;
 
+/// Mô phỏng `repr()` của Python cho chuỗi: `'x'`; nếu chuỗi có `'` mà không có
+/// `"` thì dùng `"x"`; ngược lại escape `\` và `'`.
+#[must_use]
+pub fn py_repr(s: &str) -> String {
+    if s.contains('\'') && !s.contains('"') {
+        return format!("\"{s}\"");
+    }
+    let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
+    format!("'{escaped}'")
+}
+
 /// Lỗi miền. Thông điệp khớp từng ký tự với bản Python.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CoreError {
-    #[error("mode must be fast, pro or pro_max (got {0:?})")]
+    #[error("mode must be fast, pro or pro_max (got {})", py_repr(.0))]
     InvalidMode(String),
-    #[error("ratio must be one of 9:16, 16:9, 1:1, 4:3, 3:4 (got {0:?})")]
+    #[error("ratio must be one of 9:16, 16:9, 1:1, 4:3, 3:4 (got {})", py_repr(.0))]
     InvalidRatio(String),
-    #[error("model must be 2.0 or 2.5 (got {0:?})")]
+    #[error("model must be 2.0 or 2.5 (got {})", py_repr(.0))]
     InvalidModel(String),
-    #[error("logo must be off, crop or delogo (got {0:?})")]
+    #[error("logo must be off, crop or delogo (got {})", py_repr(.0))]
     InvalidLogo(String),
-    #[error("dur must be 10, 15 or 30 (got {0:?})")]
+    #[error("dur must be 10, 15 or 30 (got {})", py_repr(.0))]
     InvalidDuration(String),
     #[error("prompt is empty")]
     EmptyPrompt,
@@ -19,15 +30,15 @@ pub enum CoreError {
     PromptTooLong { actual: usize, limit: usize },
     #[error("too many reference images (max {0})")]
     TooManyReferenceImages(usize),
-    #[error("acc must be an account name (letters, digits, _ -; got {0:?})")]
+    #[error("acc must be an account name (letters, digits, _ -; got {})", py_repr(.0))]
     InvalidAccount(String),
     #[error("too many scenes (max {0})")]
     TooManyScenes(usize),
     #[error("no scenes (text is empty)")]
     NoScenes,
-    #[error("expected key=value, got {0:?}")]
+    #[error("expected key=value, got {}", py_repr(.0))]
     ExpectedKeyValue(String),
-    #[error("unknown key {0:?} (allowed: ratio, dur, model, mode, logo, refs, acc)")]
+    #[error("unknown key {} (allowed: ratio, dur, model, mode, logo, refs, acc)", py_repr(.0))]
     UnknownKey(String),
 }
 
@@ -76,11 +87,11 @@ mod tests {
     fn thong_diep_khop_ban_python() {
         assert_eq!(
             CoreError::InvalidMode("xyz".into()).to_string(),
-            r#"mode must be fast, pro or pro_max (got "xyz")"#
+            "mode must be fast, pro or pro_max (got 'xyz')"
         );
         assert_eq!(
             CoreError::InvalidLogo("x".into()).to_string(),
-            r#"logo must be off, crop or delogo (got "x")"#
+            "logo must be off, crop or delogo (got 'x')"
         );
         assert_eq!(
             CoreError::PromptTooLong {
@@ -90,5 +101,15 @@ mod tests {
             .to_string(),
             "prompt too long (12 > 10 chars)"
         );
+    }
+
+    #[test]
+    fn py_repr_chuoi_thuong_dung_nhay_don() {
+        assert_eq!(py_repr("abc"), "'abc'");
+    }
+
+    #[test]
+    fn py_repr_chuoi_co_nhay_don_thi_doi_sang_nhay_kep() {
+        assert_eq!(py_repr("it's"), "\"it's\"");
     }
 }

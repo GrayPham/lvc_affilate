@@ -154,7 +154,7 @@ mod tests {
         let err = Ratio::parse("21:9").unwrap_err();
         assert_eq!(
             err.to_string(),
-            r#"ratio must be one of 9:16, 16:9, 1:1, 4:3, 3:4 (got "21:9")"#
+            "ratio must be one of 9:16, 16:9, 1:1, 4:3, 3:4 (got '21:9')"
         );
         assert_eq!(Ratio::default(), Ratio::R9x16);
     }
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(Model::Seedance25.wire_str(), "seedance_v2.5");
         assert_eq!(
             Model::parse("3.0").unwrap_err().to_string(),
-            r#"model must be 2.0 or 2.5 (got "3.0")"#
+            "model must be 2.0 or 2.5 (got '3.0')"
         );
     }
 
@@ -207,12 +207,12 @@ mod tests {
         assert_eq!(LogoMode::parse("delogo").unwrap(), LogoMode::Delogo);
         assert_eq!(
             LogoMode::parse("blur").unwrap_err().to_string(),
-            r#"logo must be off, crop or delogo (got "blur")"#
+            "logo must be off, crop or delogo (got 'blur')"
         );
         // Ban Python bao loi voi gia tri GOC, khong lowercase
         assert_eq!(
             LogoMode::parse("BLUR").unwrap_err().to_string(),
-            r#"logo must be off, crop or delogo (got "BLUR")"#
+            "logo must be off, crop or delogo (got 'BLUR')"
         );
     }
 }
