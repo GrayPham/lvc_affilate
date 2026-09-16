@@ -17,7 +17,7 @@ pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;
 pub use limits::Limits;
 pub use mode::Mode;
-pub use pro_prompt::{pro_max_prompt, pro_prompt};
+pub use pro_prompt::{agent_prompt, pro_max_prompt, pro_prompt};
 pub use progress::{BatchProgress, TaskStatus, batch_progress};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
