@@ -65,9 +65,6 @@ pub struct ChromiumDriver;
 pub struct ChromiumSession {
     pub browser: Browser,
     pub page: Page,
-    // PF-3: chi doc trong close() (Task 5, s.handler.abort()); Task 4 chua co close that
-    // nen truong nay tam thoi "khong doc duoc" theo clippy.
-    #[allow(dead_code)]
     handler: JoinHandle<()>,
 }
 
@@ -144,20 +141,91 @@ impl BrowserDriver for ChromiumDriver {
         })
     }
 
-    // add_cookies / goto / probe_session / screenshot / close: Task 5
-    async fn add_cookies(&self, _s: &ChromiumSession, _c: &[Cookie]) -> Result<(), BrowserError> {
-        unimplemented!("Task 5")
+    async fn add_cookies(
+        &self,
+        s: &ChromiumSession,
+        cookies: &[Cookie],
+    ) -> Result<(), BrowserError> {
+        use chromiumoxide::cdp::browser_protocol::network::CookieParam;
+        for c in cookies {
+            let mut b = CookieParam::builder()
+                .name(&c.name)
+                .value(&c.value)
+                .domain(&c.domain)
+                .path(&c.path)
+                .secure(c.secure)
+                .http_only(c.http_only);
+            if let Some(exp) = c.expires {
+                #[allow(clippy::cast_precision_loss)] // epoch giay thuc te < 2^53, chinh xac
+                let exp = exp as f64;
+                b = b.expires(
+                    chromiumoxide::cdp::browser_protocol::network::TimeSinceEpoch::new(exp),
+                );
+            }
+            s.page
+                .set_cookie(b.build().map_err(BrowserError::Launch)?)
+                .await?;
+        }
+        Ok(())
     }
-    async fn goto(&self, _s: &ChromiumSession, _u: &str) -> Result<(), BrowserError> {
-        unimplemented!("Task 5")
+
+    async fn goto(&self, s: &ChromiumSession, url: &str) -> Result<(), BrowserError> {
+        s.page
+            .goto(url)
+            .await
+            .map_err(|e| BrowserError::Navigation {
+                url: url.into(),
+                reason: e.to_string(),
+            })?;
+        s.page
+            .wait_for_navigation()
+            .await
+            .map_err(|e| BrowserError::Navigation {
+                url: url.into(),
+                reason: e.to_string(),
+            })?;
+        Ok(())
     }
-    async fn probe_session(&self, _s: &ChromiumSession) -> Result<SessionProbe, BrowserError> {
-        unimplemented!("Task 5")
+
+    async fn probe_session(&self, s: &ChromiumSession) -> Result<SessionProbe, BrowserError> {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            texts: Vec<String>,
+            composer: bool,
+        }
+        let raw: Raw = s
+            .page
+            .evaluate(lvc_core::SESSION_PROBE_JS)
+            .await?
+            .into_value()?;
+        let cookies = s.page.get_cookies().await?;
+        let has_sessionid = cookies
+            .iter()
+            .any(|c| c.name == lvc_core::cookie::REQUIRED_COOKIE && !c.value.is_empty());
+        let url = s.page.url().await?.unwrap_or_default();
+        let state = lvc_core::classify_session(has_sessionid, &raw.texts, raw.composer);
+        Ok(SessionProbe {
+            has_sessionid,
+            texts: raw.texts,
+            composer: raw.composer,
+            url,
+            state,
+        })
     }
-    async fn screenshot(&self, _s: &ChromiumSession, _p: &Path) -> Result<(), BrowserError> {
-        unimplemented!("Task 5")
+
+    async fn screenshot(&self, s: &ChromiumSession, path: &Path) -> Result<(), BrowserError> {
+        use chromiumoxide::page::ScreenshotParams;
+        let bytes = s
+            .page
+            .screenshot(ScreenshotParams::builder().full_page(false).build())
+            .await?;
+        tokio::fs::write(path, bytes).await?;
+        Ok(())
     }
-    async fn close(&self, _s: ChromiumSession) -> Result<(), BrowserError> {
-        unimplemented!("Task 5")
+
+    async fn close(&self, mut s: ChromiumSession) -> Result<(), BrowserError> {
+        let _ = s.browser.close().await;
+        s.handler.abort();
+        Ok(())
     }
 }
