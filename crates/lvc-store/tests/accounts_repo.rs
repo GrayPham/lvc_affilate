@@ -71,6 +71,33 @@ async fn usage_dem_rieng_tung_che_do() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn bump_usage_dong_thoi_khong_mat_dem() {
+    // File-backed (WAL, 8 connection) — in-memory chi co 1 connection nen khong
+    // kiem duoc dong thoi that.
+    let dir = tempfile::tempdir().unwrap();
+    let db = Db::open(&dir.path().join("dong_thoi.db")).await.unwrap();
+    let repo = AccountRepo::new(&db);
+    repo.upsert("acc2").await.unwrap();
+
+    let mut handles = Vec::new();
+    for _ in 0..32 {
+        let r = repo.clone();
+        handles.push(tokio::spawn(async move {
+            r.bump_usage("acc2", "2026-09-16", Mode::Fast).await
+        }));
+    }
+    for h in handles {
+        h.await.unwrap().expect("khong duoc 'database is locked'");
+    }
+    assert_eq!(
+        repo.used_today("acc2", "2026-09-16", Mode::Fast)
+            .await
+            .unwrap(),
+        32
+    );
+}
+
 #[tokio::test]
 async fn settings_get_set() {
     let db = Db::open_memory().await.unwrap();

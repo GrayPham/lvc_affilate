@@ -103,7 +103,27 @@ async fn list_recent_moi_nhat_truoc_va_kep_limit() {
         repo.create(&format!("video_{i}"), &scene(&format!("p{i}")), None)
             .await
             .unwrap();
+        // created_at = now() co the trung nhau giua hai lan tao lien tiep (do phan
+        // giai dong ho khong du min); cho tam nghi de thu tu DESC tat dinh.
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
     }
+
     let rows = repo.list_recent(3).await.unwrap();
-    assert_eq!(rows.len(), 3);
+    let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec!["video_4", "video_3", "video_2"],
+        "phai la 3 ban ghi moi nhat, moi nhat truoc"
+    );
+
+    assert_eq!(
+        repo.list_recent(0).await.unwrap().len(),
+        1,
+        "limit <= 0 phai kep len 1"
+    );
+    assert_eq!(
+        repo.list_recent(999).await.unwrap().len(),
+        5,
+        "limit vuot so ban ghi thi tra het, khong loi"
+    );
 }

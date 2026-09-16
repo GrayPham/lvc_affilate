@@ -3,6 +3,8 @@ use std::path::Path;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool, sqlite::SqlitePoolOptions};
 
+use lvc_core::TaskStatus;
+
 use crate::{Db, StoreError};
 
 /// Kết quả nhập. `skipped` liệt kê file cũ không tìm thấy — thiếu file không
@@ -74,7 +76,14 @@ pub async fn import_legacy(db: &Db, legacy_dir: &Path) -> Result<ImportReport, S
             .bind(opt_str(r, "mode").unwrap_or_else(|| "fast".into()))
             .bind(opt_str(r, "logo").unwrap_or_else(|| "off".into()))
             .bind(opt_i64(r, "logo_applied").unwrap_or(0))
-            .bind(opt_str(r, "status").unwrap_or_else(|| "failed".into()))
+            .bind(
+                // Chuan hoa ngay luc nhap: gia tri la (hoac thieu) tro thanh
+                // "failed" that su trong cot, khong chi khi doc qua TaskRepo.
+                opt_str(r, "status")
+                    .and_then(|s| TaskStatus::parse(&s))
+                    .unwrap_or(TaskStatus::Failed)
+                    .as_str(),
+            )
             .bind(opt_str(r, "failure_code"))
             .bind(opt_str(r, "error"))
             .bind(opt_str(r, "account"))

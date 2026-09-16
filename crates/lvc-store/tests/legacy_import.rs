@@ -3,7 +3,7 @@ use std::path::Path;
 use lvc_core::TaskStatus;
 use lvc_store::{Db, import_legacy};
 use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::{ConnectOptions, Executor};
+use sqlx::{ConnectOptions, Executor, Row};
 
 /// Dung DB cu toi thieu dung schema Python (chi cot ta doc).
 async fn make_legacy(dir: &Path) {
@@ -176,4 +176,54 @@ async fn schema_cu_thieu_cot_van_nhap_duoc_voi_mac_dinh() {
         "task khong co status phai thanh failed de khong bi tu dong chay lai"
     );
     assert_eq!(t.reference_images, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn status_cu_la_gia_tri_la_thi_chuan_hoa_thanh_failed() {
+    // Ban Python cu co the co status khong nam trong 4 gia tri hop le (du lieu
+    // hong, migrate dang do, v.v.). Bo nhap phai chuan hoa ngay khi ghi, khong
+    // duoc cay nguyen chuoi la vao cot status.
+    let dir = tempfile::tempdir().unwrap();
+    let tasks_db = dir.path().join("tasks.db");
+    let opts = SqliteConnectOptions::new()
+        .filename(&tasks_db)
+        .create_if_missing(true);
+    let mut conn = opts.connect().await.unwrap();
+    conn.execute(
+        "CREATE TABLE tasks (id TEXT PRIMARY KEY, prompt TEXT, status TEXT,
+             created_at REAL, updated_at REAL)",
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "INSERT INTO tasks (id, prompt, status, created_at, updated_at)
+         VALUES ('video_la', 'prompt la', 'weird', 1.0, 2.0)",
+    )
+    .await
+    .unwrap();
+
+    let db = Db::open_memory().await.unwrap();
+    import_legacy(&db, dir.path()).await.unwrap();
+
+    // Doc qua repo: TaskRow.status da duoc chuan hoa boi row_to_task.
+    let t = lvc_store::TaskRepo::new(&db)
+        .get("video_la")
+        .await
+        .unwrap()
+        .expect("phai nhap duoc");
+    assert_eq!(t.status, TaskStatus::Failed);
+
+    // Doc thang cot status trong DB: phai la "failed" that su, khong phai
+    // "weird" duoc "chua benh" boi tang doc — neu khong thi bat ky truy van SQL
+    // truc tiep nao (dashboard, bao cao) van thay du lieu sai kieu.
+    let raw: String = sqlx::query("SELECT status FROM tasks WHERE id = 'video_la'")
+        .fetch_one(db.pool())
+        .await
+        .unwrap()
+        .try_get("status")
+        .unwrap();
+    assert_eq!(
+        raw, "failed",
+        "cot status phai duoc chuan hoa luc nhap, khong chi luc doc"
+    );
 }
