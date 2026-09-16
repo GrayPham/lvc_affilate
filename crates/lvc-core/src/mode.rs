@@ -31,6 +31,7 @@ impl Mode {
     }
 
     /// `pro` và `pro_max` cùng dùng nút プロ, cùng nhận link mp4 trong text_block.
+    // text_block là văn xuôi trong doc comment do brief quy định, không phải định danh code.
     #[allow(clippy::doc_markdown)]
     #[must_use]
     pub fn is_pro_like(self) -> bool {
