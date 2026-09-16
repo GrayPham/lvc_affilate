@@ -64,6 +64,8 @@ pub enum Model {
     Seedance20,
     #[serde(rename = "seedance-2.5")]
     Seedance25,
+    #[serde(rename = "seedance-1.0")]
+    Seedance10,
 }
 
 impl Model {
@@ -78,6 +80,9 @@ impl Model {
             "2.5" | "seedance-2.5" | "seedance_2.5" | "seedance_v2.5" | "seedance-v2.5" => {
                 Ok(Self::Seedance25)
             }
+            "1.0" | "1" | "seedance-1.0" | "seedance_1.0" | "seedance_v1.0" | "seedance-v1.0" => {
+                Ok(Self::Seedance10)
+            }
             _ => Err(CoreError::InvalidModel(value.trim().to_lowercase())),
         }
     }
@@ -88,6 +93,7 @@ impl Model {
         match self {
             Self::Seedance20 => "seedance-2.0",
             Self::Seedance25 => "seedance-2.5",
+            Self::Seedance10 => "seedance-1.0",
         }
     }
 
@@ -97,6 +103,7 @@ impl Model {
         match self {
             Self::Seedance20 => "seedance_v2.0",
             Self::Seedance25 => "seedance_v2.5",
+            Self::Seedance10 => "seedance_v1.0",
         }
     }
 }
@@ -109,6 +116,8 @@ pub enum LogoMode {
     Off,
     Crop,
     Delogo,
+    /// Dò & xoá watermark động (v0.55z).
+    Auto,
 }
 
 impl LogoMode {
@@ -125,6 +134,7 @@ impl LogoMode {
             "off" => Ok(Self::Off),
             "crop" => Ok(Self::Crop),
             "delogo" => Ok(Self::Delogo),
+            "auto" => Ok(Self::Auto),
             // Bản Python báo lỗi với giá trị GỐC (`value`), không phải bản đã
             // lowercase — giữ đúng để thông điệp khớp.
             _ => Err(CoreError::InvalidLogo(value.to_string())),
@@ -137,6 +147,7 @@ impl LogoMode {
             Self::Off => "off",
             Self::Crop => "crop",
             Self::Delogo => "delogo",
+            Self::Auto => "auto",
         }
     }
 }
@@ -196,6 +207,42 @@ mod tests {
         assert_eq!(
             Model::parse("3.0").unwrap_err().to_string(),
             "model must be 2.0 or 2.5 (got '3.0')"
+        );
+    }
+
+    #[test]
+    fn model_1_0_alias_va_wire() {
+        for s in [
+            "1.0",
+            "1",
+            "seedance-1.0",
+            "seedance_1.0",
+            "seedance_v1.0",
+            "seedance-v1.0",
+        ] {
+            assert_eq!(Model::parse(s).unwrap(), Model::Seedance10, "{s}");
+        }
+        assert_eq!(Model::Seedance10.as_str(), "seedance-1.0");
+        assert_eq!(Model::Seedance10.wire_str(), "seedance_v1.0");
+    }
+
+    #[test]
+    fn thong_diep_model_van_ghi_2_0_hoac_2_5_nhu_python_quen_cap_nhat() {
+        // Python 8ec1cfa them 1.0 nhung KHONG doi thong diep — giu nguyen de khop.
+        assert_eq!(
+            Model::parse("3.0").unwrap_err().to_string(),
+            "model must be 2.0 or 2.5 (got '3.0')"
+        );
+    }
+
+    #[test]
+    fn logo_auto_va_thong_diep_van_ba_gia_tri() {
+        assert_eq!(LogoMode::parse("auto").unwrap(), LogoMode::Auto);
+        assert_eq!(LogoMode::Auto.as_str(), "auto");
+        // Python 8ec1cfa them auto nhung thong diep van "off, crop or delogo".
+        assert_eq!(
+            LogoMode::parse("blur").unwrap_err().to_string(),
+            "logo must be off, crop or delogo (got 'blur')"
         );
     }
 
