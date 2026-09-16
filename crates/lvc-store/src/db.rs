@@ -45,7 +45,9 @@ impl Db {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             // DB trong bo nho nam trong connection; neu connection dong thi DB bi xoa.
-            // Chien va max_lifetime phai None de dam bao connection khong ket thuc.
+            // Vi vay idle_timeout va max_lifetime deu phai None: mac dinh cua sqlx se
+            // dong connection roi (10 phut) hoac het han (30 phut), lam mat sach DB
+            // giua chung bo test — loi hien ra la "table not found" khong tai hien duoc.
             .idle_timeout(None)
             .max_lifetime(None)
             .connect_with(opts)
