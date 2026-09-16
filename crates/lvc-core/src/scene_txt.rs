@@ -64,8 +64,7 @@ pub fn parse_txt(text: &str, limits: &Limits) -> Result<Vec<Scene>, SceneError> 
                 "mode" => scene.mode = Some(value),
                 "logo" => scene.logo = Some(value),
                 "ref" | "refs" => {
-                    scene.reference_images =
-                        Some(value.split(',').map(str::to_string).collect());
+                    scene.reference_images = Some(value.split(',').map(str::to_string).collect());
                 }
                 "acc" | "account" => scene.account = Some(value),
                 _ => return Err(SceneError::new(Some(no), CoreError::UnknownKey(key))),
@@ -161,12 +160,18 @@ mod tests {
             r#"line 1: unknown key "bogus" (allowed: ratio, dur, model, mode, logo, refs, acc)"#
         );
         let e = parse_txt("x | noequals", &Limits::default()).unwrap_err();
-        assert_eq!(e.to_string(), r#"line 1: expected key=value, got "noequals""#);
+        assert_eq!(
+            e.to_string(),
+            r#"line 1: expected key=value, got "noequals""#
+        );
     }
 
     #[test]
     fn vuot_tran_so_canh_thi_loi() {
-        let l = Limits { batch_max_scenes: 2, ..Limits::default() };
+        let l = Limits {
+            batch_max_scenes: 2,
+            ..Limits::default()
+        };
         let txt = "a\nb\nc\n";
         let e = parse_txt(txt, &l).unwrap_err();
         assert_eq!(e.to_string(), "line 3: too many scenes (max 2)");
@@ -182,7 +187,8 @@ mod tests {
 
     #[test]
     fn format_theo_dung_thu_tu_ratio_dur_model_mode_logo_acc_refs() {
-        let txt = "p | refs=a.jpg | acc=me | logo=crop | mode=pro | model=2.5 | dur=30 | ratio=16:9";
+        let txt =
+            "p | refs=a.jpg | acc=me | logo=crop | mode=pro | model=2.5 | dur=30 | ratio=16:9";
         let s = parse_txt(txt, &Limits::default()).unwrap();
         assert_eq!(
             format_txt(&s),

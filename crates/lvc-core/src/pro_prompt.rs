@@ -5,7 +5,12 @@ use crate::Ratio;
 /// Không có cả hai → trả nguyên prompt (không bịa thêm).
 /// Đã đo thật: `"15秒の縦動画（9:16）を1本作ってください: ..."` → agent tạo đúng 15s 9:16.
 #[must_use]
-pub fn pro_prompt(prompt: &str, ratio: Option<Ratio>, duration: Option<u16>, no_bgm: bool) -> String {
+pub fn pro_prompt(
+    prompt: &str,
+    ratio: Option<Ratio>,
+    duration: Option<u16>,
+    no_bgm: bool,
+) -> String {
     let prompt = prompt.trim();
     let head = match (duration, ratio) {
         (Some(d), Some(r)) => format!("{d}秒の{}", r.japanese()),
@@ -30,7 +35,11 @@ pub fn pro_max_prompt(
     no_bgm: bool,
     command: &str,
 ) -> String {
-    format!("{} {}", command.trim(), pro_prompt(prompt, ratio, duration, no_bgm))
+    format!(
+        "{} {}",
+        command.trim(),
+        pro_prompt(prompt, ratio, duration, no_bgm)
+    )
 }
 
 #[cfg(test)]

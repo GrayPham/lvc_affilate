@@ -16,7 +16,7 @@ pub use error::{CoreError, SceneError};
 pub use limits::Limits;
 pub use mode::Mode;
 pub use pro_prompt::{pro_max_prompt, pro_prompt};
-pub use progress::{batch_progress, BatchProgress, TaskStatus};
+pub use progress::{BatchProgress, TaskStatus, batch_progress};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
 pub use value::{LogoMode, Model, Ratio};

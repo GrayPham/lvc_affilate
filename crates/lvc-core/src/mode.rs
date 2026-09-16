@@ -41,7 +41,11 @@ impl Mode {
     /// fast chỉ có 10s (30s nhờ extension); pro nhận 15s qua prompt.
     #[must_use]
     pub fn allowed_durations(self) -> &'static [u16] {
-        if self.is_pro_like() { &[10, 15, 30] } else { &[10, 30] }
+        if self.is_pro_like() {
+            &[10, 15, 30]
+        } else {
+            &[10, 30]
+        }
     }
 
     #[must_use]
@@ -82,7 +86,9 @@ mod tests {
 
     #[test]
     fn alias_dung_nhu_ban_python() {
-        for v in ["fast", "nhanh", "高速", "quick", "default", "FAST", "  fast  "] {
+        for v in [
+            "fast", "nhanh", "高速", "quick", "default", "FAST", "  fast  ",
+        ] {
             assert_eq!(Mode::parse(v).unwrap(), Mode::Fast, "{v}");
         }
         for v in ["pro", "プロ", "professional"] {
@@ -103,7 +109,10 @@ mod tests {
     #[test]
     fn la_thi_loi_co_thong_diep_dung() {
         let err = Mode::parse("bogus").unwrap_err();
-        assert_eq!(err.to_string(), r#"mode must be fast, pro or pro_max (got "bogus")"#);
+        assert_eq!(
+            err.to_string(),
+            r#"mode must be fast, pro or pro_max (got "bogus")"#
+        );
     }
 
     #[test]
@@ -129,7 +138,10 @@ mod tests {
         assert_eq!(l.daily_limit(Mode::Fast), 2);
         assert_eq!(l.daily_limit(Mode::Pro), 10);
         assert_eq!(l.daily_limit(Mode::ProMax), 10);
-        let zero = Limits { daily_limit_fast: 0, ..Limits::default() };
+        let zero = Limits {
+            daily_limit_fast: 0,
+            ..Limits::default()
+        };
         assert_eq!(zero.daily_limit(Mode::Fast), 1, "ban Python kep san >= 1");
     }
 }

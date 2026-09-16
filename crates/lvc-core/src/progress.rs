@@ -46,7 +46,10 @@ pub struct BatchProgress {
 /// `percent = round(100 * (completed + failed) / total)`.
 #[must_use]
 pub fn batch_progress(statuses: &[TaskStatus]) -> BatchProgress {
-    let mut p = BatchProgress { total: statuses.len(), ..BatchProgress::default() };
+    let mut p = BatchProgress {
+        total: statuses.len(),
+        ..BatchProgress::default()
+    };
     for s in statuses {
         match s {
             TaskStatus::Queued => p.queued += 1,
@@ -100,10 +103,17 @@ mod tests {
     #[test]
     fn trang_thai_parse_dung_4_gia_tri() {
         assert_eq!(TaskStatus::parse("queued"), Some(TaskStatus::Queued));
-        assert_eq!(TaskStatus::parse("processing"), Some(TaskStatus::Processing));
+        assert_eq!(
+            TaskStatus::parse("processing"),
+            Some(TaskStatus::Processing)
+        );
         assert_eq!(TaskStatus::parse("completed"), Some(TaskStatus::Completed));
         assert_eq!(TaskStatus::parse("failed"), Some(TaskStatus::Failed));
-        assert_eq!(TaskStatus::parse("cancelled"), None, "huy = failed + failure_code");
+        assert_eq!(
+            TaskStatus::parse("cancelled"),
+            None,
+            "huy = failed + failure_code"
+        );
     }
 
     #[test]

@@ -83,7 +83,11 @@ mod tests {
             r#"logo must be off, crop or delogo (got "x")"#
         );
         assert_eq!(
-            CoreError::PromptTooLong { actual: 12, limit: 10 }.to_string(),
+            CoreError::PromptTooLong {
+                actual: 12,
+                limit: 10
+            }
+            .to_string(),
             "prompt too long (12 > 10 chars)"
         );
     }

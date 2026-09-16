@@ -21,7 +21,11 @@ fn any_scene() -> impl Strategy<Value = Scene> {
         prop_oneof![Just(10u16), Just(15u16), Just(30u16)],
         prop_oneof![Just(Model::Seedance20), Just(Model::Seedance25)],
         prop_oneof![Just(Mode::Fast), Just(Mode::Pro), Just(Mode::ProMax)],
-        prop_oneof![Just(LogoMode::Off), Just(LogoMode::Crop), Just(LogoMode::Delogo)],
+        prop_oneof![
+            Just(LogoMode::Off),
+            Just(LogoMode::Crop),
+            Just(LogoMode::Delogo)
+        ],
         prop::collection::vec("[a-z0-9.]{1,10}", 0..3),
         prop_oneof![Just(String::new()), "[a-z][a-z0-9_-]{0,10}"],
     )

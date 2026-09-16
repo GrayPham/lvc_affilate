@@ -35,7 +35,8 @@ pub struct Scene {
 fn valid_account(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 32
-        && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 impl Scene {
@@ -108,7 +109,16 @@ impl Scene {
             return Err(err(CoreError::InvalidAccount(account)));
         }
 
-        Ok(Self { prompt, ratio, duration, model, mode, logo, reference_images, account })
+        Ok(Self {
+            prompt,
+            ratio,
+            duration,
+            model,
+            mode,
+            logo,
+            reference_images,
+            account,
+        })
     }
 }
 
@@ -117,7 +127,10 @@ mod tests {
     use super::*;
 
     fn raw(prompt: &str) -> RawScene {
-        RawScene { prompt: Some(prompt.into()), ..RawScene::default() }
+        RawScene {
+            prompt: Some(prompt.into()),
+            ..RawScene::default()
+        }
     }
 
     #[test]
@@ -141,7 +154,10 @@ mod tests {
 
     #[test]
     fn prompt_qua_dai_chi_khi_limit_duong() {
-        let l = Limits { prompt_max_chars: 5, ..Limits::default() };
+        let l = Limits {
+            prompt_max_chars: 5,
+            ..Limits::default()
+        };
         let e = Scene::normalize(&raw("abcdefgh"), &l, None).unwrap_err();
         assert_eq!(e.to_string(), "prompt too long (8 > 5 chars)");
         // 0 = khong gioi han
@@ -152,11 +168,26 @@ mod tests {
     fn thoi_luong_chap_nhan_hau_to_s() {
         let mut r = raw("x");
         r.duration = Some("30s".into());
-        assert_eq!(Scene::normalize(&r, &Limits::default(), None).unwrap().duration, 30);
+        assert_eq!(
+            Scene::normalize(&r, &Limits::default(), None)
+                .unwrap()
+                .duration,
+            30
+        );
         r.duration = Some("15S".into());
-        assert_eq!(Scene::normalize(&r, &Limits::default(), None).unwrap().duration, 15);
+        assert_eq!(
+            Scene::normalize(&r, &Limits::default(), None)
+                .unwrap()
+                .duration,
+            15
+        );
         r.duration = Some(String::new());
-        assert_eq!(Scene::normalize(&r, &Limits::default(), None).unwrap().duration, 10);
+        assert_eq!(
+            Scene::normalize(&r, &Limits::default(), None)
+                .unwrap()
+                .duration,
+            10
+        );
     }
 
     #[test]
@@ -177,7 +208,10 @@ mod tests {
         let s = Scene::normalize(&r, &Limits::default(), None).unwrap();
         assert_eq!(s.reference_images, vec!["a.jpg", "b.png"]);
 
-        let l = Limits { reference_image_max_count: 1, ..Limits::default() };
+        let l = Limits {
+            reference_image_max_count: 1,
+            ..Limits::default()
+        };
         let e = Scene::normalize(&r, &l, None).unwrap_err();
         assert_eq!(e.to_string(), "too many reference images (max 1)");
     }
@@ -186,7 +220,12 @@ mod tests {
     fn ten_tai_khoan_theo_regex() {
         let mut r = raw("x");
         r.account = Some("acc_2-b".into());
-        assert_eq!(Scene::normalize(&r, &Limits::default(), None).unwrap().account, "acc_2-b");
+        assert_eq!(
+            Scene::normalize(&r, &Limits::default(), None)
+                .unwrap()
+                .account,
+            "acc_2-b"
+        );
         r.account = Some("bad name".into());
         let e = Scene::normalize(&r, &Limits::default(), None).unwrap_err();
         assert_eq!(
@@ -201,7 +240,10 @@ mod tests {
     fn do_dai_prompt_dem_theo_ky_tu_khong_phai_byte() {
         // "猫が歩く" = 4 ký tự nhưng 12 byte. Nếu đếm theo byte, mọi prompt
         // tiếng Việt/tiếng Nhật sẽ bị từ chối oan.
-        let l = Limits { prompt_max_chars: 4, ..Limits::default() };
+        let l = Limits {
+            prompt_max_chars: 4,
+            ..Limits::default()
+        };
         assert!(Scene::normalize(&raw("猫が歩く"), &l, None).is_ok());
         // 5 ký tự thì vượt thật
         assert!(Scene::normalize(&raw("猫が歩く猫"), &l, None).is_err());

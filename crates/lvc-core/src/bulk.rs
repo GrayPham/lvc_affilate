@@ -8,11 +8,7 @@ use crate::{CoreError, Limits, RawScene, Scene, SceneError};
 ///
 /// # Errors
 /// `CoreError::TooManyScenes` khi vượt `limits.batch_max_scenes`.
-pub fn split_bulk(
-    text: &str,
-    delimiter: &str,
-    limits: &Limits,
-) -> Result<Vec<String>, SceneError> {
+pub fn split_bulk(text: &str, delimiter: &str, limits: &Limits) -> Result<Vec<String>, SceneError> {
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
     let delim = delimiter.trim();
     let parts: Vec<String> = if delim.is_empty() {
@@ -53,7 +49,10 @@ pub fn bulk_scenes(
         .into_iter()
         .enumerate()
         .map(|(i, prompt)| {
-            let raw = RawScene { prompt: Some(prompt), ..defaults.clone() };
+            let raw = RawScene {
+                prompt: Some(prompt),
+                ..defaults.clone()
+            };
             Scene::normalize(&raw, limits, Some(i + 1))
         })
         .collect()
@@ -77,14 +76,21 @@ mod tests {
 
     #[test]
     fn vuot_tran_thi_loi() {
-        let l = Limits { batch_max_scenes: 2, ..Limits::default() };
+        let l = Limits {
+            batch_max_scenes: 2,
+            ..Limits::default()
+        };
         let e = split_bulk("a\nb\nc", "", &l).unwrap_err();
         assert_eq!(e.to_string(), "line 3: too many scenes (max 2)");
     }
 
     #[test]
     fn bulk_scenes_ap_mac_dinh_chung() {
-        let defaults = RawScene { mode: Some("pro".into()), duration: Some("15".into()), ..RawScene::default() };
+        let defaults = RawScene {
+            mode: Some("pro".into()),
+            duration: Some("15".into()),
+            ..RawScene::default()
+        };
         let out = bulk_scenes("a\nb", "", &defaults, &Limits::default()).unwrap();
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].mode, crate::Mode::Pro);

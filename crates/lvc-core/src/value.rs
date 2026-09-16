@@ -170,10 +170,23 @@ mod tests {
 
     #[test]
     fn model_alias_day_du() {
-        for s in ["2.0", "2", "seedance-2.0", "seedance_2.0", "seedance_v2.0", "seedance-v2.0"] {
+        for s in [
+            "2.0",
+            "2",
+            "seedance-2.0",
+            "seedance_2.0",
+            "seedance_v2.0",
+            "seedance-v2.0",
+        ] {
             assert_eq!(Model::parse(s).unwrap(), Model::Seedance20, "{s}");
         }
-        for s in ["2.5", "seedance-2.5", "seedance_2.5", "seedance_v2.5", "seedance-v2.5"] {
+        for s in [
+            "2.5",
+            "seedance-2.5",
+            "seedance_2.5",
+            "seedance_v2.5",
+            "seedance-v2.5",
+        ] {
             assert_eq!(Model::parse(s).unwrap(), Model::Seedance25, "{s}");
         }
         assert_eq!(Model::Seedance20.as_str(), "seedance-2.0");
