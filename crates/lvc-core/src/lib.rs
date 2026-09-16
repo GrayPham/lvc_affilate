@@ -10,6 +10,7 @@ pub mod pro_prompt;
 pub mod progress;
 pub mod scene;
 pub mod scene_txt;
+pub mod scheduling;
 pub mod value;
 
 pub use bulk::{bulk_scenes, split_bulk};
@@ -21,4 +22,5 @@ pub use pro_prompt::{agent_prompt, pro_max_prompt, pro_prompt};
 pub use progress::{BatchProgress, TaskStatus, batch_progress};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
+pub use scheduling::{fit_duration_to_mode, mode_fallback_chain};
 pub use value::{LogoMode, Model, Ratio};
