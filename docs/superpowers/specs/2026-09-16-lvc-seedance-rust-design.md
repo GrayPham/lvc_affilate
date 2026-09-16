@@ -1,6 +1,7 @@
 # Thiết kế — LVC Seedance v2: Rust + Tauri, workflow kéo thả
 
 > Ngày: 2026-09-16 · Nguồn: `A:\ToolLVC\lvcseedance` (Python, v0.60) · Đích: `A:\ToolLVC\lvc_seedancev2`
+> **Baseline Python:** commit `8ec1cfac` (2026-09-16 21:34:28 +0700). Mọi "khớp Python" trong tài liệu này tính theo commit đó.
 > Trạng thái: **chờ duyệt** — chưa viết code.
 
 ## 1. Bối cảnh
@@ -234,10 +235,11 @@ Bản gốc có ba tầng; tầng `KeyConcurrencyLimiter` theo API key biến m�
 
 Không có trạng thái `cancelled`; huỷ ghi `status='failed', failure_code='cancelled'`.
 
-### 6.2 `failure_code` — 10 giá trị
+### 6.2 `failure_code` — 13 giá trị
 
 `cancelled` · `LOGGED_OUT` · `429` · `ACCOUNT_UNAVAILABLE` · `PROMPT_VIOLATION` ·
-`REF_UPLOAD` · `PROFILE_BUSY` · `PROXY_DOWN` · `DURATION_UNAVAILABLE` · `AGENT_QUESTION`
+`REF_UPLOAD` · `PROFILE_BUSY` · `PROXY_DOWN` · `DURATION_UNAVAILABLE` · `AGENT_QUESTION` ·
+`MODE_UNAVAILABLE` · `NO_CONVERSATION` · `RESTART`
 
 `DEAD_CHAT_CODES = (PROMPT_VIOLATION, AGENT_QUESTION)` chặn resume — chat cũ vô dụng.
 
@@ -387,13 +389,19 @@ Chuẩn hoá/xfade/nhạc nền để lại cho sau, khi có nhu cầu thật.
 
 | Mode | Nút Dola | Thời lượng | Hạn mức ngày | Timeout |
 |---|---|---|---|---|
-| fast | 高速 → 動画を作成 | 10, 30 | 2 | 300s |
-| pro | プロ → スキル → 動画の生成 | 10, 15, 30 | 10 | 1800s (gia hạn 3600s) |
-| pro_max | プロ, không スキル, lệnh `/Create Video` | 10, 15, 30 | 10 | 3600s |
+| fast | 高速 → 動画を作成 | 10 | 30 | 300s |
+| pro | プロ → スキル → 動画の生成 | 10, 15 | 10 | 1800s (gia hạn 3600s) |
+| pro_max | プロ, không スキル, lệnh `/Create Video` | 10, 15 | 10 | 3600s |
+| agent | プロ (chat tự nhiên, không skill) | 10, 15 | 30 | 1800s |
 
-Model: `seedance_v2.0`, `seedance_v2.5` (alias `seedance-2.0`/`seedance-2.5` ở API công khai).
-Nhãn UI: `Dreamina Seedance 2.5`, `Dreamina Seedance 2.0高速`, `Dreamina Seedance 2.0`,
-`Seedance2.0Fast`.
+30s đã bị bỏ (ADR-033/034 Python): scene vẫn chấp nhận `dur=30` trong TXT,
+`fit_duration_to_mode` kẹp về mức mode cho phép.
+
+Model: `seedance_v1.0`, `seedance_v2.0`, `seedance_v2.5` (alias `seedance-1.0`/`seedance-2.0`/
+`seedance-2.5` ở API công khai). Nhãn UI: `Dreamina Seedance 2.5`, `Dreamina Seedance 2.0高速`,
+`Dreamina Seedance 2.0`, `Seedance2.0Fast`.
+
+Logo: `off`, `crop`, `delogo`, `auto`.
 
 Ở `pro`/`pro_max`, thời lượng và tỉ lệ **viết vào prompt** (tiếng Nhật) chứ không có menu:
 `"15秒の縦動画（9:16）を1本作ってください。内容: ...。BGMなし、環境音のみ"`.
@@ -477,6 +485,18 @@ admin-key, và cái middleware tự tiêm `x-admin-key` vào `request.scope` cho
   hai route này
 
 **Rủi ro:** nếu sau này cần client ngoài, phải dựng lại axum. Chấp nhận — YAGNI.
+
+### ADR-R011 — Adopt Python HEAD `8ec1cfac` làm baseline (2026-09-16)
+
+**Bối cảnh:** Python được phát triển song song, spec dựa trên snapshot 07/09; review cuối
+P0 phát hiện lệch (mode agent, bỏ 30s…).
+
+**Lựa chọn:** ghim baseline = HEAD lúc kết thúc P0.
+
+**Bác:** giữ snapshot cũ (port thứ người dùng không còn dùng).
+
+**Hệ quả:** P0.5 này; mọi phase sau đối chiếu với `8ec1cfac`; nếu Python tiếp tục đổi, mở
+ADR mới chứ không trượt ngầm.
 
 ## 14. Câu hỏi còn mở
 

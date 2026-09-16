@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Mã lỗi của task — đúng 10 giá trị của bản Python. `Cancelled` là mã, KHÔNG
+/// Mã lỗi của task — đúng 13 giá trị của bản Python. `Cancelled` là mã, KHÔNG
 /// phải trạng thái: huỷ = `TaskStatus::Failed` + `FailureCode::Cancelled`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FailureCode {
@@ -14,6 +14,9 @@ pub enum FailureCode {
     ProxyDown,
     DurationUnavailable,
     AgentQuestion,
+    ModeUnavailable,
+    NoConversation,
+    Restart,
 }
 
 impl FailureCode {
@@ -31,6 +34,9 @@ impl FailureCode {
             Self::ProxyDown => "PROXY_DOWN",
             Self::DurationUnavailable => "DURATION_UNAVAILABLE",
             Self::AgentQuestion => "AGENT_QUESTION",
+            Self::ModeUnavailable => "MODE_UNAVAILABLE",
+            Self::NoConversation => "NO_CONVERSATION",
+            Self::Restart => "RESTART",
         }
     }
 
@@ -47,6 +53,9 @@ impl FailureCode {
             "PROXY_DOWN" => Some(Self::ProxyDown),
             "DURATION_UNAVAILABLE" => Some(Self::DurationUnavailable),
             "AGENT_QUESTION" => Some(Self::AgentQuestion),
+            "MODE_UNAVAILABLE" => Some(Self::ModeUnavailable),
+            "NO_CONVERSATION" => Some(Self::NoConversation),
+            "RESTART" => Some(Self::Restart),
             _ => None,
         }
     }
@@ -62,7 +71,7 @@ impl FailureCode {
 mod tests {
     use super::*;
 
-    const ALL: [FailureCode; 10] = [
+    const ALL: [FailureCode; 13] = [
         FailureCode::Cancelled,
         FailureCode::LoggedOut,
         FailureCode::RateLimited,
@@ -73,10 +82,13 @@ mod tests {
         FailureCode::ProxyDown,
         FailureCode::DurationUnavailable,
         FailureCode::AgentQuestion,
+        FailureCode::ModeUnavailable,
+        FailureCode::NoConversation,
+        FailureCode::Restart,
     ];
 
     #[test]
-    fn round_trip_parse_as_str_cho_ca_muoi_gia_tri() {
+    fn round_trip_parse_as_str_cho_ca_muoi_ba_gia_tri() {
         for code in ALL {
             assert_eq!(FailureCode::parse(code.as_str()), Some(code));
         }
@@ -96,5 +108,13 @@ mod tests {
             );
             assert_eq!(code.is_dead_chat(), expect, "{code:?}");
         }
+    }
+
+    #[test]
+    fn ba_ma_moi_tu_python_head() {
+        assert_eq!(FailureCode::ModeUnavailable.as_str(), "MODE_UNAVAILABLE");
+        assert_eq!(FailureCode::NoConversation.as_str(), "NO_CONVERSATION");
+        assert_eq!(FailureCode::Restart.as_str(), "RESTART");
+        assert!(!FailureCode::Restart.is_dead_chat());
     }
 }
