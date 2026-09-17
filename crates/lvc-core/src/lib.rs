@@ -16,6 +16,7 @@ pub mod scene_txt;
 pub mod scheduling;
 pub mod session;
 pub mod value;
+pub mod video_url;
 
 pub use bulk::{bulk_scenes, split_bulk};
 pub use chain::{
@@ -45,3 +46,7 @@ pub use session::{
     is_region_restricted,
 };
 pub use value::{LogoMode, Model, Ratio};
+pub use video_url::{
+    RAW_PARAMS, RawCandidate, decode_main_url, extract_unwatermarked_url, find_fallback_apis,
+    is_watermarked_url, pick_raw_video, replace_query,
+};

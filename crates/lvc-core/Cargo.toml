@@ -7,9 +7,17 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
-serde_json.workspace = true
+# preserve_order: `find_fallback_apis`/`find_key_seed` (video_url.rs) đệ quy theo THỨ TỰ xuất
+# hiện của object JSON (khớp `dict` Python — luôn giữ thứ tự chèn từ 3.7+); mặc định
+# `serde_json::Map` dùng `BTreeMap` (sắp theo alphabet khoá) sẽ làm SAI thứ tự so với Python.
+# Cargo hợp nhất feature theo toàn workspace nên bật ở đây áp dụng cho mọi crate dùng serde_json.
+serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
 regex = "1"
+base64.workspace = true
+sha2.workspace = true
+aes.workspace = true
+cbc.workspace = true
 # fancy-regex: regex thuong (crate `regex`) khong ho tro lookaround; chi dung cho pattern
 # "generating" (modes.py:129 co negative lookbehind `(?<!cannot )...`) — xem dola_text.rs.
 fancy-regex = "0.14"
