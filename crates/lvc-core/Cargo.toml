@@ -8,6 +8,10 @@ license.workspace = true
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+regex = "1"
+# fancy-regex: regex thuong (crate `regex`) khong ho tro lookaround; chi dung cho pattern
+# "generating" (modes.py:129 co negative lookbehind `(?<!cannot )...`) — xem dola_text.rs.
+fancy-regex = "0.14"
 
 [dev-dependencies]
 proptest = "1"

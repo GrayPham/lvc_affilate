@@ -3,6 +3,7 @@
 
 pub mod bulk;
 pub mod cookie;
+pub mod dola_text;
 pub mod error;
 pub mod failure;
 pub mod limits;
@@ -19,6 +20,11 @@ pub use bulk::{bulk_scenes, split_bulk};
 pub use cookie::{
     Cookie, CookieError, DOLA_URL, has_dola_sessionid, parse_netscape, sessionid_expires,
     validate_dola_cookies,
+};
+pub use dola_text::{
+    ConfirmKind, DolaTextClass, REFUSAL_NOTE, agent_question, classify_dola_text,
+    confirmation_reply, is_generating, is_portrait_hint, looks_like_json, needs_confirmation,
+    policy_rejection,
 };
 pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;
