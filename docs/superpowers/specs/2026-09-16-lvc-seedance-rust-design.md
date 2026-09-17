@@ -512,19 +512,31 @@ vào repo). `navigator.webdriver=false`, `navigator.language=ja-JP`.
 **Quyết định:** giữ chromiumoxide làm driver (ADR-R002 phương án A); **không** mở sidecar
 Python. Tiến P2.
 
-**Hai bẫy đã dẫm phải trên đường (ghi để không lặp):**
+**Bẫy đã dẫm phải (ghi để không lặp) — đã sửa sau review toàn P1:**
 
-1. **Sai binary → "logged_out" giả.** Google Chrome 153 mở profile do Chromium 1234 tạo:
-   cookie không giải mã được (khoá OS-crypt gắn theo bản cài) → 0 sessionid. Profile của
-   tài khoản nào phải mở bằng đúng binary đã tạo nó; `pool_usage.db` cột `browser` là
-   nguồn sự thật (`chromium` = bản Playwright của patchright, không phải Chrome hệ thống).
-2. **`--user-data-dir` TƯƠNG ĐỐI → mất cookie bất định.** Cùng binary, cùng DB (79 dòng,
+1. **`--user-data-dir` TƯƠNG ĐỐI → mất cookie bất định.** Cùng binary, cùng DB (79 dòng,
    journal rỗng, integrity ok, mọi giá trị giải mã được bằng DPAPI + AES-GCM, hash host
    khớp), nhưng Chromium chỉ nạp 7–8/79 cookie, tập nạp đổi giữa các lần chạy, và
    `sessionid` luôn thiếu — kể cả khi đã dùng nguyên bộ cờ patchright. Đường dẫn tuyệt đối
    nạp 79/79. Cơ chế bên trong Chromium không xác định được từ ngoài; kết luận thực nghiệm
-   đủ chắc (3 lần tương đối = thiếu, 2 lần tuyệt đối = đủ). Driver ép `std::path::absolute`
-   trong `ChromiumDriver::config`, ghim bằng test `config_ep_user_data_dir_tuyet_doi`.
+   đủ chắc (3 lần tương đối = thiếu, 3 lần tuyệt đối = đủ, trên **cả hai** binary). Driver ép
+   `std::path::absolute` trong `ChromiumDriver::config`, ghim bằng test
+   `config_ep_user_data_dir_tuyet_doi`.
+2. **Kết luận "sai binary" ban đầu là SAI.** Đo 1 (Google Chrome 153) chạy với đường dẫn
+   tương đối nên dính bẫy 1; đo lại (2026-09-17, headless, tuyệt đối) → Chrome 153 cũng nạp
+   79/79 và `logged_in`; sau đó DB vẫn toàn cookie `v10` (81 dòng) — Chrome đọc được cookie
+   DPAPI của Chromium. Quy tắc "mở profile bằng đúng binary đã tạo nó (cột `browser` trong
+   `pool_usage.db`)" **vẫn giữ** vì App-Bound Encryption (`v20`) của Google Chrome ≥127 là
+   một chiều theo tài liệu Chromium (Chromium không giải mã được `v20`) — chưa đo, không
+   dựa vào việc lần này Chrome chưa ghi `v20`.
+
+**Chưa đo / lệch so với Python, ghi nhận:** (a) chỉ đo headed; headless cho UA
+`HeadlessChrome/153.0.0.0` — dấu hiệu bot rõ, nên P2 chạy **headed** (Python ở chế độ
+`profile` cũng ép headed). (b) chromiumoxide thêm `--window-size=1280,900`,
+`--remote-debugging-port=0`, `--disable-extensions` và ta thêm `--lang=ja-JP`; patchright
+dùng `--remote-debugging-pipe`, không có 3 cờ kia (xem doc comment `PATCHRIGHT_DEFAULT_ARGS`).
+(c) `Runtime.enable` là khác biệt duy nhất phát hiện được từ JS trang; nếu Task 18 (P2) bị
+chặn ở bước gửi, phương án là fork chromiumoxide để evaluate qua isolated world.
 
 **Đổi kèm:** `PATCHRIGHT_DEFAULT_ARGS` thay bộ cờ Puppeteer chép tay từ chromiumoxide bằng
 bộ cờ **thật** patchright 1.62.3 truyền (bắt qua `DEBUG=pw:browser`), trừ cờ đã có trong
