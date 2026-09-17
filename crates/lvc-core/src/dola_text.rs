@@ -122,10 +122,22 @@ const DURATION_REQUEST_SRC: &str = concat!(
 /// modes.py:87 `DOLA_TEXT["confirm_reply"]` — cau tra loi mac dinh khi xin xac nhan.
 const CONFIRM_REPLY: &str = "Yes, please proceed. Có, hãy tiếp tục tạo video. Đúng rồi, hãy tạo video theo các thông số này. はい、確認しました。生成開始してください。";
 
-/// modes.py:101-104 `DOLA_TEXT["choice_reply_generic"]`. `choice_reply_auto` (modes.py:97-100)
-/// khong dung duoc voi chu ky `confirmation_reply(kind, duration)` (khong co van ban goc de
-/// biet la truong hop "C. tu dong") nen bo qua, xem report.
+/// modes.py:97-100 `DOLA_TEXT["choice_reply_auto"]` — dung khi phat hien Dola tu goi y
+/// phuong an "C. tu dong" (xem `CHOICE_AUTO_HINT_SRC` va `modes.py:318`).
+const CHOICE_REPLY_AUTO: &str = "C. Hãy chọn tự động các thông số như bạn đã gợi ý và tiến hành tạo video ngay. Please choose automatically as suggested and proceed to generate the video now.";
+
+/// modes.py:101-104 `DOLA_TEXT["choice_reply_generic"]`.
 const CHOICE_REPLY_GENERIC: &str = "Hãy tự động chọn phương án tối ưu nhất và tiến hành tạo video ngay giúp tôi. Please choose automatically with the best settings and proceed to generate the video now.";
+
+/// `modes.py:318` — pattern rieng (khong nam trong `DOLA_TEXT`) ma `get_confirmation_reply`
+/// tu dung inline de phan biet "C. tu dong" voi lua chon chung chung.
+const CHOICE_AUTO_HINT_SRC: &str = r"choose\s+automatically|c\.\s+if\s+you\s+want\s+me\s+to\s+choose|chọn\s*tự\s*động|tự\s*động\s*chọn|[cC][.．\)]\s+";
+
+/// modes.py:166 `re.search(r"(\d+)\s*秒\s*から\s*(\d+)\s*秒", combined)` — KHONG co `re.IGNORECASE`.
+const DURATION_RANGE_JP_SRC: &str = r"(\d+)\s*秒\s*から\s*(\d+)\s*秒";
+
+/// modes.py:166 `re.search(r"(\d+)\s*(?:to|-|–)\s*(\d+)\s*seconds", combined, re.IGNORECASE)`.
+const DURATION_RANGE_EN_SRC: &str = r"(\d+)\s*(?:to|-|–)\s*(\d+)\s*seconds";
 
 /// video_worker_ui.py:79-81 `REFUSAL_NOTE` — tien to loi `PromptViolationError` khi tu choi
 /// (khong phai het credit).
@@ -184,6 +196,20 @@ static AGENT_QUESTION: LazyLock<Regex> =
 
 static DURATION_REQUEST: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!("(?i){DURATION_REQUEST_SRC}")).expect("DURATION_REQUEST hop le")
+});
+
+/// modes.py:318 `get_confirmation_reply` goi `re.search(..., re.IGNORECASE)`.
+static CHOICE_AUTO_HINT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!("(?i){CHOICE_AUTO_HINT_SRC}")).expect("CHOICE_AUTO_HINT hop le")
+});
+
+/// modes.py:166 — khong `re.IGNORECASE` (chi so + 秒/から, khong can khong phan biet hoa/thuong).
+static DURATION_RANGE_JP: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(DURATION_RANGE_JP_SRC).expect("DURATION_RANGE_JP hop le"));
+
+/// modes.py:166 — co `re.IGNORECASE` ("to"/"seconds").
+static DURATION_RANGE_EN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!("(?i){DURATION_RANGE_EN_SRC}")).expect("DURATION_RANGE_EN hop le")
 });
 
 // ===== API cong khai =====
@@ -297,38 +323,87 @@ pub fn needs_confirmation(latest: &[String]) -> Option<ConfirmKind> {
     None
 }
 
-/// modes.py:308-322 `get_confirmation_reply` + 161-170 `duration_reply` (chi phan dinh dang
-/// truc tiep — xem report ve pham vi kep 4-15s bi bo vi chu ky nay khong nhan van ban goc).
-/// `Confirm`/`Question` -> cau tra loi mac dinh (modes.py:322); `Choice` -> cau tra loi chung
-/// (modes.py:104, bo nhanh "C. tu dong" vi khong co van ban goc de phan biet).
-#[must_use]
-pub fn confirmation_reply(kind: ConfirmKind, duration: u16) -> String {
-    match kind {
-        ConfirmKind::Duration => {
-            format!("{duration}秒 ({duration} seconds). {duration}秒の動画を生成してください。")
+/// modes.py:161-170 `duration_reply` — cau tra loi khi Dola hoi so giay: thoi luong cua
+/// task, kep trong khoang Dola neu (vd "4 秒 から 15 秒") neu doc duoc.
+fn duration_reply(latest: &[String], duration: Option<u16>) -> String {
+    let combined = latest.join(" ");
+    // modes.py:165 `d = int(duration or 10)` — Python: gia tri falsy (None HOAC 0) deu ve 10.
+    let mut d: u32 = match duration {
+        None | Some(0) => 10,
+        Some(n) => u32::from(n),
+    };
+    let caps = DURATION_RANGE_JP
+        .captures(&combined)
+        .or_else(|| DURATION_RANGE_EN.captures(&combined));
+    if let Some(caps) = caps {
+        if let (Ok(lo), Ok(hi)) = (caps[1].parse::<u32>(), caps[2].parse::<u32>()) {
+            // modes.py:169 `d = max(lo, min(hi, d))` — chep dung thu tu, khong dung `.clamp()`
+            // (clamp doi hoi lo <= hi, se panic neu van ban Dola dao nguoc thu tu so).
+            d = lo.max(hi.min(d));
         }
-        ConfirmKind::Choice => CHOICE_REPLY_GENERIC.to_string(),
-        ConfirmKind::Confirm | ConfirmKind::Question => CONFIRM_REPLY.to_string(),
     }
+    format!("{d}秒 ({d} seconds). {d}秒の動画を生成してください。")
 }
 
-/// modes.py:350-358 `agent_question` — tin moi nhat la cau hoi cho nguoi dung -> tra cau hoi;
-/// cau xin xac nhan (BUG-002) tra None.
+/// modes.py:308-322 `get_confirmation_reply` (dong 161-170 `duration_reply` cho nhanh
+/// duration). Nhan nguyen `latest_texts`/`duration` nhu Python (KHAC ban dau cua task 1 dung
+/// `ConfirmKind` — fix round 1 RULING B: port day du de giu dung thu tu uu tien cua Python,
+/// vi thu tu nay KHAC thu tu cua `needs_confirmation`/`ConfirmKind` — vd mot doan vua khop
+/// `confirm_request` vua khop `duration_request` thi `needs_confirmation` xep Confirm nhung
+/// `get_confirmation_reply` van tra loi so giay truoc).
 ///
-/// KHAC ban Python mot diem (xem report task-1): ban Python goi nguyen `needs_confirmation`
-/// (ca nhanh Question) lam cong, nhung vi `needs_confirmation` tu no cung kiem dung pattern
-/// "question" nen ham Python nay luon tra "" voi MOI input (da kiem chung bang Python that:
-/// `agent_question(["どの比率にしますか？"]) == ''`) — logic chet, trai voi docstring va vi
-/// du BUG-005 cua chinh no. Ban Rust chi loai khi khop Confirm/Choice/Duration (nhung dau
-/// hieu "xin xac nhan" THAT SU khac), khong loai khi chi khop Question.
+/// Thu tu dung y modes.py:308-322: `duration_request` -> `duration_reply`; roi pattern rieng
+/// "C. tu dong" (modes.py:318, KHONG nam trong `DOLA_TEXT`) -> `choice_reply_auto`; roi
+/// `choice_request` -> `choice_reply_generic`; con lai -> `confirm_reply` mac dinh.
+#[must_use]
+pub fn confirmation_reply(latest: &[String], duration: Option<u16>) -> String {
+    let combined = latest.join(" ");
+    if DURATION_REQUEST.is_match(&combined) {
+        return duration_reply(latest, duration);
+    }
+    if CHOICE_AUTO_HINT.is_match(&combined) {
+        return CHOICE_REPLY_AUTO.to_string();
+    }
+    if CHOICE_REQUEST.is_match(&combined) {
+        return CHOICE_REPLY_GENERIC.to_string();
+    }
+    CONFIRM_REPLY.to_string()
+}
+
+/// modes.py:350-358 `agent_question` — port LITERAL, tung dong: rong -> None; con lai, neu
+/// `needs_confirmation(latest)` la `Some` (BAT KY loai nao, KE CA Question) -> None; con lai
+/// -> tin cuoi (trim) co khop `AGENT_QUESTION` (case-sensitive, modes.py:358 khong co
+/// `re.IGNORECASE`) thi tra tin do, khong thi None.
+///
+/// KHONG BAO GIO tra `Some` tai HEAD (fix round 1, RULING A). Ly do: `needs_confirmation`
+/// (modes.py:288-305) tu no da kiem CHINH pattern "question" (modes.py:301, dong thu 3 trong
+/// 4 dieu kien) tren `combined` (noi TAT CA `latest_texts`), con o day chi kiem tin CUOI CUNG
+/// (mot phan cua `combined`, hoac giong het neu `latest` chi co 1 phan tu) — nen bat cu input
+/// nao khien dong 358 khop thi dong 301 (rong hon) CHAC CHAN cung da khop truoc do, khien
+/// nhanh `needs_confirmation(...).is_some()` tra True va ham thoat som voi None. Ket qua: ham
+/// nay KHONG THE tra Some cho bat ky input nao — da xac minh bang python that (`.venv`,
+/// `A:\ToolLVC\lvcseedance`, chi doc khong sua): `modes.agent_question([...])` tra `''` cho
+/// ca 4 cau probe (bao gom ca vi du BUG-005 trong chinh docstring cua no).
+///
+/// Day la PARITY CO CHU DICH voi Python, khong phai sao chep sai: step 8 `_handle_poll`
+/// (`video_worker_ui.py`) goi ham nay SAU khi da qua nhanh `needs_confirmation` (khong tra ve
+/// som) va KHONG co guard `is_generating` truoc no — neu ham nay tra `Some` cho bat ky cau
+/// bot noi ket thuc bang ？/? (rat pho bien trong cau tieng Nhat) trong luc video con dang
+/// tao (`is_generating` true, ~5 phut), no se bi bao `AGENT_QUESTION` sau 60s im lang du agent
+/// van dang chay binh thuong -> treo chat / mat luot Dola oan uong. Ban Python "may man"
+/// tranh duoc rui ro nay chinh vi no la ham chet; giu nguyen hanh vi do o day. Neu sau nay can
+/// phat hien cau hoi that su (khac voi xin xac nhan), phai sua ca `needs_confirmation` (bo
+/// nhanh Question rieng, vd them mot `ConfirmKind` moi) trong MOT task rieng co ra soat ky
+/// rui ro credit/treo chat, khong sua ngam trong ham nay.
 #[must_use]
 pub fn agent_question(latest: &[String]) -> Option<String> {
-    let last = latest.last()?;
-    match needs_confirmation(latest) {
-        Some(ConfirmKind::Confirm | ConfirmKind::Choice | ConfirmKind::Duration) => return None,
-        Some(ConfirmKind::Question) | None => {}
+    if latest.is_empty() {
+        return None;
     }
-    let last = last.trim();
+    if needs_confirmation(latest).is_some() {
+        return None;
+    }
+    let last = latest[latest.len() - 1].trim();
     if AGENT_QUESTION.is_match(last) {
         Some(last.to_string())
     } else {
@@ -390,45 +465,84 @@ mod tests {
     }
 
     #[test]
-    fn confirm_duration_tra_loi_dung_dinh_dang() {
+    fn confirmation_reply_duration_dung_gia_tri_da_cho() {
         assert_eq!(
-            confirmation_reply(ConfirmKind::Duration, 15),
+            confirmation_reply(&["秒数を指定してください".to_string()], Some(15)),
             "15秒 (15 seconds). 15秒の動画を生成してください。"
         );
     }
 
     #[test]
-    fn confirm_mac_dinh_tra_loi_yes_proceed() {
-        let expected = "Yes, please proceed. Có, hãy tiếp tục tạo video. Đúng rồi, hãy tạo video theo các thông số này. はい、確認しました。生成開始してください。";
-        assert_eq!(confirmation_reply(ConfirmKind::Confirm, 10), expected);
-        assert_eq!(confirmation_reply(ConfirmKind::Question, 10), expected);
+    fn confirmation_reply_duration_none_mac_dinh_10() {
+        // modes.py:165 `int(duration or 10)` — None (va ca Some(0), falsy trong Python) -> 10
+        assert_eq!(
+            confirmation_reply(&["秒数を指定してください".to_string()], None),
+            "10秒 (10 seconds). 10秒の動画を生成してください。"
+        );
     }
 
     #[test]
-    fn choice_tra_loi_generic() {
+    fn confirmation_reply_duration_kep_theo_khoang_dola_neu() {
+        // modes.py:166-169: doc duoc "4 秒 から 15 秒" -> d = max(lo, min(hi, d))
+        // = max(4, min(15, 30)) = 15
+        let latest = vec![
+            "この動画は 4 秒 から 15 秒まで生成できます。秒数を指定してください。".to_string(),
+        ];
         assert_eq!(
-            confirmation_reply(ConfirmKind::Choice, 10),
+            confirmation_reply(&latest, Some(30)),
+            "15秒 (15 seconds). 15秒の動画を生成してください。"
+        );
+    }
+
+    #[test]
+    fn confirmation_reply_choice_auto_khi_co_goi_y_tu_chon_c() {
+        // modes.py:318: pattern rieng "choose automatically|...|[cC][.．\)]\s+" khop truoc
+        // -> choice_reply_auto (modes.py:97-100), khong phai choice_reply_generic
+        let latest = vec!["C. If you want me to choose automatically, let me know.".to_string()];
+        assert_eq!(
+            confirmation_reply(&latest, None),
+            "C. Hãy chọn tự động các thông số như bạn đã gợi ý và tiến hành tạo video ngay. Please choose automatically as suggested and proceed to generate the video now."
+        );
+    }
+
+    #[test]
+    fn confirmation_reply_choice_generic_khi_khong_khop_auto() {
+        let latest = vec!["missing parameters, please provide them".to_string()];
+        assert_eq!(
+            confirmation_reply(&latest, None),
             "Hãy tự động chọn phương án tối ưu nhất và tiến hành tạo video ngay giúp tôi. Please choose automatically with the best settings and proceed to generate the video now."
         );
     }
 
     #[test]
-    fn agent_question_dau_hoi_cuoi() {
-        // BUG-005: dua ngay vao needs_confirmation()'s own "question" check se lam ham nay
-        // luon tra None (da kiem tra bang Python that: needs_confirmation cung khop "question"
-        // -> agent_question() luon tra "" — day la loi tiem an cua ban Python, xem report).
-        // Ban Rust sua: chi loai khi khop Confirm/Choice/Duration, KHONG loai khi chi khop Question.
-        assert!(agent_question(&["どの比率にしますか？".to_string()]).is_some());
+    fn confirmation_reply_mac_dinh_yes_proceed() {
+        let expected = "Yes, please proceed. Có, hãy tiếp tục tạo video. Đúng rồi, hãy tạo video theo các thông số này. はい、確認しました。生成開始してください。";
+        assert_eq!(
+            confirmation_reply(&["ご確認ください".to_string()], None),
+            expected
+        );
     }
 
     #[test]
-    fn agent_question_abc_la_choice_khong_phai_question() {
-        // Khop CHOICE_REQUEST (mau "A. ... B.") -> needs_confirmation tra Choice -> agent_question None
+    fn question_pattern_van_khop_masuka_full_width_qmark() {
+        // Pin QUESTION_SRC van khop "...ますか？" (dau hoi full-width cuoi chuoi) — modes.py:134.
+        assert_eq!(
+            needs_confirmation(&["どの比率にしますか？".to_string()]),
+            Some(ConfirmKind::Question)
+        );
+    }
+
+    #[test]
+    fn agent_question_luon_none_nhu_python() {
+        // RULING A (fix round 1): khop dung HANH VI THAT cua Python (da xac minh bang
+        // `.venv` python that: modes.agent_question(...) tra '' cho ca 4 input duoi day) —
+        // xem doc comment tren ham agent_question ve ly do giu nguyen (parity co chu dich).
+        assert_eq!(agent_question(&["どの比率にしますか？".to_string()]), None);
         assert_eq!(agent_question(&["A. 猫  B. 犬".to_string()]), None);
-    }
-
-    #[test]
-    fn agent_question_rong_thi_none() {
+        assert_eq!(
+            agent_question(&["生成を開始します。よろしいですか？".to_string()]),
+            None
+        );
         assert_eq!(agent_question(&[]), None);
     }
 
