@@ -57,6 +57,7 @@ use super::error::DolaError;
 use super::labels::{CAPTCHA_FRAME_KEY, DOLA_CHAT_URL};
 use super::refs;
 use super::session;
+use super::util;
 use crate::BrowserError;
 use crate::ops;
 
@@ -480,7 +481,7 @@ async fn select_duration_or_hook(
 async fn screenshot_no_conv(page: &Page, logs_dir: &Path, account: &str) -> String {
     let shot = async {
         tokio::fs::create_dir_all(logs_dir).await?;
-        let path = no_conv_shot_path(logs_dir, account, &compose::timestamp_utc());
+        let path = no_conv_shot_path(logs_dir, account, &util::timestamp_utc());
         page.save_screenshot(
             ScreenshotParams::builder()
                 .format(CaptureScreenshotFormat::Png)

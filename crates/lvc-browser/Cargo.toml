@@ -10,7 +10,8 @@ lvc-core.workspace = true
 chromiumoxide.workspace = true
 async-trait.workspace = true
 futures.workspace = true
-tokio.workspace = true
+# io-util: dola::http::download ghi stream vao file bang `AsyncWriteExt` (tokio::fs).
+tokio = { workspace = true, features = ["io-util"] }
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -19,9 +20,15 @@ thiserror.workspace = true
 regex = "1"
 # dola::refs: base64 anh tham chieu cho PASTE_TRIGGER_JS (cung phien ban voi lvc-core).
 base64.workspace = true
+# dola::http (Task 10): HttpSession.poll / fetch_raw_video / _download bang reqwest (aiohttp o Python);
+# uuid v4 cho `web_tab_id` + `sequence_id` (hub_browser.py:856-860).
+reqwest.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+# dola::http tests: mock server HTTP cuc bo (kiem header/body/query, tra fixture) — khong dola.com.
+wiremock.workspace = true
 # tests/ops_smoke.rs: server HTTP cuc bo ti hon (TcpListener) phuc vu fixture - file:// khong
 # cho fetch() (CORS) nen Network.responseReceived khong bao gio ban (do 2026-09-18).
 tokio = { workspace = true, features = ["net", "io-util"] }

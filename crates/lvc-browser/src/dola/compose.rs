@@ -40,7 +40,7 @@
 
 use std::path::Path;
 use std::sync::LazyLock;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use chromiumoxide::Page;
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
@@ -59,6 +59,7 @@ use super::labels::{
     finder_menu_item_in, finder_text_exact, finder_text_lax, ratio_item_src,
 };
 use super::session;
+use super::util;
 use crate::BrowserError;
 use crate::ops;
 
@@ -262,35 +263,8 @@ fn first_line(s: &str, n: usize) -> String {
     s.lines().next().unwrap_or("").chars().take(n).collect()
 }
 
-/// `time.strftime('%Y%m%d_%H%M%S')` `:1958` — Python theo gio may; o day UTC (std khong co mui gio,
-/// khong them dependency chi de dat ten file). `pub(crate)`: `submit.rs` dat ten `no_conv_<acc>_<ts>.png`.
-pub(crate) fn timestamp_utc() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let (y, mo, d) = civil_from_days(secs / 86_400);
-    let rem = secs % 86_400;
-    format!(
-        "{y:04}{mo:02}{d:02}_{:02}{:02}{:02}",
-        rem / 3600,
-        rem % 3600 / 60,
-        rem % 60
-    )
-}
-
-/// Ngay Gregorian tu so ngay ke tu 1970-01-01 (thuat toan Howard Hinnant, chi cho ngay >= 1970).
-fn civil_from_days(days: u64) -> (u64, u64, u64) {
-    let z = days + 719_468;
-    let era = z / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + u64::from(m <= 2);
-    (y, m, d)
-}
+// `time.strftime('%Y%m%d_%H%M%S')` `:1958` -> `super::util::timestamp_utc` (Task 10 chuyen sang
+// `dola/util.rs` de `http::output_path` dung chung; UTC, xem doc o do).
 
 // ---------------------------------------------------------------------------------------------
 // Helper CDP nho (Locator cua Playwright = chuoi finder JS, danh gia lai moi lan)
@@ -495,7 +469,7 @@ async fn clear_ability_tag_lenient(page: &Page) -> String {
 /// `:1957-1959`: `logs/mode_fail_<ts>.png` (tao thu muc neu thieu) -> duong dan da ghi.
 async fn screenshot_mode_fail(page: &Page) -> Result<String, BrowserError> {
     tokio::fs::create_dir_all(LOGS_DIR).await?;
-    let path = Path::new(LOGS_DIR).join(format!("mode_fail_{}.png", timestamp_utc()));
+    let path = Path::new(LOGS_DIR).join(format!("mode_fail_{}.png", util::timestamp_utc()));
     page.save_screenshot(
         ScreenshotParams::builder()
             .format(CaptureScreenshotFormat::Png)
@@ -1296,19 +1270,6 @@ mod tests {
         ); // :819
         assert_eq!((COMPOSER_CLICK_BASE * 3).as_millis(), 15000); // :2070 5000*attempt
         assert_eq!((COMPOSER_RETRY_BASE * 2).as_millis(), 3000); // :2085 1500*attempt
-    }
-
-    /// Lich Gregorian cho ten file `mode_fail_<ts>.png` (oracle `datetime`).
-    #[test]
-    fn civil_from_days_va_timestamp() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(19723), (2024, 1, 1));
-        assert_eq!(civil_from_days(20714), (2026, 9, 18));
-        assert_eq!(civil_from_days(11016), (2000, 2, 29));
-        let ts = timestamp_utc();
-        assert_eq!(ts.len(), 15, "{ts}");
-        assert_eq!(ts.as_bytes()[8], b'_', "{ts}");
-        assert!(ts.starts_with("20"), "{ts}");
     }
 
     /// Finder JS sinh ra hop le ve mat chuoi (chay that o smoke).
