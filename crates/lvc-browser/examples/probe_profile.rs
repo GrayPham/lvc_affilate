@@ -1,6 +1,7 @@
 //! Cua tu P1 — bien the dung PROFILE co san (khong can cookies.txt).
 //! Chay: `cargo run -p lvc-browser --example probe_profile -- <profile_dir> [--headed]`
-//! Bien moi truong `LVC_CHROME` = duong dan chrome.exe (mac dinh: chromiumoxide tu tim).
+//! Bien moi truong `LVC_CHROME` = duong dan chrome.exe (mac dinh: resolver `BrowserKind::Chromium`
+//! -> Chromium Playwright rev cao nhat trong `%LOCALAPPDATA%\ms-playwright`; KHONG tu do Chrome).
 //! Profile do Python (patchright, Chromium 1234) tao thi PHAI mo bang dung binary do —
 //! Google Chrome khong giai ma duoc cookie cua Chromium khac va nguoc lai.
 //! CHI mo profile, dem cookie, goto /chat, probe, screenshot. KHONG gui prompt.
@@ -27,9 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .launch(&LaunchOpts {
             profile_dir,
             headless: !headed,
-            proxy_server: None,
-            window_offscreen: false,
-            chrome_executable: std::env::var("LVC_CHROME").ok().map(PathBuf::from),
+            executable_override: std::env::var_os("LVC_CHROME").map(PathBuf::from),
+            ..LaunchOpts::default()
         })
         .await?;
     eprintln!("launch: {:?}", t0.elapsed());

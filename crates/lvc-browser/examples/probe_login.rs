@@ -1,5 +1,8 @@
 //! Thi nghiem cua tu P1: chromiumoxide co mo duoc phien Dola khong?
-//! Chay: `cargo run -p lvc-browser --example probe_login -- profile_dir cookies.txt [--headed] [--proxy scheme://host:port]`
+//! Chay: `cargo run -p lvc-browser --example probe_login -- profile_dir cookies.txt [--headed] [--proxy <proxy>]`
+//! `<proxy>` theo cu phap `lvc_core::parse_proxy` (`ip:port`, `ip:port:user:pass`, `scheme://...`);
+//! Task 5 chi truyen `--proxy-server` (user/pass chua duoc xu ly - Task 13).
+//! Bien moi truong `LVC_CHROME` = duong dan chrome.exe (mac dinh: resolver theo `BrowserKind`).
 //! CHI DOC `cookies.txt`. Ghi: `profile_dir/`, `./probe_<ts>.png`, stdout JSON.
 
 use std::path::PathBuf;
@@ -19,10 +22,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let profile_dir = PathBuf::from(profile_arg);
     let cookies_txt = tokio::fs::read_to_string(cookies_arg).await?;
     let headed = args.iter().any(|a| a == "--headed");
-    let proxy = args
+    let proxy = match args
         .iter()
         .position(|a| a == "--proxy")
-        .and_then(|i| args.get(i + 1).cloned());
+        .and_then(|i| args.get(i + 1))
+    {
+        Some(raw) => lvc_core::parse_proxy(raw)?,
+        None => None,
+    };
 
     let cookies = validate_dola_cookies(&parse_netscape(&cookies_txt))?;
     eprintln!("cookies dola: {} (co sessionid)", cookies.len());
@@ -32,9 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .launch(&LaunchOpts {
             profile_dir,
             headless: !headed,
-            proxy_server: proxy,
-            window_offscreen: false,
-            chrome_executable: None,
+            proxy,
+            executable_override: std::env::var_os("LVC_CHROME").map(PathBuf::from),
+            ..LaunchOpts::default()
         })
         .await?;
 

@@ -1,13 +1,15 @@
+use std::path::PathBuf;
+
 use lvc_browser::{BrowserDriver, LaunchOpts, chromium::ChromiumDriver};
 use lvc_core::{Cookie, SessionState};
 
+/// `LVC_CHROME` (tuy chon) ghi de binary; mac dinh resolver chon Chromium Playwright rev cao nhat.
 fn opts_headless(dir: &tempfile::TempDir) -> LaunchOpts {
     LaunchOpts {
         profile_dir: dir.path().join("p"),
         headless: true,
-        proxy_server: None,
-        window_offscreen: false,
-        chrome_executable: None,
+        executable_override: std::env::var_os("LVC_CHROME").map(PathBuf::from),
+        ..LaunchOpts::default()
     }
 }
 

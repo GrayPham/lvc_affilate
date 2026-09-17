@@ -12,7 +12,7 @@ use futures::StreamExt;
 use lvc_core::Cookie;
 use tokio::task::JoinHandle;
 
-use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, profile};
+use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, executable, profile};
 
 /// Khop Python `browser.py` `LAUNCH_ARGS` tung chuoi.
 pub const LAUNCH_ARGS: [&str; 5] = [
@@ -101,6 +101,16 @@ pub struct ChromiumSession {
     pub browser: Browser,
     pub page: Page,
     handler: JoinHandle<()>,
+    /// Chep tu `LaunchOpts::navigation_timeout` luc launch de `goto()` dung.
+    navigation_timeout: std::time::Duration,
+}
+
+impl ChromiumSession {
+    /// Trang chinh cua phien - dau vao cho moi ham trong [`crate::ops`] (Task 6-12).
+    #[must_use]
+    pub fn page(&self) -> &Page {
+        &self.page
+    }
 }
 
 /// Windows: mo file dang duoc tien trinh khac giu doc quyen (vd Chrome dang chay tren cung
@@ -193,8 +203,12 @@ pub(crate) fn chrome_args(opts: &LaunchOpts) -> Vec<String> {
     if opts.window_offscreen && !opts.headless {
         args.push("window-position=-32000,-32000".to_string());
     }
-    if let Some(p) = &opts.proxy_server {
-        args.push(format!("proxy-server={p}"));
+    if let Some(p) = &opts.proxy {
+        // Chi `scheme://host:port`; user/pass (neu co) di qua Fetch.* o Task 13.
+        args.push(format!("proxy-server={}", p.server()));
+        // M-11 (Playwright parity): Playwright luon them bypass `<-loopback>` khi co proxy de
+        // 127.0.0.1/localhost KHONG di qua proxy (cong CDP, server test cuc bo...).
+        args.push("proxy-bypass-list=<-loopback>".to_string());
     }
     args
 }
@@ -206,8 +220,15 @@ impl ChromiumDriver {
         // TUYET DOI nap du 79/79. Playwright luon truyen tuyet doi; ta ep o day de khong
         // phu thuoc vao cwd cua tien trinh goi.
         let profile_dir = std::path::absolute(&opts.profile_dir)?;
+        // Review P1 I-6 / ADR-R012: resolve TUONG MINH theo BrowserKind; loi ro neu khong thay.
+        // KHONG bao gio de BrowserConfigBuilder::build() roi vao detection::default_executable()
+        // (no se vo tinh mo Google Chrome tren profile Chromium 1234 cua patchright).
+        let exe =
+            executable::resolve_executable(opts.browser, opts.executable_override.as_deref())?;
         let mut b = BrowserConfig::builder()
             .user_data_dir(&profile_dir)
+            .chrome_executable(exe)
+            .launch_timeout(opts.launch_timeout)
             // M-1: bo .hide() — no chi lam hai viec: (1) dat --disable-blink-features=
             // AutomationControlled, da co san trong LAUNCH_ARGS (qua chrome_args()) nen goi
             // .hide() tao ra co nay HAI LAN (ArgsBuilder gop theo khoa nen khong sao tren dong
@@ -226,9 +247,6 @@ impl ChromiumDriver {
         }
         if !opts.headless {
             b = b.with_head();
-        }
-        if let Some(exe) = &opts.chrome_executable {
-            b = b.chrome_executable(exe);
         }
         b.build().map_err(BrowserError::Launch)
     }
@@ -303,6 +321,7 @@ impl BrowserDriver for ChromiumDriver {
             browser,
             page,
             handler: handler_task,
+            navigation_timeout: opts.navigation_timeout,
         })
     }
 
@@ -344,9 +363,10 @@ impl BrowserDriver for ChromiumDriver {
     async fn goto(&self, s: &ChromiumSession, url: &str) -> Result<(), BrowserError> {
         // M-6: wait_for_navigation() khong co deadline rieng — no "park" toi lan `Page` load
         // KE TIEP (handler/target.rs), nen mot SPA khong bao gio phat su kien load lai (hoac
-        // mot redirect vo han) se treo vinh vien. Boc timeout 60s ngoai ca goto+wait (khop
-        // Python: /chat cho toi 60s).
-        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        // mot redirect vo han) se treo vinh vien. Boc timeout `navigation_timeout` (mac dinh 60s,
+        // khop Python: /chat cho toi 60s) ngoai ca goto+wait.
+        let limit = s.navigation_timeout;
+        tokio::time::timeout(limit, async {
             s.page
                 .goto(url)
                 .await
@@ -364,7 +384,7 @@ impl BrowserDriver for ChromiumDriver {
             Ok::<(), BrowserError>(())
         })
         .await
-        .map_err(|_elapsed| BrowserError::Timeout(format!("dieu huong toi {url} qua 60s")))?
+        .map_err(|_elapsed| BrowserError::Timeout(format!("dieu huong toi {url} qua {limit:?}")))?
     }
 
     async fn probe_session(&self, s: &ChromiumSession) -> Result<SessionProbe, BrowserError> {
@@ -436,6 +456,20 @@ mod tests {
 
     use super::*;
 
+    /// Opts cho test unit: KHONG can Chrome that. `executable_override` tro toi mot file tam
+    /// (resolver chi stat, `BrowserConfigBuilder::build()` khong stat lai) de `config()` khong
+    /// roi vao do binary that (I-4: gate khong phu thuoc Chrome).
+    fn opts_voi_exe_gia(dir: &tempfile::TempDir, headless: bool) -> LaunchOpts {
+        let exe = dir.path().join("chrome_gia.exe");
+        std::fs::write(&exe, b"").unwrap();
+        LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            headless,
+            executable_override: Some(exe),
+            ..LaunchOpts::default()
+        }
+    }
+
     /// I-1: profile dang bi mot tien trinh Chrome khac giu (Windows: `ERROR_SHARING_VIOLATION`
     /// khi mo `lockfile`) phai bao `ProfileBusy` TRUOC khi goi `Browser::launch` — khong can
     /// Chrome that de tai hien, chi can giu handle len cung file.
@@ -468,16 +502,10 @@ mod tests {
     /// `--user-data-dir` (tuong doi → Chromium nap thieu cookie, mat sessionid).
     #[test]
     fn config_ep_user_data_dir_tuyet_doi() {
+        let tmp = tempfile::tempdir().unwrap();
         let opts = LaunchOpts {
             profile_dir: PathBuf::from("accounts/tuong_doi"),
-            headless: true,
-            proxy_server: None,
-            window_offscreen: false,
-            // I-4: chrome_executable=None khien BrowserConfigBuilder::build() goi
-            // detection::default_executable() -> test unit nay se loi tren may KHONG cai
-            // Chrome/Edge (trai voi "gate khong phu thuoc Chrome"). Dat mot duong dan gia:
-            // build() KHONG stat file nay, chi luu path.
-            chrome_executable: Some(PathBuf::from("chrome.exe")),
+            ..opts_voi_exe_gia(&tmp, true)
         };
         let cfg = ChromiumDriver::config(&opts).expect("config");
         let dir = cfg.user_data_dir.expect("user_data_dir phai duoc dat");
@@ -497,6 +525,27 @@ mod tests {
         );
     }
 
+    /// Review P1 I-6: `config()` PHAI di qua resolver — override khong ton tai thi loi
+    /// `ExecutableNotFound` ngay, KHONG roi ve `detection::default_executable()` cua chromiumoxide.
+    #[test]
+    fn config_override_khong_ton_tai_thi_executable_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("khong_co.exe");
+        let opts = LaunchOpts {
+            profile_dir: tmp.path().join("p"),
+            executable_override: Some(missing.clone()),
+            ..LaunchOpts::default()
+        };
+        let err = ChromiumDriver::config(&opts).expect_err("phai loi");
+        match err {
+            BrowserError::ExecutableNotFound { kind, tried } => {
+                assert_eq!(kind, lvc_core::BrowserKind::Chromium);
+                assert_eq!(tried, vec![missing]);
+            }
+            other => panic!("sai bien the: {other:?}"),
+        }
+    }
+
     /// I-3: ghim cac rang buoc dong lenh launch bang mot ham THUAN (khong can Chrome) — gate
     /// truoc day khong test duoc 5 co trong `LAUNCH_ARGS`, --lang=ja-JP, hay "khong co
     /// --enable-automation" (chi biet duoc qua doc chromiumoxide, xem final-review.md I-3).
@@ -505,9 +554,7 @@ mod tests {
         let opts = LaunchOpts {
             profile_dir: PathBuf::from("accounts/x"),
             headless: true,
-            proxy_server: None,
-            window_offscreen: false,
-            chrome_executable: None,
+            ..LaunchOpts::default()
         };
         let args = chrome_args(&opts);
         for flag in LAUNCH_ARGS {
@@ -525,9 +572,7 @@ mod tests {
         let opts = LaunchOpts {
             profile_dir: PathBuf::from("accounts/x"),
             headless: true,
-            proxy_server: None,
-            window_offscreen: false,
-            chrome_executable: None,
+            ..LaunchOpts::default()
         };
         assert!(chrome_args(&opts).iter().any(|a| a == "lang=ja-JP"));
     }
@@ -537,9 +582,7 @@ mod tests {
         let opts = LaunchOpts {
             profile_dir: PathBuf::from("accounts/x"),
             headless: false,
-            proxy_server: None,
-            window_offscreen: false,
-            chrome_executable: None,
+            ..LaunchOpts::default()
         };
         let args = chrome_args(&opts);
         assert!(
@@ -555,9 +598,7 @@ mod tests {
         let base = LaunchOpts {
             profile_dir: PathBuf::from("accounts/x"),
             headless: true,
-            proxy_server: None,
-            window_offscreen: false,
-            chrome_executable: None,
+            ..LaunchOpts::default()
         };
         assert!(
             chrome_args(&base)
@@ -573,6 +614,39 @@ mod tests {
             !chrome_args(&headed)
                 .iter()
                 .any(|a| a.starts_with("blink-settings="))
+        );
+    }
+
+    /// M-11: co proxy → `proxy-server=<server()>` (KHONG kem user:pass) va ngay sau la
+    /// `proxy-bypass-list=<-loopback>` (Playwright parity); khong proxy → khong co ca hai.
+    #[test]
+    fn chrome_args_proxy_server_va_bypass_loopback() {
+        let no_proxy = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            ..LaunchOpts::default()
+        };
+        let args = chrome_args(&no_proxy);
+        assert!(!args.iter().any(|a| a.starts_with("proxy-")), "{args:?}");
+
+        let with_proxy = LaunchOpts {
+            proxy: lvc_core::parse_proxy("socks5://tenND:matkhauBM@10.0.0.9:1080").unwrap(),
+            ..no_proxy
+        };
+        let args = chrome_args(&with_proxy);
+        let i = args
+            .iter()
+            .position(|a| a == "proxy-server=socks5://10.0.0.9:1080")
+            .unwrap_or_else(|| panic!("thieu proxy-server: {args:?}"));
+        assert_eq!(
+            args.get(i + 1).map(String::as_str),
+            Some("proxy-bypass-list=<-loopback>"),
+            "{args:?}"
+        );
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.contains("tenND") || a.contains("matkhauBM")),
+            "khong duoc lo user/pass tren dong lenh: {args:?}"
         );
     }
 }
