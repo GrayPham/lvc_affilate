@@ -1,6 +1,7 @@
 //! Miền thuần của LVC Seedance: chế độ, cảnh, định dạng TXT.
 //! Không I/O, không DB, không trình duyệt — test được không tốn lượt Dola.
 
+pub mod browser_kind;
 pub mod bulk;
 pub mod chain;
 pub mod cookie;
@@ -11,6 +12,7 @@ pub mod limits;
 pub mod mode;
 pub mod pro_prompt;
 pub mod progress;
+pub mod proxy;
 pub mod scene;
 pub mod scene_txt;
 pub mod scheduling;
@@ -18,6 +20,7 @@ pub mod session;
 pub mod value;
 pub mod video_url;
 
+pub use browser_kind::BrowserKind;
 pub use bulk::{bulk_scenes, split_bulk};
 pub use chain::{
     ChainPoll, ConvPick, LOGIN_INVALID_CODES, chain_http_status, link_key, parse_chain,
@@ -35,9 +38,10 @@ pub use dola_text::{
 pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;
 pub use limits::Limits;
-pub use mode::Mode;
+pub use mode::{Mode, route_30s, video_timeout};
 pub use pro_prompt::{agent_prompt, pro_max_prompt, pro_prompt};
 pub use progress::{BatchProgress, TaskStatus, batch_progress};
+pub use proxy::{DIRECT, ProxySpec, effective_proxy, parse_proxy};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
 pub use scheduling::{fit_duration_to_mode, mode_fallback_chain};

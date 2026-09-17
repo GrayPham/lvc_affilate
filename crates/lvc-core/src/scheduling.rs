@@ -1,12 +1,13 @@
 //! Quy tắc lập lịch thuần: nắn thời lượng theo mode và thứ tự đổi mode khi hết lượt.
 
-use crate::{Limits, Mode};
+use crate::{Limits, Mode, Model};
 
-/// Nắn thời lượng cho vừa chế độ: lấy mức lớn nhất còn `<= want`; nếu `want` nhỏ hơn
-/// mọi mức thì lấy mức nhỏ nhất. `0` được coi như `10` (Python: `int(duration or 10)`).
+/// Nắn thời lượng cho vừa chế độ/model (modes.py:234-240 `fit_duration_to_mode`): lấy mức lớn
+/// nhất còn `<= want`; nếu `want` nhỏ hơn mọi mức thì lấy mức nhỏ nhất. `0` được coi như `10`
+/// (Python: `int(duration or 10)`).
 #[must_use]
-pub fn fit_duration_to_mode(duration: u16, mode: Mode) -> u16 {
-    let allowed = mode.allowed_durations();
+pub fn fit_duration_to_mode(duration: u16, mode: Mode, model: Model) -> u16 {
+    let allowed = mode.allowed_durations(model);
     let want = if duration == 0 { 10 } else { duration };
     allowed
         .iter()
@@ -45,17 +46,24 @@ mod tests {
 
     #[test]
     fn fit_lay_muc_lon_nhat_con_nho_hon_hoac_bang() {
-        // Gia tri lay tu Python 8ec1cfa
-        assert_eq!(fit_duration_to_mode(30, Mode::Fast), 10);
-        assert_eq!(fit_duration_to_mode(30, Mode::Pro), 15);
-        assert_eq!(fit_duration_to_mode(15, Mode::Fast), 10);
-        assert_eq!(fit_duration_to_mode(10, Mode::Agent), 10);
+        // Gia tri doi chieu oracle modes.fit_duration_to_mode (ADR-044, 2026-09-17)
+        assert_eq!(fit_duration_to_mode(30, Mode::Fast, Model::Seedance20), 15);
+        assert_eq!(fit_duration_to_mode(30, Mode::Fast, Model::Seedance25), 30);
+        assert_eq!(fit_duration_to_mode(30, Mode::Pro, Model::Seedance25), 15);
+        assert_eq!(fit_duration_to_mode(15, Mode::Fast, Model::Seedance20), 15);
+        assert_eq!(fit_duration_to_mode(10, Mode::Agent, Model::Seedance20), 10);
+        assert_eq!(fit_duration_to_mode(30, Mode::Agent, Model::Seedance25), 15);
+        assert_eq!(
+            fit_duration_to_mode(30, Mode::ProMax, Model::Seedance25),
+            15
+        );
     }
 
     #[test]
     fn fit_nho_hon_moi_muc_thi_lay_muc_nho_nhat() {
-        assert_eq!(fit_duration_to_mode(5, Mode::Agent), 10);
-        assert_eq!(fit_duration_to_mode(0, Mode::Fast), 10);
+        assert_eq!(fit_duration_to_mode(5, Mode::Agent, Model::default()), 10);
+        assert_eq!(fit_duration_to_mode(0, Mode::Fast, Model::Seedance20), 10);
+        assert_eq!(fit_duration_to_mode(0, Mode::Fast, Model::default()), 10);
     }
 
     #[test]

@@ -24,6 +24,12 @@ pub enum CoreError {
     InvalidLogo(String),
     #[error("dur must be 10, 15 or 30 (got {})", py_repr(.0))]
     InvalidDuration(String),
+    // proxies.py:24 `_ERR` — thông điệp CỐ ĐỊNH (không chèn giá trị đầu vào), copy nguyên văn.
+    #[error("{0}")]
+    InvalidProxy(String),
+    // browsers.py:46 `normalize_browser` — BROWSERS chỉ có chromium/chrome/opera (không có edge).
+    #[error("browser must be one of chromium, chrome, opera (got {})", py_repr(.0))]
+    InvalidBrowser(String),
     #[error("prompt is empty")]
     EmptyPrompt,
     #[error("prompt too long ({actual} > {limit} chars)")]
@@ -111,5 +117,23 @@ mod tests {
     #[test]
     fn py_repr_chuoi_co_nhay_don_thi_doi_sang_nhay_kep() {
         assert_eq!(py_repr("it's"), "\"it's\"");
+    }
+
+    #[test]
+    fn thong_diep_proxy_va_browser_khop_ban_python() {
+        assert_eq!(
+            CoreError::InvalidProxy(
+                "proxy must be ip:port[:user:pass] or scheme://user:pass@host:port \
+                 (scheme http/https/socks5), or 'direct'"
+                    .to_string()
+            )
+            .to_string(),
+            "proxy must be ip:port[:user:pass] or scheme://user:pass@host:port \
+             (scheme http/https/socks5), or 'direct'"
+        );
+        assert_eq!(
+            CoreError::InvalidBrowser("edge".into()).to_string(),
+            "browser must be one of chromium, chrome, opera (got 'edge')"
+        );
     }
 }

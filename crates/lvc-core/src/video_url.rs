@@ -163,9 +163,9 @@ fn urlunsplit(parts: &SplitUrl<'_>, query: &str) -> String {
 }
 
 /// Percent-decode tối giản (giống `urllib.parse.unquote`: byte lỗi UTF-8 → thay thế, không
-/// panic). Dùng cho cả `unquote_plus` (query string) lẫn `find_key_seed` (`unquote`, không có
-/// bước `+`→space).
-fn percent_decode(s: &str) -> String {
+/// panic). Dùng cho cả `unquote_plus` (query string), `find_key_seed` (`unquote`, không có
+/// bước `+`→space) lẫn `proxy::parse_proxy` (user/pass trong dạng `scheme://user:pass@host:port`).
+pub(crate) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
