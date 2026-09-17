@@ -263,8 +263,8 @@ fn first_line(s: &str, n: usize) -> String {
 }
 
 /// `time.strftime('%Y%m%d_%H%M%S')` `:1958` — Python theo gio may; o day UTC (std khong co mui gio,
-/// khong them dependency chi de dat ten file).
-fn timestamp_utc() -> String {
+/// khong them dependency chi de dat ten file). `pub(crate)`: `submit.rs` dat ten `no_conv_<acc>_<ts>.png`.
+pub(crate) fn timestamp_utc() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
