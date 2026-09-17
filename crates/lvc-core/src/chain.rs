@@ -226,24 +226,48 @@ pub fn parse_chain(body: &Value) -> ChainPoll {
     }
 }
 
-/// `hub_browser.py:869-872` (than `HttpSession.poll`, KHONG phai `parse_chain`) — `status_code`
-/// khac `0`/thieu (`None`) nghia la than HTTP 200 nhung Dola bao loi trong body; `712012001`
-/// (dang nhap khong hop le) -> 401, con lai -> 500. `status_code` la `0`/`null`/thieu -> khong
-/// loi, tra `None` (goi tiep `parse_chain` binh thuong).
+/// `hub_browser.py:869-872` (than `HttpSession.poll`, KHONG phai `parse_chain`):
+/// `code = data.get("status_code"); if code not in (0, None): ... 401 neu code in
+/// LOGIN_INVALID_CODES, else 500 ... else parse_chain(data)`. Fix round 2 (RULING): port DUNG
+/// NGU NGHIA Python `in`/`==`, gom ca hai quirk deu bat nguon tu `bool` la subclass cua `int` va
+/// `==` giua so/khong phan biet int/float trong Python:
+/// - `False == 0` -> JSON `false` cung la "khong loi" (tra `None`), giong het `0`/`0.0`; JSON
+///   `true` (`True == 1`) -> RE loi (`code not in (0, None)` dung) nhung khong khop
+///   `LOGIN_INVALID_CODES` -> 500.
+/// - So sanh voi `LOGIN_INVALID_CODES` la so sanh SO: `712012001.0` (float) van `==` `712012001`
+///   (int) -> 401 (Python khong phan biet kieu so khi so sanh gia tri).
+/// - Chuoi (`""`, `"712012001"`, ...) trong Python KHONG BAO GIO `==` mot so nguyen (khac kieu)
+///   -> `code not in (0, None)` LUON dung (ke ca `""`/chuoi so cung roi vao nhanh loi) va
+///   KHONG BAO GIO khop `LOGIN_INVALID_CODES` du trung chu so -> LUON 500 (ke ca chuoi rong).
+///   Mang/object cung khong phai so -> cung nhanh 500 (khong the `== 0` hay `==` ma loi nao).
 #[must_use]
 pub fn chain_http_status(body: &Value) -> Option<u16> {
     let code = match body.get("status_code") {
         None | Some(Value::Null) => return None,
-        Some(v) => v.as_i64().unwrap_or(-1), // khong phai so nguyen -> chac chan khac 0 -> loi
+        Some(v) => v,
     };
-    if code == 0 {
-        return None;
+    // Quy ve so (f64) neu Python coi la so: `Number` giu nguyen; `Bool` theo dung quy tac
+    // Python `False == 0`/`True == 1`. Chuoi/mang/object -> `None` (Python khong ep kieu ngam
+    // khi so sanh `==` voi so) -> roi thang xuong nhanh 500 ben duoi.
+    let as_number: Option<f64> = match code {
+        Value::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        Value::Number(n) => n.as_f64(),
+        _ => None,
+    };
+    let Some(f) = as_number else {
+        return Some(500);
+    };
+    if f.abs() < f64::EPSILON {
+        return None; // Python: code in (0, None) -> 0/0.0/False
     }
-    Some(if LOGIN_INVALID_CODES.contains(&code) {
-        401
-    } else {
-        500
-    })
+    // PF-3: LOGIN_INVALID_CODES la ma loi Dola (< 10 chu so) nen luon bieu dien CHINH XAC trong
+    // f64 (mantissa 53 bit du cho gia tri nay) — ep kieu an toan trong pham vi du lieu thuc te,
+    // du clippy canh bao mat chinh xac mot cach tong quat cho moi i64 -> f64.
+    #[allow(clippy::cast_precision_loss)]
+    let is_login_invalid = LOGIN_INVALID_CODES
+        .iter()
+        .any(|&c| (f - c as f64).abs() < f64::EPSILON);
+    Some(if is_login_invalid { 401 } else { 500 })
 }
 
 /// `video_worker_ui.py:1432-1437` `VIDEO_ID_RE`/`video_ids` — ma video `ByteDance` (vd
@@ -462,6 +486,36 @@ mod tests {
         assert_eq!(chain_http_status(&json!({ "status_code": 5 })), Some(500));
         assert_eq!(chain_http_status(&json!({ "status_code": 0 })), None);
         assert_eq!(chain_http_status(&json!({})), None);
+    }
+
+    #[test]
+    fn chain_http_status_bool_va_float_nhu_python() {
+        // Fix round 2: Python `False == 0` -> JSON `false` cung la "khong loi".
+        assert_eq!(chain_http_status(&json!({ "status_code": false })), None);
+        // Python `True == 1`, khong khop LOGIN_INVALID_CODES -> 500.
+        assert_eq!(
+            chain_http_status(&json!({ "status_code": true })),
+            Some(500)
+        );
+        // Python so sanh so khong phan biet int/float: 712012001.0 == 712012001 -> 401.
+        assert_eq!(
+            chain_http_status(&json!({ "status_code": 712_012_001.0 })),
+            Some(401)
+        );
+        // 0.0 cung la "khong loi" nhu 0.
+        assert_eq!(chain_http_status(&json!({ "status_code": 0.0 })), None);
+    }
+
+    #[test]
+    fn chain_http_status_chuoi_khong_bao_gio_khop_so_nhu_python() {
+        // Fix round 2: chuoi KHONG BAO GIO == so trong Python -> luon roi vao nhanh loi (500),
+        // KE CA chuoi rong (""  != 0 va "" is not None) va chuoi trung chu so voi ma loi
+        // (khac kieu, khong the ==).
+        assert_eq!(chain_http_status(&json!({ "status_code": "" })), Some(500));
+        assert_eq!(
+            chain_http_status(&json!({ "status_code": "712012001" })),
+            Some(500)
+        );
     }
 
     #[test]
