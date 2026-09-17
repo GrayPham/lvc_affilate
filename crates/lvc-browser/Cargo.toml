@@ -17,6 +17,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 # dola::labels: regex nhan Dola (cung crate/phien ban voi lvc-core).
 regex = "1"
+# dola::refs: base64 anh tham chieu cho PASTE_TRIGGER_JS (cung phien ban voi lvc-core).
+base64.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
