@@ -94,6 +94,67 @@ pub struct ChromiumSession {
     handler: JoinHandle<()>,
 }
 
+/// Windows: mo file dang duoc tien trinh khac giu doc quyen (vd Chrome dang chay tren cung
+/// profile) loi voi ma he dieu hanh `ERROR_SHARING_VIOLATION`.
+#[cfg(windows)]
+const ERROR_SHARING_VIOLATION: i32 = 32;
+
+/// I-1: Chrome giu `<profile>/lockfile` mo suot vong doi (`process_singleton_win.cc`) va KHONG
+/// in gi ra stderr khi tu choi mo lai — thong bao "Opening in existing browser session." la
+/// `printf` ra STDOUT (bi chromiumoxide null hoa qua `Stdio::null()`) va da qua `--lang=ja-JP`
+/// dich sang tieng Nhat, nen khong the doc duoc tu `CdpError` bang chuoi. Probe truc tiep
+/// TRUOC `Browser::launch` bang cach tu mo cung file: neu co tien trinh khac dang giu, mo se
+/// loi `ERROR_SHARING_VIOLATION` (32) tren Windows. Chi probe — KHONG xoa file, KHONG cat noi
+/// dung (`truncate(false)`); dong ngay (drop) sau khi biet ket qua.
+fn probe_lockfile_busy(profile_dir: &Path) -> Result<(), BrowserError> {
+    let path = profile_dir.join("lockfile");
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+    {
+        Ok(_file) => Ok(()), // drop ngay o cuoi match arm — chi probe
+        #[cfg(windows)]
+        Err(e) if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Err(
+            BrowserError::ProfileBusy(format!("lockfile dang bi giu: {}", path.display())),
+        ),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// I-1: `Browser::launch` tra `CdpError` chu khong phai `BrowserError` — quy ve day mot cho.
+/// `LaunchExit` la truong hop duy nhat co ma thoat co cau truc; Chrome dung ma
+/// `CHROME_RESULT_CODE_PROFILE_IN_USE` (21) hoac, sau khi chuyen dong lenh cho phien dang
+/// chay, `CHROME_RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED` (24) khi profile dang bi tien
+/// trinh Chrome khac dung (`chrome_result_codes.h`) — hai ma nay la dau hieu DUY NHAT con lai
+/// sau khi mat stdout (xem `probe_lockfile_busy`), nhung chi bat duoc SAU khi da spawn tien
+/// trinh; `probe_lockfile_busy` bat truoc nen thuong se chan som hon. Cac bien the `CdpError`
+/// khac (`LaunchTimeout`, `LaunchIo`, loi ket noi...) khong co ma thoat co cau truc — giu
+/// match chuoi tren thong diep `Display` lam luoi an toan cuoi (vd ban Chrome/Chromium khac
+/// van in "already in use" ra stderr thay vi stdout).
+fn map_launch_error(e: &chromiumoxide::error::CdpError) -> BrowserError {
+    use chromiumoxide::error::CdpError;
+    if let CdpError::LaunchExit(status, stderr) = e {
+        let code = status.code();
+        if matches!(code, Some(21 | 24)) {
+            return BrowserError::ProfileBusy(format!(
+                "Chrome thoat voi ma {code:?} — profile dang bi tien trinh Chrome khac dung"
+            ));
+        }
+        return BrowserError::LaunchExit {
+            code,
+            stderr: String::from_utf8_lossy(stderr.as_slice()).into_owned(),
+        };
+    }
+    let s = e.to_string();
+    if s.contains("already in use") || s.contains("existing browser session") {
+        BrowserError::ProfileBusy(s)
+    } else {
+        BrowserError::Launch(s)
+    }
+}
+
 impl ChromiumDriver {
     fn config(opts: &LaunchOpts) -> Result<BrowserConfig, BrowserError> {
         // ADR-R012: Chromium nhan `--user-data-dir` TUONG DOI thi chi nap 7-8/79 cookie cua
@@ -155,14 +216,10 @@ impl BrowserDriver for ChromiumDriver {
     async fn launch(&self, opts: &LaunchOpts) -> Result<ChromiumSession, BrowserError> {
         tokio::fs::create_dir_all(&opts.profile_dir).await?;
         profile::disable_session_restore(&opts.profile_dir).await?;
-        let (browser, mut handler) = Browser::launch(Self::config(opts)?).await.map_err(|e| {
-            let s = e.to_string();
-            if s.contains("already in use") || s.contains("existing browser session") {
-                BrowserError::ProfileBusy(s)
-            } else {
-                BrowserError::Launch(s)
-            }
-        })?;
+        probe_lockfile_busy(&opts.profile_dir)?;
+        let (browser, mut handler) = Browser::launch(Self::config(opts)?)
+            .await
+            .map_err(|e| map_launch_error(&e))?;
         let handler_task = tokio::spawn(async move {
             while let Some(h) = handler.next().await {
                 if h.is_err() {
@@ -312,6 +369,34 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    /// I-1: profile dang bi mot tien trinh Chrome khac giu (Windows: `ERROR_SHARING_VIOLATION`
+    /// khi mo `lockfile`) phai bao `ProfileBusy` TRUOC khi goi `Browser::launch` — khong can
+    /// Chrome that de tai hien, chi can giu handle len cung file.
+    #[cfg(windows)]
+    #[test]
+    fn probe_lockfile_busy_khi_tien_trinh_khac_dang_giu() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("lockfile");
+        let held = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .share_mode(0)
+            .open(&lock_path)
+            .expect("mo lockfile de giu doc quyen (share_mode 0)");
+
+        let err = probe_lockfile_busy(dir.path()).expect_err("phai bao ProfileBusy");
+        assert!(
+            matches!(err, BrowserError::ProfileBusy(_)),
+            "loi sai kieu: {err:?}"
+        );
+
+        drop(held);
+        probe_lockfile_busy(dir.path()).expect("phai Ok sau khi tha handle");
+    }
 
     /// ADR-R012: duong dan profile tuong doi PHAI duoc ep tuyet doi truoc khi thanh
     /// `--user-data-dir` (tuong doi → Chromium nap thieu cookie, mat sessionid).
