@@ -12,7 +12,13 @@ use lvc_browser::{BrowserDriver, LaunchOpts, chromium::ChromiumDriver};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let profile_dir = PathBuf::from(&args[1]);
+    let Some(profile_arg) = args.get(1) else {
+        eprintln!(
+            "cach dung: probe_profile <profile_dir> [--headed]   (env LVC_CHROME=chrome.exe)"
+        );
+        std::process::exit(2);
+    };
+    let profile_dir = PathBuf::from(profile_arg);
     let headed = args.iter().any(|a| a == "--headed");
 
     let d = ChromiumDriver;
@@ -43,11 +49,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let count = |label: &'static str, s: &lvc_browser::chromium::ChromiumSession| {
         let page = s.page.clone();
         async move {
-            let all = page
+            // Loi CDP phai hien ra rieng, khong duoc gop voi "0 cookie" that.
+            let all = match page
                 .execute(chromiumoxide::cdp::browser_protocol::storage::GetCookiesParams::default())
                 .await
-                .map(|r| r.result.cookies.clone())
-                .unwrap_or_default();
+            {
+                Ok(r) => r.result.cookies.clone(),
+                Err(e) => {
+                    eprintln!("[{label}] Storage.getCookies LOI: {e}");
+                    return;
+                }
+            };
             let dola: Vec<&str> = all
                 .iter()
                 .filter(|c| c.domain.contains("dola.com"))

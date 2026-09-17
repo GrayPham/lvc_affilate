@@ -506,7 +506,8 @@ bản copy profile Python `qertqegfdsacd` (14 profile gốc không đụng), bin
 headed, **không gửi prompt**. Kết quả: `Storage.getCookies` trước goto = 79/79 cookie
 (27 dola, `sessionid` có); `goto /chat` + 6 s → `state: logged_in`, `has_sessionid: true`,
 `composer: true`, 0 login marker, không `region-restricted`; screenshot thấy avatar tài
-khoản + lịch sử chat + nút 高速. `navigator.webdriver=false`, `navigator.language=ja-JP`.
+khoản + lịch sử chat + nút 高速 (ảnh **đã xoá** sau khi xem — chứa tên tài khoản; không lưu
+vào repo). `navigator.webdriver=false`, `navigator.language=ja-JP`.
 
 **Quyết định:** giữ chromiumoxide làm driver (ADR-R002 phương án A); **không** mở sidecar
 Python. Tiến P2.
