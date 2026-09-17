@@ -18,6 +18,9 @@ thiserror.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+# tests/ops_smoke.rs: server HTTP cuc bo ti hon (TcpListener) phuc vu fixture - file:// khong
+# cho fetch() (CORS) nen Network.responseReceived khong bao gio ban (do 2026-09-18).
+tokio = { workspace = true, features = ["net", "io-util"] }
 
 [lints]
 workspace = true

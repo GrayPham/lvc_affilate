@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>composer fixture (gia lap composer Dola cho smoke test ops)</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: sans-serif; }
+  [role=menu] { display: none; border: 1px solid #888; padding: 8px; width: 120px; }
+  [role=menu].open { display: block; }
+  #captcha-wrap iframe { width: 300px; height: 100px; border: 1px solid #c33; }
+  .attach { position: relative; width: 120px; height: 90px; background: #ddd; display: inline-block; }
+  .attach .x { position: absolute; right: 0; top: 0; width: 16px; height: 16px; line-height: 16px;
+               text-align: center; background: #c33; color: #fff; cursor: pointer; }
+  /* nut #far-btn nam sau khoang trong 1500px -> ngoai viewport ban dau -> click_js PHAI scrollIntoView */
+  .spacer { height: 1500px; }
+  #hidden-btn { display: none; }
+  #log { white-space: pre; font-size: 11px; }
+</style>
+</head>
+<body>
+<textarea id="prompt" rows="4" cols="60"></textarea>
+<div>
+  <button id="mode-btn">高速</button>
+  <div role="menu" id="mode-menu"><div role="menuitem" id="pro-item">プロ</div></div>
+</div>
+<button id="create-btn">動画を作成</button>
+<div id="composer-extra"></div>
+<div>
+  <input type="file" id="file-input" multiple>
+  <span>files=</span><span id="files">0</span>
+</div>
+<button id="toggle-captcha">captcha</button>
+<div id="captcha-wrap"></div>
+<button id="fetch-btn">fetch</button>
+<button id="hidden-btn">an</button>
+<div class="attach" id="attach-card"><span class="x" id="attach-x">×</span></div>
+<div class="spacer"></div>
+<button id="far-btn">far</button>
+<pre id="log"></pre>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(line) { logEl.textContent += line + '\n'; }
+  window.__fetched = 0;
+  window.__captcha_loaded = false;
+
+  // Ghi MOI su kien de test doc lai qua ops::eval_json.
+  document.addEventListener('mousedown', function (e) {
+    log('mousedown ' + e.clientX + ' ' + e.clientY + ' ' + (e.target.id || e.target.tagName) + ' button=' + e.button);
+  });
+  document.addEventListener('mouseup', function (e) {
+    log('mouseup ' + e.clientX + ' ' + e.clientY + ' ' + (e.target.id || e.target.tagName));
+  });
+  document.addEventListener('click', function (e) {
+    log('click ' + (e.target.id || e.target.tagName) + ' detail=' + e.detail);
+  });
+  document.addEventListener('keydown', function (e) {
+    log('keydown ' + e.key + ' code=' + e.code + ' ctrl=' + e.ctrlKey + ' shift=' + e.shiftKey + ' keyCode=' + e.keyCode);
+  });
+  document.addEventListener('keyup', function (e) {
+    log('keyup ' + e.key + ' ctrl=' + e.ctrlKey);
+  });
+  var ta = document.getElementById('prompt');
+  ta.addEventListener('input', function (e) {
+    log('input ' + e.inputType + ' ' + JSON.stringify(ta.value));
+  });
+
+  // Nut che do: 高速 mo menu co muc プロ.
+  var modeBtn = document.getElementById('mode-btn');
+  var modeMenu = document.getElementById('mode-menu');
+  modeBtn.addEventListener('click', function () { modeMenu.classList.toggle('open'); });
+  document.getElementById('pro-item').addEventListener('click', function () {
+    modeBtn.textContent = 'プロ';
+    modeMenu.classList.remove('open');
+    log('mode プロ');
+  });
+
+  // 動画を作成: them nut thoi luong + ti le.
+  document.getElementById('create-btn').addEventListener('click', function () {
+    document.getElementById('composer-extra').innerHTML =
+      '<button id="dur-btn">10s</button><button id="ratio-btn">比率 9:16</button>';
+  });
+
+  // input[type=file]: ghi so file da chon.
+  document.getElementById('file-input').addEventListener('change', function (e) {
+    document.getElementById('files').textContent = String(e.target.files.length);
+    log('files ' + e.target.files.length);
+  });
+
+  // iframe captcha: them/xoa theo nut (frame_urls phai thay "bdcaptcha.html" khi co).
+  document.getElementById('toggle-captcha').addEventListener('click', function () {
+    var wrap = document.getElementById('captcha-wrap');
+    if (wrap.firstChild) {
+      wrap.innerHTML = '';
+      window.__captcha_loaded = false;
+      log('captcha removed');
+      return;
+    }
+    var f = document.createElement('iframe');
+    f.src = 'bdcaptcha.html';
+    f.addEventListener('load', function () { window.__captcha_loaded = true; log('captcha loaded'); });
+    wrap.appendChild(f);
+  });
+
+  // fetch 3 URL gia lap upload (count_responses dem 2xx; 'upload/v1/loi' server tra 500).
+  document.getElementById('fetch-btn').addEventListener('click', function () {
+    ['alice/resource/prepare_upload', 'upload/v1/x', 'upload/v1/loi'].forEach(function (u) {
+      fetch(u, { cache: 'no-store' }).then(function (r) {
+        window.__fetched += 1;
+        log('fetch ' + u + ' status=' + r.status);
+      }).catch(function (err) {
+        window.__fetched += 1;
+        log('fetch ' + u + ' error=' + err);
+      });
+    });
+  });
+
+  // The dinh kem: nut x o goc tren phai (click_js_at_offset).
+  document.getElementById('attach-x').addEventListener('click', function () {
+    document.getElementById('attach-card').remove();
+    log('attach removed');
+  });
+
+  document.getElementById('far-btn').addEventListener('click', function () { log('far clicked'); });
+})();
+</script>
+</body>
+</html>

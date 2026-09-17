@@ -10,6 +10,7 @@ pub mod chromium;
 pub mod driver;
 pub mod error;
 pub mod executable;
+pub mod ops;
 pub mod profile;
 
 pub use driver::{BrowserDriver, LaunchOpts, SessionProbe};
