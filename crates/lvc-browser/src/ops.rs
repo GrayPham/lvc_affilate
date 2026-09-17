@@ -13,13 +13,14 @@
 //! |---|---|
 //! | [`eval_json`], [`eval_with_arg`], [`user_agent`], [`wait_until`] | `Runtime.evaluate` (`awaitPromise`, `returnByValue`) |
 //! | [`click_js`], [`click_js_at_offset`] | `Runtime.evaluate` (rect) + `Input.dispatchMouseEvent` mouseMoved -> mousePressed -> mouseReleased |
+//! | [`hover_js`] | `Runtime.evaluate` (rect) + `Input.dispatchMouseEvent` mouseMoved (khong bam) |
 //! | [`press`] | `Input.dispatchKeyEvent` (rawKeyDown/keyDown + keyUp, modifier bit Ctrl=2) |
 //! | [`insert_text`] | `Input.insertText` |
 //! | [`set_file_input`] | `DOM.getDocument` + `DOM.querySelector` + `DOM.resolveNode` (qua `Page::find_element`) + `DOM.setFileInputFiles` |
 //! | [`delete_cookies`] | `Network.deleteCookies` |
 //! | [`cookie_header`] | `Network.getCookies` (`urls=[url]`) |
 //! | [`url`] | trang thai frame chinh cua chromiumoxide (`Page.frameNavigated`) |
-//! | [`reload`] | `Page.reload` + cho `Page.loadEventFired` |
+//! | [`reload`] | `Page.reload` + cho `Page.domContentEventFired` |
 //! | [`count_responses`] | `Network.enable` + su kien `Network.responseReceived` |
 //! | [`frame_urls`] | `Page.getFrameTree` (de quy) |
 //!
@@ -42,7 +43,7 @@ use chromiumoxide::cdp::browser_protocol::network::{
     GetCookiesParams,
 };
 use chromiumoxide::cdp::browser_protocol::page::{
-    EventLoadEventFired, FrameTree, GetFrameTreeParams, ReloadParams,
+    EventDomContentEventFired, FrameTree, GetFrameTreeParams, ReloadParams,
 };
 use chromiumoxide::cdp::js_protocol::runtime::{EvaluateParams, ExceptionDetails};
 use chromiumoxide::error::CdpError;
@@ -54,8 +55,9 @@ use tokio::task::JoinHandle;
 
 use crate::BrowserError;
 
-/// `reload()`: thoi gian toi da cho `Page.loadEventFired` (Python `page.reload(timeout=60000)`).
-pub const RELOAD_LOAD_TIMEOUT: Duration = Duration::from_secs(60);
+/// `reload()`: thoi gian toi da cho `Page.domContentEventFired` (Python
+/// `page.reload(wait_until="domcontentloaded", timeout=60000)`).
+pub const RELOAD_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Bit modifier cua `Input.dispatchKeyEvent`: Alt=1, Ctrl=2, Meta=4, Shift=8.
 const MOD_ALT: i64 = 1;
@@ -136,8 +138,9 @@ struct Rect {
 }
 
 /// `finder_js` -> `Element|null`; cuon vao giua viewport roi lay `getBoundingClientRect()`.
-/// `None` khi khong tim thay; rect 0x0 (vd `display:none`) van tra ve de caller tu loai.
-async fn element_rect(page: &Page, finder_js: &str) -> Result<Option<Rect>, BrowserError> {
+/// `None` khi khong tim thay HOAC rect 0x0 (vd `display:none`, chua render) - dung chung cho
+/// [`click_js`], [`click_js_at_offset`], [`hover_js`].
+async fn visible_rect(page: &Page, finder_js: &str) -> Result<Option<Rect>, BrowserError> {
     let js = format!(
         "(()=>{{const e=({finder_js}); if(!e) return null; \
          e.scrollIntoView({{block:'center',inline:'nearest',behavior:'instant'}}); \
@@ -148,11 +151,15 @@ async fn element_rect(page: &Page, finder_js: &str) -> Result<Option<Rect>, Brow
     if v.is_null() {
         return Ok(None);
     }
-    Ok(Some(serde_json::from_value(v)?))
+    let r: Rect = serde_json::from_value(v)?;
+    if r.w <= 0.0 || r.h <= 0.0 {
+        return Ok(None);
+    }
+    Ok(Some(r))
 }
 
-/// Chuot THAT qua CDP: `mouseMoved` -> `mousePressed`(trai, `clickCount` 1) -> `mouseReleased`.
-async fn click_at(page: &Page, x: f64, y: f64) -> Result<(), BrowserError> {
+/// `Input.dispatchMouseEvent mouseMoved` toi `(x, y)` - Blink cap nhat `:hover`/`mouseenter`.
+async fn move_mouse(page: &Page, x: f64, y: f64) -> Result<(), BrowserError> {
     let moved = DispatchMouseEventParams::builder()
         .r#type(DispatchMouseEventType::MouseMoved)
         .x(x)
@@ -160,6 +167,12 @@ async fn click_at(page: &Page, x: f64, y: f64) -> Result<(), BrowserError> {
         .build()
         .map_err(bad_params)?;
     page.execute(moved).await.map_err(map_cdp)?;
+    Ok(())
+}
+
+/// Chuot THAT qua CDP: `mouseMoved` -> `mousePressed`(trai, `clickCount` 1) -> `mouseReleased`.
+async fn click_at(page: &Page, x: f64, y: f64) -> Result<(), BrowserError> {
+    move_mouse(page, x, y).await?;
     for kind in [
         DispatchMouseEventType::MousePressed,
         DispatchMouseEventType::MouseReleased,
@@ -181,15 +194,17 @@ async fn click_at(page: &Page, x: f64, y: f64) -> Result<(), BrowserError> {
 /// dung `element.click()` JS (React/tiptap cua Dola phan biet duoc). Cuon vao giua viewport
 /// truoc. Tra `Ok(false)` khi khong tim thay hoac rect 0x0 (an), `Ok(true)` khi da bam.
 ///
+/// KHAC Playwright `locator.click()` (review Task 5 M-1): KHONG kiem tra actionability - khong
+/// doi enabled/stable, khong `elementFromPoint` de chac tam rect khong bi modal/toast che;
+/// `Ok(true)` chi nghia la "da gui 3 su kien chuot toi tam rect". Task 6-9 tu kiem ket qua
+/// (vd `wait_until` menu mo) nhu Python van lam sau moi lan bam.
+///
 /// # Errors
 /// Loi JS trong `finder_js` (`Js`) hoac loi CDP.
 pub async fn click_js(page: &Page, finder_js: &str) -> Result<bool, BrowserError> {
-    let Some(r) = element_rect(page, finder_js).await? else {
+    let Some(r) = visible_rect(page, finder_js).await? else {
         return Ok(false);
     };
-    if r.w <= 0.0 || r.h <= 0.0 {
-        return Ok(false);
-    }
     click_at(page, r.x + r.w / 2.0, r.y + r.h / 2.0).await?;
     Ok(true)
 }
@@ -197,6 +212,11 @@ pub async fn click_js(page: &Page, finder_js: &str) -> Result<bool, BrowserError
 /// Nhu [`click_js`] nhung bam tai `(phai - dx_from_right, tren + dy)` cua rect - cho nut x cua
 /// the anh dinh kem, vốn KHONG co trong DOM (Python `_clear_composer_attachments`,
 /// `video_worker_ui.py:794-833`: `box.x + box.width - dx, box.y + dy`).
+///
+/// **Task 7 PHAI goi [`hover_js`] roi ngu 250 ms TRUOC ham nay** (Python :812-813 `th.hover()` +
+/// `wait_for_timeout(250)` roi moi `mouse.click` :820): nut x chi duoc React ve ra sau khi hover,
+/// con `mouseMoved` -> `mousePressed` o day di lien nhau, khong kip render (smoke
+/// `click_js_at_offset_bam_goc_phai_tren_the_dinh_kem` chung minh bam thang thi truot).
 ///
 /// # Errors
 /// Nhu [`click_js`].
@@ -206,13 +226,24 @@ pub async fn click_js_at_offset(
     dx_from_right: f64,
     dy: f64,
 ) -> Result<bool, BrowserError> {
-    let Some(r) = element_rect(page, finder_js).await? else {
+    let Some(r) = visible_rect(page, finder_js).await? else {
         return Ok(false);
     };
-    if r.w <= 0.0 || r.h <= 0.0 {
-        return Ok(false);
-    }
     click_at(page, r.x + r.w - dx_from_right, r.y + dy).await?;
+    Ok(true)
+}
+
+/// Dua chuot toi tam phan tu (`Input.dispatchMouseEvent mouseMoved`, Playwright `hover`) - KHONG
+/// bam. Blink cap nhat `:hover` + phat `mouseenter`/`mouseover` nhu chuot that. Tra `Ok(false)`
+/// khi khong tim thay hoac rect 0x0. Dung truoc [`click_js_at_offset`] (xem doc o do).
+///
+/// # Errors
+/// Nhu [`click_js`].
+pub async fn hover_js(page: &Page, finder_js: &str) -> Result<bool, BrowserError> {
+    let Some(r) = visible_rect(page, finder_js).await? else {
+        return Ok(false);
+    };
+    move_mouse(page, r.x + r.w / 2.0, r.y + r.h / 2.0).await?;
     Ok(true)
 }
 
@@ -269,8 +300,12 @@ async fn dispatch_key(
         .code(def.code)
         .windows_virtual_key_code(def.key_code)
         .native_virtual_key_code(def.key_code);
-    if down && let Some(t) = text {
-        b = b.text(t).unmodified_text(t);
+    // Review Task 5 I-1: KHONG dung let-chain (`if down && let Some(t) = text`) - can rustc 1.88,
+    // workspace ghim rust-version 1.85.
+    if down {
+        if let Some(t) = text {
+            b = b.text(t).unmodified_text(t);
+        }
     }
     page.execute(b.build().map_err(bad_params)?)
         .await
@@ -282,6 +317,9 @@ async fn dispatch_key(
 /// `"Control+A"`... Modifier (Control/Shift/Alt/Meta) duoc nhan truoc (rawKeyDown, bit
 /// modifier tich luy), phim chinh keyDown+keyUp, roi nha modifier theo thu tu nguoc. Co
 /// Ctrl/Alt/Meta thi phim chinh KHONG kem `text` (khong chen ky tu) - `Control+A` = chon tat ca.
+///
+/// Gioi han (review Task 5 M-9): `"Shift+a"` gui `text` chu thuong (Playwright gui ban shifted
+/// `"A"`); ngoai 5 phim Python dung (`Enter`/`Delete`/`End`/`Escape`/`Control+A`) - chua can.
 ///
 /// # Errors
 /// Ten phim khong co trong bang US (`Cdp` voi thong diep "phim khong ho tro") hoac loi CDP.
@@ -337,16 +375,26 @@ pub async fn insert_text(page: &Page, text: &str) -> Result<(), BrowserError> {
 }
 
 /// `DOM.setFileInputFiles` len `<input type=file>` dau tien khop `css` (Playwright
-/// `set_input_files`); duong dan duoc ep TUYET DOI (Chrome yeu cau).
+/// `set_input_files`); duong dan duoc ep TUYET DOI (Chrome yeu cau). File phai ton tai - kiem
+/// TRUOC khi goi CDP (review M-2: Chrome nhan path treo va chi hong o buoc upload sau, kho chan
+/// doan; Playwright cung bao loi phia client). `paths` rong -> loi CDP (chromiumoxide bo truong
+/// `files` khi rong; Python khong co ca "xoa file").
 ///
 /// # Errors
-/// Khong co phan tu khop `css` (`Cdp`), I/O khi ep tuyet doi, hoac loi CDP.
+/// `Io(NotFound)` khi mot path khong phai file; khong co phan tu khop `css` (`Cdp`); loi CDP.
 pub async fn set_file_input(page: &Page, css: &str, paths: &[PathBuf]) -> Result<(), BrowserError> {
-    let el = page.find_element(css).await.map_err(map_cdp)?;
     let mut files = Vec::with_capacity(paths.len());
     for p in paths {
+        if !p.is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("file dinh kem khong ton tai: {}", p.display()),
+            )
+            .into());
+        }
         files.push(std::path::absolute(p)?.to_string_lossy().into_owned());
     }
+    let el = page.find_element(css).await.map_err(map_cdp)?;
     let params = SetFileInputFilesParams::builder()
         .files(files)
         .object_id(el.remote_object_id.clone())
@@ -460,30 +508,35 @@ pub async fn wait_until(
     }
 }
 
-/// `Page.reload` roi cho `Page.loadEventFired` (toi da [`RELOAD_LOAD_TIMEOUT`]), sau do ngu
-/// `settle` (Python: `page.reload(wait_until="domcontentloaded", timeout=60000)` +
-/// `wait_for_timeout(4000)`). Dang ky nghe su kien TRUOC khi gui reload de khong lo.
+/// `Page.reload` roi cho `Page.domContentEventFired` (toi da [`RELOAD_TIMEOUT`]), sau do ngu
+/// `settle` - khop Python `page.reload(wait_until="domcontentloaded", timeout=60000)` +
+/// `wait_for_timeout(...)` (`video_worker_ui.py:1158`, `:2019`). Cho `DOMContentLoaded` chu KHONG
+/// cho `load` (ruling review Task 5, deviation 4): SPA nang co the `load` muon hon DCL nhieu giay
+/// hoac khong bao gio -> Python thanh cong ma ta lai Timeout. Dang ky nghe su kien TRUOC khi gui
+/// reload de khong lo.
 ///
 /// # Errors
-/// `Timeout` khi khong thay load trong 60s (Python cung raise - caller tu quyet bo qua), `Cdp`.
+/// `Timeout` khi khong thay `DOMContentLoaded` trong 60s (Python cung raise - ca hai cho goi deu
+/// try/except, caller tu quyet bo qua), `Cdp`.
 pub async fn reload(page: &Page, settle: Duration) -> Result<(), BrowserError> {
-    let mut loaded = page
-        .event_listener::<EventLoadEventFired>()
+    let mut dcl = page
+        .event_listener::<EventDomContentEventFired>()
         .await
         .map_err(map_cdp)?;
     page.execute(ReloadParams::default())
         .await
         .map_err(map_cdp)?;
-    match tokio::time::timeout(RELOAD_LOAD_TIMEOUT, loaded.next()).await {
+    match tokio::time::timeout(RELOAD_TIMEOUT, dcl.next()).await {
         Ok(Some(_)) => {}
         Ok(None) => {
             return Err(BrowserError::Timeout(
-                "reload: luong su kien Page.loadEventFired dong truoc khi trang tai xong".into(),
+                "reload: luong su kien Page.domContentEventFired dong truoc khi trang tai xong"
+                    .into(),
             ));
         }
         Err(_elapsed) => {
             return Err(BrowserError::Timeout(format!(
-                "reload: khong nhan Page.loadEventFired trong {RELOAD_LOAD_TIMEOUT:?}"
+                "reload: khong nhan Page.domContentEventFired trong {RELOAD_TIMEOUT:?}"
             )));
         }
     }
@@ -573,6 +626,10 @@ fn collect_frame_urls(t: &FrameTree, out: &mut Vec<String>) {
 
 /// URL moi frame (frame chinh truoc, roi con chau theo `Page.getFrameTree`) - Python
 /// `find_captcha_frame`: tim frame co `"bdcaptcha.html"` trong URL.
+///
+/// Gioi han (review Task 5 M-5, luu y cho Task 8): chi hoi target CHINH. iframe khac site
+/// (OOPIF, vd captcha) VAN xuat hien kem URL nhu mot muc con, nhung frame LONG BEN TRONG mot OOPIF
+/// thi khong (Python `page.frames` gom ca chung). Du de tim `bdcaptcha.html`.
 ///
 /// # Errors
 /// Loi CDP.

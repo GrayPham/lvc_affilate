@@ -272,14 +272,35 @@ async fn click_js_bam_dung_tam_nut() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn click_js_at_offset_bam_goc_phai_tren_the_dinh_kem() {
+    const CARD: &str = "document.getElementById('attach-card')";
     let fx = Fx::open().await;
     let p = fx.page();
-    // Nut x 16x16 o goc phai tren the 120x90: bam (phai-4, tren+4) nhu Python
-    // _clear_composer_attachments (video_worker_ui.py:820).
-    let hit = ops::click_js_at_offset(p, "document.getElementById('attach-card')", 4.0, 4.0)
-        .await
-        .unwrap();
-    assert!(hit);
+
+    // Nut x 16x16 o goc tren phai the 120x90 CHI hien 100ms sau mouseenter (nhu Dola). Bam thang
+    // (moved -> pressed lien tiep) thi TRUOT: mousedown roi vao the, khong xoa.
+    assert!(ops::click_js_at_offset(p, CARD, 4.0, 4.0).await.unwrap());
+    let log = fx.log().await;
+    assert!(
+        !log.contains("attach removed"),
+        "chua hover ma da xoa duoc?: {log}"
+    );
+    assert!(
+        log.contains("mousedown ") && log.contains(" attach-card "),
+        "{log}"
+    );
+
+    // Trinh tu Python _clear_composer_attachments (video_worker_ui.py:812-820):
+    // th.hover() -> wait_for_timeout(250) -> mouse.click(x+w-dx, y+dy).
+    assert!(ops::hover_js(p, CARD).await.unwrap());
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    let shown: String = ops::eval_json(
+        p,
+        "getComputedStyle(document.getElementById('attach-x')).display",
+    )
+    .await
+    .unwrap();
+    assert_eq!(shown, "block");
+    assert!(ops::click_js_at_offset(p, CARD, 4.0, 4.0).await.unwrap());
     let log = fx.log().await;
     assert!(log.contains("attach removed"), "{log}");
     assert!(
@@ -287,8 +308,68 @@ async fn click_js_at_offset_bam_goc_phai_tren_the_dinh_kem() {
         "{log}"
     );
     // The da bi xoa -> lan sau khong tim thay -> false
+    assert!(!ops::click_js_at_offset(p, CARD, 4.0, 4.0).await.unwrap());
+    fx.close().await;
+}
+
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
+async fn hover_js_hien_phan_tu_con() {
+    let fx = Fx::open().await;
+    let p = fx.page();
+    // Chua hover: con an
+    let d0: String = ops::eval_json(
+        p,
+        "getComputedStyle(document.getElementById('hover-child')).display",
+    )
+    .await
+    .unwrap();
+    assert_eq!(d0, "none");
+
     assert!(
-        !ops::click_js_at_offset(p, "document.getElementById('attach-card')", 4.0, 4.0)
+        ops::hover_js(p, "document.getElementById('hover-src')")
+            .await
+            .unwrap()
+    );
+    let shown = ops::wait_until(
+        p,
+        "getComputedStyle(document.getElementById('hover-child')).display === 'inline'",
+        Duration::from_secs(3),
+        Duration::from_millis(20),
+    )
+    .await
+    .unwrap();
+    let log = fx.log().await;
+    assert!(shown, "{log}");
+    assert!(log.contains("mouseenter hover-src"), "{log}");
+    assert!(!log.contains("mousedown"), "hover KHONG duoc bam: {log}");
+    assert!(!log.contains("click"), "hover KHONG duoc bam: {log}");
+
+    // Di chuot sang cho khac -> mouseleave -> con an lai
+    assert!(
+        ops::hover_js(p, "document.getElementById('far-btn')")
+            .await
+            .unwrap()
+    );
+    let hidden = ops::wait_until(
+        p,
+        "getComputedStyle(document.getElementById('hover-child')).display === 'none'",
+        Duration::from_secs(3),
+        Duration::from_millis(20),
+    )
+    .await
+    .unwrap();
+    assert!(hidden, "{}", fx.log().await);
+    assert!(fx.log().await.contains("mouseleave hover-src"));
+
+    // Khong tim thay / an (rect 0x0) -> false, khong gui gi
+    assert!(
+        !ops::hover_js(p, "document.getElementById('khong-co')")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !ops::hover_js(p, "document.getElementById('hidden-btn')")
             .await
             .unwrap()
     );
@@ -401,7 +482,7 @@ async fn set_file_input_2_file() {
     std::fs::write(&a, b"\x89PNG a").unwrap();
     std::fs::write(&b, b"\x89PNG b").unwrap();
 
-    ops::set_file_input(p, "input[type=file]", &[a, b])
+    ops::set_file_input(p, "input[type=file]", &[a.clone(), b])
         .await
         .unwrap();
     let ok = ops::wait_until(
@@ -422,11 +503,22 @@ async fn set_file_input_2_file() {
     assert_eq!(names, vec!["anh_a.png", "anh_b.png"]);
 
     // CSS khong khop -> loi (khong im lang)
+    let err = ops::set_file_input(p, "#khong-co-input", std::slice::from_ref(&a))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, lvc_browser::BrowserError::Cdp(_)), "{err:?}");
+    // File khong ton tai -> loi I/O NotFound TRUOC khi goi CDP (Playwright cung bao phia client)
+    let err = ops::set_file_input(p, "input[type=file]", &[dir.path().join("khong_co.png")])
+        .await
+        .unwrap_err();
     assert!(
-        ops::set_file_input(p, "#khong-co-input", &[dir.path().join("x")])
-            .await
-            .is_err()
+        matches!(&err, lvc_browser::BrowserError::Io(e) if e.kind() == std::io::ErrorKind::NotFound),
+        "{err:?}"
     );
+    let still: String = ops::eval_json(p, "document.getElementById('files').textContent")
+        .await
+        .unwrap();
+    assert_eq!(still, "2", "input khong bi dong toi");
     fx.close().await;
 }
 
@@ -534,7 +626,7 @@ async fn wait_until_het_han_tra_false() {
 
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
-async fn reload_cho_load_event_roi_settle() {
+async fn reload_cho_domcontentloaded_roi_settle() {
     let fx = Fx::open().await;
     let p = fx.page();
     let _: serde_json::Value = ops::eval_json(
@@ -709,6 +801,57 @@ async fn cookie_header_va_delete_cookies() {
     assert_eq!(
         ops::cookie_header(p, "http://127.0.0.1/").await.unwrap(),
         "b=2"
+    );
+
+    // M-6: cookie domain co dau cham dau (".dola.com" o Task 6) - Network.deleteCookies so
+    // `domain` CHINH XAC: "example.test" (khong cham) KHONG xoa cookie ".example.test"; phai
+    // truyen dung ".example.test". Cookie host-only "www.example.test" thi xoa bang ten host.
+    for (n, dom) in [("dom", ".example.test"), ("host", "www.example.test")] {
+        p.set_cookie(
+            CookieParam::builder()
+                .name(n)
+                .value("1")
+                .url("http://www.example.test/")
+                .domain(dom)
+                .build()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    }
+    let both = ops::cookie_header(p, "http://www.example.test/")
+        .await
+        .unwrap();
+    let mut parts: Vec<&str> = both.split("; ").collect();
+    parts.sort_unstable();
+    assert_eq!(parts, vec!["dom=1", "host=1"], "{both}");
+    ops::delete_cookies(p, "example.test", &["dom"])
+        .await
+        .unwrap();
+    assert!(
+        ops::cookie_header(p, "http://www.example.test/")
+            .await
+            .unwrap()
+            .contains("dom=1"),
+        "domain khong cham KHONG duoc xoa cookie .example.test"
+    );
+    ops::delete_cookies(p, ".example.test", &["dom"])
+        .await
+        .unwrap();
+    assert_eq!(
+        ops::cookie_header(p, "http://www.example.test/")
+            .await
+            .unwrap(),
+        "host=1"
+    );
+    ops::delete_cookies(p, "www.example.test", &["host"])
+        .await
+        .unwrap();
+    assert_eq!(
+        ops::cookie_header(p, "http://www.example.test/")
+            .await
+            .unwrap(),
+        ""
     );
     fx.close().await;
 }

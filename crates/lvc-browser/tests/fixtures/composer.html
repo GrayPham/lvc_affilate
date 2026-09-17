@@ -9,8 +9,11 @@
   [role=menu].open { display: block; }
   #captcha-wrap iframe { width: 300px; height: 100px; border: 1px solid #c33; }
   .attach { position: relative; width: 120px; height: 90px; background: #ddd; display: inline-block; }
+  /* nut x KHONG hien san (nhu Dola): chi hien 100ms sau mouseenter the (xem JS) */
   .attach .x { position: absolute; right: 0; top: 0; width: 16px; height: 16px; line-height: 16px;
-               text-align: center; background: #c33; color: #fff; cursor: pointer; }
+               text-align: center; background: #c33; color: #fff; cursor: pointer; display: none; }
+  #hover-src { display: inline-block; width: 100px; height: 30px; background: #9c9; }
+  #hover-child { display: none; }
   /* nut #far-btn nam sau khoang trong 1500px -> ngoai viewport ban dau -> click_js PHAI scrollIntoView */
   .spacer { height: 1500px; }
   #hidden-btn { display: none; }
@@ -34,6 +37,7 @@
 <button id="fetch-btn">fetch</button>
 <button id="hidden-btn">an</button>
 <div class="attach" id="attach-card"><span class="x" id="attach-x">×</span></div>
+<div><span id="hover-src">hover me</span><span id="hover-child">con hien khi hover</span></div>
 <div class="spacer"></div>
 <button id="far-btn">far</button>
 <pre id="log"></pre>
@@ -115,10 +119,27 @@
     });
   });
 
-  // The dinh kem: nut x o goc tren phai (click_js_at_offset).
+  // The dinh kem: nut x o goc tren phai (click_js_at_offset) chi hien 100ms SAU mouseenter
+  // (gia lap React render khi hover, nhu Dola: Python th.hover() + wait_for_timeout(250)).
+  var card = document.getElementById('attach-card');
+  card.addEventListener('mouseenter', function () {
+    log('mouseenter attach-card');
+    setTimeout(function () { document.getElementById('attach-x').style.display = 'block'; }, 100);
+  });
   document.getElementById('attach-x').addEventListener('click', function () {
-    document.getElementById('attach-card').remove();
+    card.remove();
     log('attach removed');
+  });
+
+  // hover_js: phan tu con hien 50ms sau mouseenter, an lai khi mouseleave.
+  var hoverSrc = document.getElementById('hover-src');
+  hoverSrc.addEventListener('mouseenter', function () {
+    log('mouseenter hover-src');
+    setTimeout(function () { document.getElementById('hover-child').style.display = 'inline'; }, 50);
+  });
+  hoverSrc.addEventListener('mouseleave', function () {
+    log('mouseleave hover-src');
+    document.getElementById('hover-child').style.display = 'none';
   });
 
   document.getElementById('far-btn').addEventListener('click', function () { log('far clicked'); });

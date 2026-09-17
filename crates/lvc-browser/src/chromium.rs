@@ -1,6 +1,6 @@
 //! Impl `BrowserDriver` tren chromiumoxide (CDP thuan Rust).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chromiumoxide::Page;
@@ -213,8 +213,26 @@ pub(crate) fn chrome_args(opts: &LaunchOpts) -> Vec<String> {
     args
 }
 
+/// Ket qua buoc chuan bi THUAN cua `launch()` (khong ghi dia): config da build + duong dan
+/// profile TUYET DOI (dung cho `create_dir_all`/Preferences/lockfile, cung mot gia tri voi
+/// `--user-data-dir`).
+struct Prepared {
+    config: BrowserConfig,
+    profile_dir: PathBuf,
+}
+
 impl ChromiumDriver {
-    fn config(opts: &LaunchOpts) -> Result<BrowserConfig, BrowserError> {
+    /// Review Task 5 I-2: MOI kiem tra co the that bai ma khong can Chrome (profile rong, ep
+    /// tuyet doi, resolve binary, build config) nam o day va `launch()` goi no TRUOC bat ky I/O
+    /// nao — truoc day `create_dir_all` + ghi `Default/Preferences` + tao `lockfile` chay truoc,
+    /// nen may thieu binary van de lai rac trong `accounts/<ten>/`, va `LaunchOpts::default()`
+    /// (profile rong) ghi `./Default/Preferences` + `./lockfile` vao CWD roi moi loi.
+    fn prepare(opts: &LaunchOpts) -> Result<Prepared, BrowserError> {
+        if opts.profile_dir.as_os_str().is_empty() {
+            return Err(BrowserError::Launch(
+                "profile_dir rong — moi tai khoan phai co thu muc accounts/<ten>/".into(),
+            ));
+        }
         // ADR-R012: Chromium nhan `--user-data-dir` TUONG DOI thi chi nap 7-8/79 cookie cua
         // profile (bat dinh giua cac lan chay) → mat sessionid → "logged_out" gia. Duong dan
         // TUYET DOI nap du 79/79. Playwright luon truyen tuyet doi; ta ep o day de khong
@@ -248,7 +266,11 @@ impl ChromiumDriver {
         if !opts.headless {
             b = b.with_head();
         }
-        b.build().map_err(BrowserError::Launch)
+        let config = b.build().map_err(BrowserError::Launch)?;
+        Ok(Prepared {
+            config,
+            profile_dir,
+        })
     }
 }
 
@@ -257,10 +279,15 @@ impl BrowserDriver for ChromiumDriver {
     type Session = ChromiumSession;
 
     async fn launch(&self, opts: &LaunchOpts) -> Result<ChromiumSession, BrowserError> {
-        tokio::fs::create_dir_all(&opts.profile_dir).await?;
-        profile::disable_session_restore(&opts.profile_dir).await?;
-        probe_lockfile_busy(&opts.profile_dir)?;
-        let (mut browser, mut handler) = Browser::launch(Self::config(opts)?)
+        // I-2: chuan bi thuan TRUOC — loi profile/binary thi tra ve ngay, chua dung dia.
+        let Prepared {
+            config,
+            profile_dir,
+        } = Self::prepare(opts)?;
+        tokio::fs::create_dir_all(&profile_dir).await?;
+        profile::disable_session_restore(&profile_dir).await?;
+        probe_lockfile_busy(&profile_dir)?;
+        let (mut browser, mut handler) = Browser::launch(config)
             .await
             .map_err(|e| map_launch_error(&e))?;
         let handler_task = tokio::spawn(async move {
@@ -507,8 +534,15 @@ mod tests {
             profile_dir: PathBuf::from("accounts/tuong_doi"),
             ..opts_voi_exe_gia(&tmp, true)
         };
-        let cfg = ChromiumDriver::config(&opts).expect("config");
-        let dir = cfg.user_data_dir.expect("user_data_dir phai duoc dat");
+        let prepared = ChromiumDriver::prepare(&opts).expect("prepare");
+        let dir = prepared
+            .config
+            .user_data_dir
+            .expect("user_data_dir phai duoc dat");
+        assert_eq!(
+            prepared.profile_dir, dir,
+            "duong dan dung cho I/O (Preferences/lockfile) phai la chinh --user-data-dir"
+        );
         assert!(
             dir.is_absolute(),
             "user_data_dir van tuong doi: {}",
@@ -536,7 +570,9 @@ mod tests {
             executable_override: Some(missing.clone()),
             ..LaunchOpts::default()
         };
-        let err = ChromiumDriver::config(&opts).expect_err("phai loi");
+        let err = ChromiumDriver::prepare(&opts)
+            .map(|_| ())
+            .expect_err("phai loi");
         match err {
             BrowserError::ExecutableNotFound { kind, tried } => {
                 assert_eq!(kind, lvc_core::BrowserKind::Chromium);
@@ -544,6 +580,56 @@ mod tests {
             }
             other => panic!("sai bien the: {other:?}"),
         }
+    }
+
+    /// Review Task 5 I-2: `launch()` PHAI that bai o buoc chuan bi thuan (profile rong / binary
+    /// khong resolve duoc) TRUOC khi dung dia — truoc day `create_dir_all` + ghi
+    /// `Default/Preferences` + tao `lockfile` chay truoc `config()`, nen `LaunchOpts::default()`
+    /// (profile rong) ghi `./Default/Preferences` + `./lockfile` vao CWD roi moi loi. Khong can
+    /// Chrome: ca hai truong hop deu loi truoc `Browser::launch`.
+    #[tokio::test]
+    async fn launch_khong_dung_dia_khi_chuan_bi_loi() {
+        let d = ChromiumDriver;
+
+        // (a) profile rong -> loi ro, KHONG ghi gi vao cwd (cwd cua test = crates/lvc-browser)
+        // ChromiumSession khong co Debug -> khong dung expect_err
+        let Err(err) = d.launch(&LaunchOpts::default()).await else {
+            panic!("profile rong phai loi");
+        };
+        assert!(
+            matches!(&err, BrowserError::Launch(m) if m.contains("profile_dir")),
+            "loi sai kieu/thong diep: {err:?}"
+        );
+        assert!(
+            !Path::new("Default").join("Preferences").exists(),
+            "da ghi ./Default/Preferences vao cwd truoc khi loi"
+        );
+        assert!(
+            !Path::new("lockfile").exists(),
+            "da tao ./lockfile trong cwd truoc khi loi"
+        );
+
+        // (b) binary khong resolve duoc -> ExecutableNotFound, thu muc profile KHONG duoc tao
+        let tmp = tempfile::tempdir().unwrap();
+        let profile = tmp.path().join("chua_tao");
+        let Err(err) = d
+            .launch(&LaunchOpts {
+                profile_dir: profile.clone(),
+                executable_override: Some(tmp.path().join("khong_co.exe")),
+                ..LaunchOpts::default()
+            })
+            .await
+        else {
+            panic!("override khong ton tai phai loi");
+        };
+        assert!(
+            matches!(err, BrowserError::ExecutableNotFound { .. }),
+            "loi sai kieu: {err:?}"
+        );
+        assert!(
+            !profile.exists(),
+            "khong duoc tao thu muc profile truoc khi resolve binary xong"
+        );
     }
 
     /// I-3: ghim cac rang buoc dong lenh launch bang mot ham THUAN (khong can Chrome) — gate

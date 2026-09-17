@@ -15,8 +15,10 @@ pub const DEFAULT_LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
 /// Mac dinh `navigation_timeout` (Python `page.goto(..., timeout=60000)`).
 pub const DEFAULT_NAVIGATION_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Tuy chon mo trinh duyet cho mot tai khoan. `Debug` viet tay de KHONG lo mat khau proxy
-/// (`ProxySpec` tu che `password`, o day chi uy quyen cho no).
+/// Tuy chon mo trinh duyet cho mot tai khoan. `Debug` viet tay theo ruling P2 (kieu chua bi mat
+/// phai che mat khau MOT CACH TUONG MINH tai bien giao dien): ban than `derive(Debug)` cung KHONG
+/// lo gi vi `ProxySpec::fmt` da che `password` — impl tay chi de moi truong `LaunchOpts` doc
+/// duoc dieu do va test `debug_khong_lo_mat_khau_proxy` ghim (review Task 5 M-8).
 #[derive(Clone)]
 pub struct LaunchOpts {
     /// `accounts/<name>/` - cung bo cuc ban Python de tai dung profile. Duoc ep TUYET DOI
@@ -62,7 +64,7 @@ impl fmt::Debug for LaunchOpts {
             .field("browser", &self.browser)
             .field("executable_override", &self.executable_override)
             .field("headless", &self.headless)
-            // ProxySpec::fmt tu che password bang "***" - khong duoc in thang cac truong.
+            // ProxySpec::fmt tu che password bang "***"; KHONG in thang tung truong cua no.
             .field("proxy", &self.proxy)
             .field("window_offscreen", &self.window_offscreen)
             .field("launch_timeout", &self.launch_timeout)

@@ -58,6 +58,11 @@ impl SearchRoots {
 /// `chromium-<số>` dưới `root` CÓ file `chrome.exe`, sắp xếp theo revision TĂNG dần. Thuần
 /// (chỉ đọc thư mục), `root` không tồn tại → rỗng. `chromium_headless_shell-*` bị loại vì tiền
 /// tố khác (`chromium_` ≠ `chromium-`).
+///
+/// Chỉ nhận bố cục `chrome-win64\chrome.exe` (Playwright ≥ 1.49, rev ≥ 1148); rev cũ hơn
+/// (`chromium-1140`, `chromium-1148` trên máy dev dùng `chrome-win\chrome.exe`) bị BỎ QUA CÓ CHỦ Ý —
+/// không bao giờ rơi về build cũ; máy chỉ có rev cũ sẽ báo `ExecutableNotFound` với `tried=[<root>]`
+/// (review Task 5 M-4).
 #[must_use]
 pub fn ms_playwright_chromium_dirs(root: &Path) -> Vec<(u32, PathBuf)> {
     let Ok(entries) = std::fs::read_dir(root) else {
