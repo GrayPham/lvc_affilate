@@ -5,5 +5,6 @@ pub mod error;
 pub mod labels;
 #[cfg(test)]
 pub(crate) mod py_src;
+pub mod session;
 
 pub use error::DolaError;

@@ -3,104 +3,15 @@
 //! `cargo test -p lvc-browser --test ops_smoke -- --ignored` (env `LVC_CHROME` tuy chon;
 //! mac dinh resolver chon Chromium Playwright rev cao nhat).
 //!
-//! Fixture duoc phuc vu qua mot server HTTP ti hon tren `127.0.0.1:0` (xem [`serve_fixtures`])
-//! chu KHONG mo `file://`: do 2026-09-18 tren Chromium 1234 - `fetch()` tu origin `file://`
-//! bi CORS chan ("Failed to fetch") va `Network.responseReceived` KHONG bao gio ban, nen
-//! `count_responses` khong test duoc; 10/12 test con lai chay duoc tren file:// nhung dung
-//! mot transport cho ca bo de don gian (va gan Dola https hon).
+//! Server HTTP ti hon + `Fx` nam o `tests/common/mod.rs` (Task 6 tach ra de `session_smoke.rs`
+//! dung chung; ly do khong dung `file://` ghi o do).
 
-use std::path::PathBuf;
+mod common;
+
 use std::time::Duration;
 
-use lvc_browser::chromium::{ChromiumDriver, ChromiumSession};
-use lvc_browser::{BrowserDriver, LaunchOpts, ops};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-fn opts_headless(dir: &tempfile::TempDir) -> LaunchOpts {
-    LaunchOpts {
-        profile_dir: dir.path().join("p"),
-        headless: true,
-        executable_override: std::env::var_os("LVC_CHROME").map(PathBuf::from),
-        ..LaunchOpts::default()
-    }
-}
-
-fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
-
-/// Tra (status, content-type, body) cho duong dan HTTP: 2 endpoint gia lap upload cua Dola tra
-/// 200 JSON, `/upload/v1/loi` tra 500 (de chac `count_2xx` KHONG dem non-2xx), con lai doc file
-/// trong `tests/fixtures/` (cam `..`).
-fn route(path: &str) -> (&'static str, &'static str, Vec<u8>) {
-    match path {
-        "/alice/resource/prepare_upload" | "/upload/v1/x" => {
-            ("200 OK", "application/json", b"{\"ok\":true}".to_vec())
-        }
-        "/upload/v1/loi" => (
-            "500 Internal Server Error",
-            "application/json",
-            b"{}".to_vec(),
-        ),
-        p if p.contains("..") => ("400 Bad Request", "text/plain", b"cam".to_vec()),
-        p => match std::fs::read(fixtures_dir().join(p.trim_start_matches('/'))) {
-            Ok(b) => ("200 OK", "text/html; charset=utf-8", b),
-            Err(_) => ("404 Not Found", "text/plain", b"khong co".to_vec()),
-        },
-    }
-}
-
-/// Server HTTP/1.1 toi gian (moi ket noi 1 request, `Connection: close`) tren cong ngau nhien;
-/// tra `http://127.0.0.1:<port>` + task accept (abort trong `Fx::close`).
-async fn serve_fixtures() -> (String, tokio::task::JoinHandle<()>) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind 127.0.0.1:0");
-    let port = listener.local_addr().unwrap().port();
-    let task = tokio::spawn(async move {
-        loop {
-            let Ok((mut sock, _)) = listener.accept().await else {
-                break;
-            };
-            tokio::spawn(async move {
-                let mut buf = vec![0_u8; 16 * 1024];
-                let mut n = 0;
-                loop {
-                    let r = sock.read(&mut buf[n..]).await.unwrap_or(0);
-                    if r == 0 {
-                        break;
-                    }
-                    n += r;
-                    if buf[..n].windows(4).any(|w| w == b"\r\n\r\n") || n == buf.len() {
-                        break;
-                    }
-                }
-                let req = String::from_utf8_lossy(&buf[..n]).into_owned();
-                let path = req
-                    .lines()
-                    .next()
-                    .and_then(|l| l.split(' ').nth(1))
-                    .unwrap_or("/")
-                    .split('?')
-                    .next()
-                    .unwrap_or("/")
-                    .to_string();
-                let (status, ctype, body) = route(&path);
-                let head = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
-                     Cache-Control: no-store\r\nConnection: close\r\n\r\n",
-                    body.len()
-                );
-                let _ = sock.write_all(head.as_bytes()).await;
-                let _ = sock.write_all(&body).await;
-                let _ = sock.shutdown().await;
-            });
-        }
-    });
-    (format!("http://127.0.0.1:{port}"), task)
-}
+use common::Fx;
+use lvc_browser::ops;
 
 /// Tam rect (doc lai tu trang) de so voi toa do mousedown trong log.
 #[derive(serde::Deserialize)]
@@ -109,56 +20,10 @@ struct Center {
     cy: f64,
 }
 
-struct Fx {
-    d: ChromiumDriver,
-    s: ChromiumSession,
-    server: tokio::task::JoinHandle<()>,
-    _dir: tempfile::TempDir,
-}
-
-impl Fx {
-    async fn open() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let (base, server) = serve_fixtures().await;
-        let d = ChromiumDriver;
-        let s = d.launch(&opts_headless(&dir)).await.expect("launch");
-        d.goto(&s, &format!("{base}/composer.html"))
-            .await
-            .expect("goto fixture");
-        Self {
-            d,
-            s,
-            server,
-            _dir: dir,
-        }
-    }
-
-    fn page(&self) -> &chromiumoxide::Page {
-        self.s.page()
-    }
-
-    async fn log(&self) -> String {
-        ops::eval_json(self.page(), "document.getElementById('log').textContent")
-            .await
-            .expect("doc #log")
-    }
-
-    async fn textarea(&self) -> String {
-        ops::eval_json(self.page(), "document.getElementById('prompt').value")
-            .await
-            .expect("doc textarea")
-    }
-
-    async fn close(self) {
-        self.d.close(self.s).await.expect("close");
-        self.server.abort();
-    }
-}
-
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn eval_json_va_eval_with_arg() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
 
     let sum3: i64 = ops::eval_json(p, "1 + 2").await.unwrap();
@@ -192,7 +57,7 @@ async fn eval_json_va_eval_with_arg() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn click_js_bam_dung_tam_nut() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
 
     // #far-btn nam duoi spacer 1500px -> ngoai viewport -> phai scrollIntoView roi bam.
@@ -273,7 +138,7 @@ async fn click_js_bam_dung_tam_nut() {
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn click_js_at_offset_bam_goc_phai_tren_the_dinh_kem() {
     const CARD: &str = "document.getElementById('attach-card')";
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
 
     // Nut x 16x16 o goc tren phai the 120x90 CHI hien 100ms sau mouseenter (nhu Dola). Bam thang
@@ -315,7 +180,7 @@ async fn click_js_at_offset_bam_goc_phai_tren_the_dinh_kem() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn hover_js_hien_phan_tu_con() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     // Chua hover: con an
     let d0: String = ops::eval_json(
@@ -379,7 +244,7 @@ async fn hover_js_hien_phan_tu_con() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn press_ctrl_a_delete_xoa_textarea() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     assert!(
         ops::click_js(p, "document.getElementById('prompt')")
@@ -431,7 +296,7 @@ async fn press_ctrl_a_delete_xoa_textarea() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn insert_text_mot_phat() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     assert!(
         ops::click_js(p, "document.getElementById('prompt')")
@@ -474,7 +339,7 @@ async fn insert_text_mot_phat() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn set_file_input_2_file() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     let dir = tempfile::tempdir().unwrap();
     let a = dir.path().join("anh_a.png");
@@ -525,7 +390,7 @@ async fn set_file_input_2_file() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn wait_until_het_han_tra_false() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
 
     let t0 = std::time::Instant::now();
@@ -627,7 +492,7 @@ async fn wait_until_het_han_tra_false() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn reload_cho_domcontentloaded_roi_settle() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     let _: serde_json::Value = ops::eval_json(
         p,
@@ -654,7 +519,7 @@ async fn reload_cho_domcontentloaded_roi_settle() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn count_responses_dem_2xx() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     let counter = ops::count_responses(p).await.unwrap();
     assert_eq!(counter.count_2xx("/upload/v1/"), 0);
@@ -703,7 +568,7 @@ async fn count_responses_dem_2xx() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn frame_urls_thay_bdcaptcha() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     let before = ops::frame_urls(p).await.unwrap();
     assert_eq!(before.len(), 1, "{before:?}");
@@ -759,7 +624,7 @@ async fn frame_urls_thay_bdcaptcha() {
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn cookie_header_va_delete_cookies() {
     use chromiumoxide::cdp::browser_protocol::network::CookieParam;
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     // Cookie cho origin http://127.0.0.1/ (khong phai trang hien tai) - dat qua Network.setCookie
     // voi url tuong minh; doc lai bang cookie_header(url) giong Python context.cookies(url).
@@ -859,7 +724,7 @@ async fn cookie_header_va_delete_cookies() {
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test ops_smoke -- --ignored"]
 async fn user_agent_va_url() {
-    let fx = Fx::open().await;
+    let fx = Fx::open("composer.html").await;
     let p = fx.page();
     let ua = ops::user_agent(p).await.unwrap();
     assert!(ua.contains("Chrome/"), "{ua}");

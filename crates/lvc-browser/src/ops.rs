@@ -11,16 +11,17 @@
 //! Anh xa ham <-> lenh CDP:
 //! | ham | CDP |
 //! |---|---|
-//! | [`eval_json`], [`eval_with_arg`], [`user_agent`], [`wait_until`] | `Runtime.evaluate` (`awaitPromise`, `returnByValue`) |
+//! | [`eval_json`], [`eval_fn`], [`eval_with_arg`], [`user_agent`], [`wait_until`] | `Runtime.evaluate` (`awaitPromise`, `returnByValue`) |
 //! | [`click_js`], [`click_js_at_offset`] | `Runtime.evaluate` (rect) + `Input.dispatchMouseEvent` mouseMoved -> mousePressed -> mouseReleased |
 //! | [`hover_js`] | `Runtime.evaluate` (rect) + `Input.dispatchMouseEvent` mouseMoved (khong bam) |
 //! | [`press`] | `Input.dispatchKeyEvent` (rawKeyDown/keyDown + keyUp, modifier bit Ctrl=2) |
 //! | [`insert_text`] | `Input.insertText` |
 //! | [`set_file_input`] | `DOM.getDocument` + `DOM.querySelector` + `DOM.resolveNode` (qua `Page::find_element`) + `DOM.setFileInputFiles` |
 //! | [`delete_cookies`] | `Network.deleteCookies` |
-//! | [`cookie_header`] | `Network.getCookies` (`urls=[url]`) |
+//! | [`cookies`], [`cookie_header`] | `Network.getCookies` (`urls=[url]`) |
 //! | [`url`] | trang thai frame chinh cua chromiumoxide (`Page.frameNavigated`) |
 //! | [`reload`] | `Page.reload` + cho `Page.domContentEventFired` |
+//! | [`goto`] | `Page.navigate` + cho `Page.domContentEventFired` |
 //! | [`count_responses`] | `Network.enable` + su kien `Network.responseReceived` |
 //! | [`frame_urls`] | `Page.getFrameTree` (de quy) |
 //!
@@ -39,8 +40,8 @@ use chromiumoxide::cdp::browser_protocol::input::{
     InsertTextParams, MouseButton,
 };
 use chromiumoxide::cdp::browser_protocol::network::{
-    DeleteCookiesParams, EnableParams as NetworkEnableParams, EventResponseReceived,
-    GetCookiesParams,
+    Cookie as CdpCookie, DeleteCookiesParams, EnableParams as NetworkEnableParams,
+    EventResponseReceived, GetCookiesParams,
 };
 use chromiumoxide::cdp::browser_protocol::page::{
     EventDomContentEventFired, FrameTree, GetFrameTreeParams, ReloadParams,
@@ -55,8 +56,8 @@ use tokio::task::JoinHandle;
 
 use crate::BrowserError;
 
-/// `reload()`: thoi gian toi da cho `Page.domContentEventFired` (Python
-/// `page.reload(wait_until="domcontentloaded", timeout=60000)`).
+/// `reload()`/`goto()`: thoi gian toi da cho `Page.domContentEventFired` (Python
+/// `page.reload(wait_until="domcontentloaded", timeout=60000)` / `page.goto(..., timeout=60000)`).
 pub const RELOAD_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Bit modifier cua `Input.dispatchKeyEvent`: Alt=1, Ctrl=2, Meta=4, Shift=8.
@@ -111,6 +112,16 @@ async fn eval_value(page: &Page, js: &str) -> Result<serde_json::Value, BrowserE
 pub async fn eval_json<T: DeserializeOwned>(page: &Page, js: &str) -> Result<T, BrowserError> {
     let v = eval_value(page, js).await?;
     Ok(serde_json::from_value(v)?)
+}
+
+/// Goi ham JS KHONG tham so `js_fn` (`() => ...`) — khop Python `page.evaluate(js)` khi `js` la
+/// ham (Playwright tu goi); ket qua/Promise nhu [`eval_json`]. Dung cho moi hang `*_JS` dang ham
+/// trong `dola::labels` (`DOLA_LANG_JS`, `MODE_BTN_JS`, `SESSION_JS`...).
+///
+/// # Errors
+/// Nhu [`eval_json`].
+pub async fn eval_fn<T: DeserializeOwned>(page: &Page, js_fn: &str) -> Result<T, BrowserError> {
+    eval_json(page, &format!("({js_fn})()")).await
 }
 
 /// Goi `(js_fn)(arg)` voi `arg` serialize JSON (khop Python `page.evaluate(js, arg)`); `js_fn`
@@ -421,13 +432,56 @@ pub async fn delete_cookies(page: &Page, domain: &str, names: &[&str]) -> Result
     Ok(())
 }
 
-/// `Network.getCookies(urls=[url])` -> header `Cookie` dang `a=b; c=d` (Python
-/// `context.cookies("https://www.dola.com")` gop lai cho reqwest, Task 10). KHONG log gia tri.
+/// Cookie doc qua `Network.getCookies` — chi 3 truong ma lop Dola can (Python
+/// `context.cookies(url)` tra dict, `cookie_value(cookies, name)` doc `name`/`value`). `Debug` CHE
+/// `value` (chinh sach: khong bao gio log gia tri cookie).
+#[derive(Clone, PartialEq, Eq)]
+pub struct CookieKv {
+    pub domain: String,
+    pub name: String,
+    pub value: String,
+}
+
+impl CookieKv {
+    #[must_use]
+    pub fn new(domain: &str, name: &str, value: &str) -> Self {
+        Self {
+            domain: domain.to_string(),
+            name: name.to_string(),
+            value: value.to_string(),
+        }
+    }
+}
+
+impl From<CdpCookie> for CookieKv {
+    fn from(c: CdpCookie) -> Self {
+        Self {
+            domain: c.domain,
+            name: c.name,
+            value: c.value,
+        }
+    }
+}
+
+impl fmt::Debug for CookieKv {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CookieKv")
+            .field("domain", &self.domain)
+            .field("name", &self.name)
+            .field("value", &"***")
+            .finish()
+    }
+}
+
+/// `Network.getCookies(urls=[url])` -> danh sach [`CookieKv`] (Python
+/// `context.cookies("https://www.dola.com")`, `browser.py:346`). Gioi han theo `url` chu KHONG lay
+/// cookie cua tab hien tai (co the la trang OAuth/loi sau redirect — review P1 I-2). KHONG log
+/// gia tri.
 ///
 /// # Errors
 /// Loi CDP.
-pub async fn cookie_header(page: &Page, url: &str) -> Result<String, BrowserError> {
-    let cookies = page
+pub async fn cookies(page: &Page, url: &str) -> Result<Vec<CookieKv>, BrowserError> {
+    let raw = page
         .execute(
             GetCookiesParams::builder()
                 .urls(vec![url.to_string()])
@@ -437,7 +491,16 @@ pub async fn cookie_header(page: &Page, url: &str) -> Result<String, BrowserErro
         .map_err(map_cdp)?
         .result
         .cookies;
-    Ok(cookies
+    Ok(raw.into_iter().map(CookieKv::from).collect())
+}
+
+/// [`cookies`] gop thanh header `Cookie` dang `a=b; c=d` (cho reqwest, Task 10). KHONG log gia tri.
+///
+/// # Errors
+/// Loi CDP.
+pub async fn cookie_header(page: &Page, url: &str) -> Result<String, BrowserError> {
+    Ok(cookies(page, url)
+        .await?
         .iter()
         .map(|c| format!("{}={}", c.name, c.value))
         .collect::<Vec<_>>()
@@ -473,7 +536,7 @@ fn truthy(v: &serde_json::Value) -> bool {
 
 /// Loi "context bi huy" khi trang tu dieu huong giua chung (Dola tu tai lai khi dong bo ngon
 /// ngu/phien - Python `_eval_retry`, `video_worker_ui.py:1036-1052`): coi nhu `false`, cho tiep.
-fn context_gone(e: &BrowserError) -> bool {
+pub(crate) fn context_gone(e: &BrowserError) -> bool {
     let s = e.to_string();
     s.contains("context was destroyed")
         || s.contains("Cannot find context")
@@ -537,6 +600,41 @@ pub async fn reload(page: &Page, settle: Duration) -> Result<(), BrowserError> {
         Err(_elapsed) => {
             return Err(BrowserError::Timeout(format!(
                 "reload: khong nhan Page.domContentEventFired trong {RELOAD_TIMEOUT:?}"
+            )));
+        }
+    }
+    tokio::time::sleep(settle).await;
+    Ok(())
+}
+
+/// `Page.navigate` toi `url` roi cho `Page.domContentEventFired` (toi da [`RELOAD_TIMEOUT`]), sau
+/// do ngu `settle` — khop Python `page.goto(url, wait_until="domcontentloaded", timeout=60000)` +
+/// `wait_for_timeout(...)` (`video_worker_ui.py:1195-1196`, `:2466-2467`). Khac
+/// `BrowserDriver::goto` (cho `load` qua `wait_for_navigation`, can `ChromiumSession`): ham nay
+/// chi can `&Page` va dung o `DOMContentLoaded` nhu Python (ly do: xem [`reload`]).
+///
+/// # Errors
+/// `Navigation` khi Chrome bao `errorText` (vd `net::ERR_NAME_NOT_RESOLVED`), `Timeout` khi khong
+/// thay `DOMContentLoaded` trong 60 s, `Cdp` khac.
+pub async fn goto(page: &Page, url: &str, settle: Duration) -> Result<(), BrowserError> {
+    let mut dcl = page
+        .event_listener::<EventDomContentEventFired>()
+        .await
+        .map_err(map_cdp)?;
+    page.goto(url).await.map_err(|e| BrowserError::Navigation {
+        url: url.to_string(),
+        reason: e.to_string(),
+    })?;
+    match tokio::time::timeout(RELOAD_TIMEOUT, dcl.next()).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return Err(BrowserError::Timeout(format!(
+                "goto {url}: luong su kien Page.domContentEventFired dong truoc khi trang tai xong"
+            )));
+        }
+        Err(_elapsed) => {
+            return Err(BrowserError::Timeout(format!(
+                "goto {url}: khong nhan Page.domContentEventFired trong {RELOAD_TIMEOUT:?}"
             )));
         }
     }
@@ -725,6 +823,16 @@ mod tests {
                 "https://x.dola.com/bdcaptcha.html"
             ]
         );
+    }
+
+    /// Chinh sach log: `Debug` cua `CookieKv` KHONG in gia tri cookie.
+    #[test]
+    fn cookie_kv_debug_che_gia_tri() {
+        let c = CookieKv::new(".dola.com", "sessionid", "bi-mat-123");
+        let s = format!("{c:?}");
+        assert!(s.contains("sessionid") && s.contains(".dola.com"), "{s}");
+        assert!(!s.contains("bi-mat-123"), "lo gia tri cookie: {s}");
+        assert!(s.contains("***"), "{s}");
     }
 
     #[test]

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>chat fixture (gia lap trang chat Dola cho smoke test dola::session)</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: sans-serif; }
+  #log { white-space: pre; font-size: 11px; }
+</style>
+</head>
+<body>
+<!--
+  Query string dieu khien fixture (khong doi JS cua tool):
+    ?nomode=1        -> KHONG co nut 高速 (wait_settled phai tra false)
+    ?login=1         -> co nut ログイン (marker dang nhap -> classify_session = logged_out)
+    ?from_logout=1   -> URL chua from_logout=1 (raise_if_logged_out -> revoked)
+    ?recent=fail     -> window.fetch bi ghi de de reject (RECENT_IDS_JS loi -> recent_conv_ids = [])
+  Moi lan tai trang: sessionStorage.lvc_loads += 1 (de test dem so lan reload).
+-->
+<nav>
+  <a href="#">Home</a>
+  <span>Settings</span>
+</nav>
+<div id="mode-wrap"><button id="mode-btn">高速</button></div>
+<div id="login-wrap"></div>
+<textarea id="prompt" rows="4" cols="60"></textarea>
+<button id="create-btn">動画を作成</button>
+<div>loads=<span id="loads">0</span></div>
+<pre id="log"></pre>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(line) { logEl.textContent += line + '\n'; }
+  var q = new URLSearchParams(location.search);
+
+  // Dem so lan tai trang (sessionStorage song qua reload cung tab).
+  var loads = 0;
+  try {
+    loads = parseInt(sessionStorage.getItem('lvc_loads') || '0', 10) + 1;
+    sessionStorage.setItem('lvc_loads', String(loads));
+  } catch (e) {}
+  document.getElementById('loads').textContent = String(loads);
+  log('load ' + loads + ' ' + location.search);
+
+  if (q.get('nomode') === '1') {
+    document.getElementById('mode-wrap').innerHTML = '';
+  }
+  if (q.get('login') === '1') {
+    document.getElementById('login-wrap').innerHTML = '<button id="login-btn">ログイン</button>';
+  }
+  if (q.get('recent') === 'fail') {
+    window.fetch = function () { return Promise.reject(new TypeError('fetch bi chan (fixture)')); };
+  }
+})();
+</script>
+</body>
+</html>

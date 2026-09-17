@@ -428,22 +428,10 @@ impl BrowserDriver for ChromiumDriver {
         // I-2: gioi han urls=[DOLA_URL] thay vi Page::get_cookies() (Network.getCookies KHONG
         // urls -> cookie cua TRANG/TAB hien tai, co the la trang OAuth/loi sau redirect) —
         // khop Python context.cookies("https://www.dola.com"). Luat "co sessionid hop le" la
-        // ham thuan lvc_core::has_dola_sessionid, test duoc khong can Chrome.
-        let cookies = s
-            .page
-            .execute(
-                chromiumoxide::cdp::browser_protocol::network::GetCookiesParams::builder()
-                    .urls(vec![lvc_core::DOLA_URL.to_string()])
-                    .build(),
-            )
-            .await?
-            .result
-            .cookies;
-        let has_sessionid = lvc_core::has_dola_sessionid(
-            cookies
-                .iter()
-                .map(|c| (c.domain.as_str(), c.name.as_str(), c.value.as_str())),
-        );
+        // ham thuan lvc_core::has_dola_sessionid, test duoc khong can Chrome. Task 6: doc cookie
+        // qua `ops::cookies` (dung chung voi `dola::session::assert_logged_in`).
+        let cookies = crate::ops::cookies(&s.page, lvc_core::DOLA_URL).await?;
+        let has_sessionid = crate::dola::session::has_sessionid(&cookies);
         let url = s.page.url().await?.unwrap_or_default();
         let state = lvc_core::classify_session(has_sessionid, &raw.texts, raw.composer);
         Ok(SessionProbe {
