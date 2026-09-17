@@ -7,8 +7,26 @@
 use serde::{Deserialize, Serialize};
 
 pub const DOLA_DOMAIN: &str = "dola.com";
+/// I-2: URL dung de gioi han `probe_session` chi doc cookie cua dola.com (Network/Storage
+/// `getCookies(urls=[...])`), khop Python `context.cookies("https://www.dola.com")`
+/// (browser.py:346) — khong con doc "cookie cua trang/tab hien tai" (co the la trang OAuth,
+/// trang loi, hoac iframe ben thu ba mang `sessionid` rieng cua no).
+pub const DOLA_URL: &str = "https://www.dola.com/";
 pub const REQUIRED_COOKIE: &str = "sessionid";
 pub const MAX_TEXT_BYTES: usize = 200 * 1024;
+
+/// I-2: luat thuan de xet "co sessionid Dola hop le" tu mot danh sach cookie da doc qua CDP —
+/// KHONG phu thuoc chromiumoxide nen test duoc khong can Chrome. `cookies` la
+/// `(domain, name, value)`; khop domain kieu "chua chuoi con" giong `validate_dola_cookies`
+/// (bao gom ca dang co dau cham dau ".dola.com" lan khong).
+#[must_use]
+pub fn has_dola_sessionid<'a>(
+    cookies: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+) -> bool {
+    cookies.into_iter().any(|(domain, name, value)| {
+        domain.to_lowercase().contains(DOLA_DOMAIN) && name == REQUIRED_COOKIE && !value.is_empty()
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cookie {
@@ -260,6 +278,32 @@ mod tests {
         assert_eq!(sessionid_expires(&c), Some(1_800_000_000));
         let s = parse_netscape(".dola.com\tTRUE\t/\tTRUE\t0\tsessionid\tx\n");
         assert_eq!(sessionid_expires(&s), None);
+    }
+
+    #[test]
+    fn has_dola_sessionid_dung_domain_khong_rong_la_true() {
+        assert!(has_dola_sessionid([
+            (".dola.com", "sessionid", "abc"),
+            (".dola.com", "uid_tt", "u1"),
+        ]));
+        assert!(
+            has_dola_sessionid([("www.dola.com", "sessionid", "abc")]),
+            "domain khong dau cham cung phai khop (chua chuoi con dola.com)"
+        );
+    }
+
+    #[test]
+    fn has_dola_sessionid_o_domain_khac_la_false() {
+        assert!(!has_dola_sessionid([(
+            "evil-oauth.example.com",
+            "sessionid",
+            "abc"
+        )]));
+    }
+
+    #[test]
+    fn has_dola_sessionid_value_rong_la_false() {
+        assert!(!has_dola_sessionid([(".dola.com", "sessionid", "")]));
     }
 
     #[test]

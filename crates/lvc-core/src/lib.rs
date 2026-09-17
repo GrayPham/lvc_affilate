@@ -16,7 +16,10 @@ pub mod session;
 pub mod value;
 
 pub use bulk::{bulk_scenes, split_bulk};
-pub use cookie::{Cookie, CookieError, parse_netscape, sessionid_expires, validate_dola_cookies};
+pub use cookie::{
+    Cookie, CookieError, DOLA_URL, has_dola_sessionid, parse_netscape, sessionid_expires,
+    validate_dola_cookies,
+};
 pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;
 pub use limits::Limits;
