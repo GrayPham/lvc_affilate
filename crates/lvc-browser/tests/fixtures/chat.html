@@ -15,6 +15,9 @@
     ?login=1         -> co nut ログイン (marker dang nhap -> classify_session = logged_out)
     ?from_logout=1   -> URL chua from_logout=1 (raise_if_logged_out -> revoked)
     ?recent=fail     -> window.fetch bi ghi de de reject (RECENT_IDS_JS loi -> recent_conv_ids = [])
+    ?cookie=hidden   -> nut "Look" (chua "ok") BI AN dung truoc nut "OK" visible (COOKIE_OK_FINDER -> null)
+    ?cookie=visible  -> nut "Đồng\n ý" visible dung truoc nut "OK" (COOKIE_OK_FINDER -> #ok-first)
+  #model-btn co xuong dong THAT trong chu ("モデル\n2.0高速") de test finder_text_exact chuan hoa khoang trang.
   Moi lan tai trang: sessionStorage.lvc_loads += 1 (de test dem so lan reload).
 -->
 <nav>
@@ -23,6 +26,9 @@
 </nav>
 <div id="mode-wrap"><button id="mode-btn">高速</button></div>
 <div id="login-wrap"></div>
+<div id="cookie-wrap"></div>
+<button id="model-btn">モデル
+2.0高速</button>
 <textarea id="prompt" rows="4" cols="60"></textarea>
 <button id="create-btn">動画を作成</button>
 <div>loads=<span id="loads">0</span></div>
@@ -50,6 +56,13 @@
   }
   if (q.get('recent') === 'fail') {
     window.fetch = function () { return Promise.reject(new TypeError('fetch bi chan (fixture)')); };
+  }
+  if (q.get('cookie') === 'hidden') {
+    document.getElementById('cookie-wrap').innerHTML =
+      '<button id="ok-hidden" style="display:none">Look</button><button id="ok-second">OK</button>';
+  } else if (q.get('cookie') === 'visible') {
+    document.getElementById('cookie-wrap').innerHTML =
+      '<button id="ok-first">Đồng\n ý</button><button id="ok-second">OK</button>';
   }
 })();
 </script>

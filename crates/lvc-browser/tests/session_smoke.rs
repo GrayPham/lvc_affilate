@@ -10,7 +10,7 @@ use std::time::Duration;
 use chromiumoxide::cdp::browser_protocol::network::CookieParam;
 use common::Fx;
 use lvc_browser::dola::DolaError;
-use lvc_browser::dola::labels::{DOLA_LANG_JS, MODE_BTN_JS, SESSION_JS};
+use lvc_browser::dola::labels::{self, DOLA_LANG_JS, MODE_BTN_JS, SESSION_JS};
 use lvc_browser::dola::session::{
     self, LangState, SessionInfo, assert_logged_in, assert_logged_in_at, ensure_japanese,
     eval_retry, raise_if_logged_out, recent_conv_ids, wait_settled,
@@ -41,6 +41,13 @@ async fn loads(fx: &Fx) -> i64 {
     .unwrap()
 }
 
+/// `finder_js` -> `Element|null` -> `id` cua phan tu (None khi null).
+async fn id_of(p: &chromiumoxide::Page, finder_js: &str) -> Option<String> {
+    ops::eval_json(p, &format!("({finder_js})?.id"))
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test session_smoke -- --ignored"]
 async fn labels_js_chay_duoc_tren_trang() {
@@ -66,74 +73,107 @@ async fn labels_js_chay_duoc_tren_trang() {
     for t in ["Home", "Settings", "高速", "動画を作成"] {
         assert!(info.texts.iter().any(|x| x == t), "{:?}", info.texts);
     }
-    // finder_* sinh JS hop le va tim dung phan tu
-    let id: Option<String> = ops::eval_json(
-        p,
-        &format!(
-            "({})?.id",
-            lvc_browser::dola::labels::finder_button_text(lvc_browser::dola::labels::VIDEO_BTN_SRC)
-        ),
-    )
-    .await
-    .unwrap();
-    assert_eq!(id.as_deref(), Some("create-btn"));
-    let id: Option<String> = ops::eval_json(
-        p,
-        &format!(
-            "({})?.id",
-            lvc_browser::dola::labels::finder_button_text(&lvc_browser::dola::labels::MODE_BTN_SRC)
-        ),
-    )
-    .await
-    .unwrap();
-    assert_eq!(id.as_deref(), Some("mode-btn"));
-    let id: Option<String> = ops::eval_json(
-        p,
-        &format!(
-            "({})?.id",
-            lvc_browser::dola::labels::finder_text_exact("高速")
-        ),
-    )
-    .await
-    .unwrap();
-    assert_eq!(id.as_deref(), Some("mode-btn"));
-    let tag: String = ops::eval_json(
-        p,
-        &format!("({}).tagName", lvc_browser::dola::labels::finder_composer()),
-    )
-    .await
-    .unwrap();
+    let tag: String = ops::eval_json(p, &format!("({}).tagName", labels::finder_composer()))
+        .await
+        .unwrap();
     assert_eq!(tag, "TEXTAREA");
-    let none: Option<String> = ops::eval_json(
-        p,
-        &format!(
-            "({})?.id",
-            lvc_browser::dola::labels::finder_menu_item(r"^\s*10s(\b|\s|$)")
-        ),
-    )
-    .await
-    .unwrap();
-    assert_eq!(none, None);
-    let cookie_ok: Option<String> = ops::eval_json(
-        p,
-        &format!("({})?.id", lvc_browser::dola::labels::COOKIE_OK_FINDER),
-    )
-    .await
-    .unwrap();
-    assert_eq!(cookie_ok, None, "khong co nut OK/Đồng ý tren fixture");
+    assert_eq!(
+        id_of(p, labels::COOKIE_OK_FINDER).await,
+        None,
+        "khong co nut OK/Đồng ý tren fixture"
+    );
     // DURATION_HOOK_JS chay duoc o MAIN world (dat data-lvc-hook)
-    let _: serde_json::Value =
-        ops::eval_json(p, &lvc_browser::dola::labels::duration_hook_script(30))
-            .await
-            .unwrap();
+    let _: serde_json::Value = ops::eval_json(p, &labels::duration_hook_script(30))
+        .await
+        .unwrap();
     let hook: String = ops::eval_json(p, "document.documentElement.getAttribute('data-lvc-hook')")
         .await
         .unwrap();
     assert_eq!(hook, "installed:30");
-    let none: String = ops::eval_fn(p, lvc_browser::dola::labels::CLEAR_ABILITY_TAG_JS)
+    let none: String = ops::eval_fn(p, labels::CLEAR_ABILITY_TAG_JS).await.unwrap();
+    assert_eq!(none, "none");
+    fx.close().await;
+}
+
+/// `finder_*` sinh JS hop le va tim dung phan tu tren trang.
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test session_smoke -- --ignored"]
+async fn finder_js_tim_dung_phan_tu() {
+    let fx = Fx::open("chat.html").await;
+    let p = fx.page();
+    assert_eq!(
+        id_of(p, &labels::finder_button_text(labels::VIDEO_BTN_SRC))
+            .await
+            .as_deref(),
+        Some("create-btn")
+    );
+    assert_eq!(
+        id_of(p, &labels::finder_button_text(&labels::MODE_BTN_SRC))
+            .await
+            .as_deref(),
+        Some("mode-btn")
+    );
+    assert_eq!(
+        id_of(p, &labels::finder_text_exact("高速"))
+            .await
+            .as_deref(),
+        Some("mode-btn")
+    );
+    // I-1: node `モデル\n2.0高速` (xuong dong trong HTML) khop chuoi exact "モデル 2.0高速" (chuan hoa
+    // khoang trang hai phia nhu Playwright get_by_text(exact=True)); chuoi thua khoang trang cung khop.
+    for q in ["モデル 2.0高速", "  モデル   2.0高速 "] {
+        assert_eq!(
+            id_of(p, &labels::finder_text_exact(q)).await.as_deref(),
+            Some("model-btn"),
+            "{q:?}"
+        );
+    }
+    let raw: String = ops::eval_json(p, "document.getElementById('model-btn').textContent")
         .await
         .unwrap();
-    assert_eq!(none, "none");
+    assert_eq!(raw, "モデル\n2.0高速", "fixture phai co xuong dong that");
+    // M-8: selector tuy chon — DUR_MENU_ITEM_SEL gom `button` nen tim duoc nut 動画を作成;
+    // `[role="option"]` khong co tren fixture -> null
+    assert_eq!(
+        id_of(
+            p,
+            &labels::finder_menu_item_in(labels::DUR_MENU_ITEM_SEL, labels::VIDEO_BTN_SRC)
+        )
+        .await
+        .as_deref(),
+        Some("create-btn")
+    );
+    assert_eq!(
+        id_of(
+            p,
+            &labels::finder_menu_item_in(r#"[role="option"]"#, labels::VIDEO_BTN_SRC)
+        )
+        .await,
+        None
+    );
+    assert_eq!(
+        id_of(p, &labels::finder_menu_item(r"^\s*10s(\b|\s|$)")).await,
+        None
+    );
+    fx.close().await;
+}
+
+/// M-5 (ruling): `COOKIE_OK_FINDER` theo Python — nut khop DAU TIEN theo DOM roi moi kiem visible.
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test session_smoke -- --ignored"]
+async fn cookie_ok_finder_theo_thu_tu_dom_nhu_python() {
+    // (a) nut khop dau tien ("Look", chua "ok") bi an, nut "OK" visible dung sau -> null (Python
+    // `.first` roi `is_visible()` false -> bo qua banner, KHONG bam nut ke tiep)
+    let fx = Fx::open("chat.html?cookie=hidden").await;
+    assert_eq!(id_of(fx.page(), labels::COOKIE_OK_FINDER).await, None);
+    fx.close().await;
+
+    // (b) nut khop dau tien visible ("Đồng\n ý" — has-text chuan hoa khoang trang) -> chinh no
+    let fx = Fx::open("chat.html?cookie=visible").await;
+    assert_eq!(
+        id_of(fx.page(), labels::COOKIE_OK_FINDER).await.as_deref(),
+        Some("ok-first")
+    );
     fx.close().await;
 }
 

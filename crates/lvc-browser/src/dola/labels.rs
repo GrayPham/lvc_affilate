@@ -245,11 +245,12 @@ pub const DUR_MENU_ITEM_SEL: &str =
 
 /// `video_worker_ui.py:1987` — nhan nut tat cookie banner (`button:has-text("OK"), button:has-text("Đồng ý")`).
 pub const COOKIE_OK_LABELS: [&str; 2] = ["OK", "Đồng ý"];
-/// Finder JS cho nut cookie banner: Playwright `:has-text()` = chuoi con, khong phan biet
-/// hoa/thuong, da trim (nen "OK" cung khop "Look" — giu nguyen semantics Python :1987) VA phai
-/// visible (Python `.first` + `is_visible()`; o day lay nut VISIBLE dau tien — rong hon Python mot
-/// chut: Python bo qua ca banner neu nut khop dau tien bi an).
-pub const COOKIE_OK_FINDER: &str = "[...document.querySelectorAll('button')].find(b => { const t = (b.innerText || '').trim().toLowerCase(); const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && ['OK', 'Đồng ý'].some(l => t.includes(l.toLowerCase())); })";
+/// Finder JS cho nut cookie banner, THEO PYTHON (:1987-1990, ruling review Task 6 M-5):
+/// `locator('button:has-text("OK"), button:has-text("Đồng ý")').first` = nut DAU TIEN theo thu tu
+/// DOM co chu chua "ok"/"đồng ý" (`:has-text()`: chuoi con, khong phan biet hoa/thuong, chuan hoa
+/// khoang trang — nen "OK" cung khop "Look"), ROI moi `is_visible()`: nut do bi an -> `null`
+/// (Python bo qua ca banner, KHONG bam nut khop ke tiep).
+pub const COOKIE_OK_FINDER: &str = "(() => { const b = [...document.querySelectorAll('button')].find(b => { const t = (b.innerText || '').replace(/\\s+/g,' ').trim().toLowerCase(); return ['ok', 'đồng ý'].some(l => t.includes(l)); }); if (!b) return null; const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? b : null; })()";
 
 /// `_close_open_menus` (Task 7): co menu dang mo khong.
 pub const OPEN_MENU_JS: &str = r#"!!document.querySelector('[role="menu"]')"#;
@@ -334,6 +335,10 @@ pub const UI_LABELS: UiLabels = UiLabels {
 // Regex — `*_SRC` = pattern dung byte Python; `*_RE` = Regex Rust `(?i)` + src (Python IGNORECASE)
 // ---------------------------------------------------------------------------------------------
 
+/// Regex Rust = semantics Python `re` (`\b`/`\d`/`\s` Unicode) — dung cho kiem tra THUAN (test,
+/// `_is_mode_match`, `ADD_REF_TIP_RE`, `VIDEO_ID_RE`). CHON PHAN TU tren trang phai qua `finder_*`
+/// (JS `RegExp`, `\b`/`\d` ASCII — dung nhu Playwright `has_text=` da chay trong Python); KHONG ap
+/// `*_RE` Rust len chu doc ve tu trang de "chon" (review Task 6 M-6, deviation 3).
 fn re_i(src: &str) -> Regex {
     Regex::new(&format!("(?i){src}")).unwrap_or_else(|e| panic!("regex Dola hop le: {src:?}: {e}"))
 }
@@ -428,23 +433,35 @@ pub fn finder_button_text(re_js: &str) -> String {
 }
 
 /// Muc menu DAU TIEN ([`MENU_ITEM_SEL`]) co `innerText.trim()` khop `/re_js/i` —
-/// `page.locator(MENU_ITEM_SEL, has_text=...).first` (`video_worker_ui.py:2038`).
+/// `page.locator(MENU_ITEM_SEL, has_text=...).first` (`video_worker_ui.py:2038`). Bao boc
+/// [`finder_menu_item_in`] voi selector mac dinh.
 #[must_use]
 pub fn finder_menu_item(re_js: &str) -> String {
+    finder_menu_item_in(MENU_ITEM_SEL, re_js)
+}
+
+/// Nhu [`finder_menu_item`] nhung selector tuy chon (review Task 6 M-8): menu thoi luong dung
+/// [`DUR_MENU_ITEM_SEL`] (`:1903`), option ky nang Pro dung `[role="option"]` (`:2095`). `selector`
+/// duoc escape `\` va `'` de nam trong chuoi JS `'...'`.
+#[must_use]
+pub fn finder_menu_item_in(selector: &str, re_js: &str) -> String {
     let lit = js_regex_literal(re_js, "i");
+    let sel = selector.replace('\\', "\\\\").replace('\'', "\\'");
     format!(
-        "[...document.querySelectorAll('{MENU_ITEM_SEL}')].find(e => {lit}.test((e.innerText||'').trim()))"
+        "[...document.querySelectorAll('{sel}')].find(e => {lit}.test((e.innerText||'').trim()))"
     )
 }
 
-/// Phan tu SAU NHAT (khong con nao cung chu) dau tien theo thu tu DOM co `textContent.trim()` ==
-/// `text` — gan `page.get_by_text(text, exact=True).first`. `text` duoc ma hoa JSON (an toan voi
-/// dau nhay/backslash/xuong dong).
+/// Phan tu SAU NHAT (khong con nao cung chu) dau tien theo thu tu DOM co text == `text` — gan
+/// `page.get_by_text(text, exact=True).first`. Review Task 6 I-1: Playwright CHUAN HOA khoang trang
+/// CA HAI PHIA ke ca `exact=True` (`\s+` -> 1 khoang trang, trim) nen "モデル 2.0高速" khop node
+/// `モデル\n2.0高速` (`:1857`). `text` duoc ma hoa JSON (an toan voi dau nhay/backslash/xuong dong).
 #[must_use]
 pub fn finder_text_exact(text: &str) -> String {
     let json = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
     format!(
-        "(() => {{ const t = {json}; const same = (e) => (e.textContent||'').trim() === t; \
+        "(() => {{ const norm = (s) => (s||'').replace(/\\s+/g,' ').trim(); const t = norm({json}); \
+         const same = (e) => norm(e.textContent) === t; \
          return [...document.querySelectorAll('*')].find(e => e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE' \
          && same(e) && (e.childElementCount === 0 || ![...e.children].some(same))) || null; }})()"
     )
@@ -631,15 +648,50 @@ mod tests {
             DUR_MENU_ITEM_SEL,
             r#"[role="menuitem"], [role="option"], div[class*="menu-item"], button"#
         );
+        // M-8: selector tuy chon (menu thoi luong :1903, option ky nang :2095)
+        let dur = finder_menu_item_in(DUR_MENU_ITEM_SEL, r"^\s*10s(\b|\s|$)");
+        assert!(
+            dur.contains(&format!("querySelectorAll('{DUR_MENU_ITEM_SEL}')")),
+            "{dur}"
+        );
+        let opt = finder_menu_item_in(r#"[role="option"]"#, VIDEO_SKILL_OPT_SRC);
+        assert!(
+            opt.contains(r#"querySelectorAll('[role="option"]')"#),
+            "{opt}"
+        );
+        assert!(
+            opt.contains(&format!("/{VIDEO_SKILL_OPT_SRC}/i.test(")),
+            "{opt}"
+        );
+        assert_eq!(js, finder_menu_item_in(MENU_ITEM_SEL, r"^\s*10s(\b|\s|$)"));
+        // selector co dau nhay don -> escape de JS van hop le
+        let quoted = finder_menu_item_in("a[x='1']", "b");
+        assert!(
+            quoted.contains(r"querySelectorAll('a[x=\'1\']')"),
+            "{quoted}"
+        );
     }
 
     #[test]
     fn finder_text_exact_ma_hoa_json() {
         let js = finder_text_exact("OK");
-        assert!(js.contains("const t = \"OK\""), "{js}");
+        assert!(js.contains("const t = norm(\"OK\")"), "{js}");
         assert!(js.contains("childElementCount"), "phai la phan tu la: {js}");
         let tricky = finder_text_exact("a\"b\\c\n日本語");
         assert!(tricky.contains(r#""a\"b\\c\n日本語""#), "{tricky}");
+    }
+
+    /// I-1 (review Task 6): Playwright `get_by_text(exact=True)` CHUAN HOA khoang trang ca hai phia
+    /// (`\s+` -> 1 khoang trang, trim) — "モデル 2.0高速" phai khop node `モデル\n2.0高速` (:1857).
+    #[test]
+    fn finder_text_exact_chuan_hoa_khoang_trang() {
+        let js = finder_text_exact("モデル 2.0高速");
+        assert!(js.contains(r"replace(/\s+/g,' ')"), "{js}");
+        // ca chuoi truy van lan textContent deu qua norm
+        assert!(
+            js.contains("norm(") && js.matches("norm(").count() >= 2,
+            "{js}"
+        );
     }
 
     #[test]
@@ -650,10 +702,35 @@ mod tests {
         );
         assert_eq!(OPEN_MENU_JS, r#"!!document.querySelector('[role="menu"]')"#);
         assert_eq!(COOKIE_OK_LABELS, ["OK", "Đồng ý"]);
-        assert!(COOKIE_OK_FINDER.contains("'OK'") && COOKIE_OK_FINDER.contains("'Đồng ý'"));
+        assert!(
+            COOKIE_OK_FINDER.contains("'ok'") && COOKIE_OK_FINDER.contains("'đồng ý'"),
+            "{COOKIE_OK_FINDER}"
+        );
         assert!(
             COOKIE_OK_FINDER.contains("getBoundingClientRect"),
             "phai loc visible"
+        );
+        // M-5 (ruling): Python `.first` theo thu tu DOM roi moi `is_visible()` -> tim TRUOC (khong
+        // loc visible trong `find`), kiem rect SAU; an -> null. `:has-text()` chuan hoa khoang trang.
+        let find_at = COOKIE_OK_FINDER.find("].find(").expect("co find");
+        let rect_at = COOKIE_OK_FINDER
+            .find("getBoundingClientRect")
+            .expect("co rect");
+        let find_end = COOKIE_OK_FINDER[find_at..]
+            .find("});")
+            .map(|i| find_at + i)
+            .unwrap();
+        assert!(
+            rect_at > find_end,
+            "rect phai nam SAU khoi find: {COOKIE_OK_FINDER}"
+        );
+        assert!(
+            COOKIE_OK_FINDER.contains("return null"),
+            "{COOKIE_OK_FINDER}"
+        );
+        assert!(
+            COOKIE_OK_FINDER.contains(r"replace(/\s+/g,' ')"),
+            "{COOKIE_OK_FINDER}"
         );
     }
 
@@ -752,7 +829,28 @@ mod tests {
         if !same_bytes(&src, "ABILITY_TAG_RE", ABILITY_TAG_SRC) {
             bad.push("ABILITY_TAG_RE");
         }
+        // M-4: VIDEO_ID_RE (re-export lvc-core) — bo tien to `(?i)` roi so voi :1432
+        let video_id_src = VIDEO_ID_RE
+            .as_str()
+            .strip_prefix("(?i)")
+            .expect("VIDEO_ID_RE co (?i)");
+        if !same_bytes(&src, "VIDEO_ID_RE", video_id_src) {
+            bad.push("VIDEO_ID_RE");
+        }
         assert!(bad.is_empty(), "lech nguon Python: {bad:?}");
+        // M-4: DOLA_CHAT_URL (:1195, :2462) va OPEN_MENU_JS (:1848) — chuoi nam trong ham
+        assert!(
+            src.contains(&format!("\"{DOLA_CHAT_URL}\"")),
+            "DOLA_CHAT_URL"
+        );
+        assert!(
+            src.contains("page.locator('[role=\"menu\"]')"),
+            "OPEN_MENU_JS selector :1848"
+        );
+        assert!(
+            OPEN_MENU_JS.contains(r#"'[role="menu"]'"#),
+            "OPEN_MENU_JS dung cung selector"
+        );
 
         // Nhan che do :1854-1856 (tuple) + regex :1858 xay tu do
         assert!(src.contains("\nFAST_MODE_LABELS = (\"高速\", \"Nhanh\", \"Fast\")\n"));

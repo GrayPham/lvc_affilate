@@ -474,7 +474,7 @@ impl fmt::Debug for CookieKv {
 }
 
 /// `Network.getCookies(urls=[url])` -> danh sach [`CookieKv`] (Python
-/// `context.cookies("https://www.dola.com")`, `browser.py:346`). Gioi han theo `url` chu KHONG lay
+/// `context.cookies("https://www.dola.com")`, `browser.py:358`, `video_worker_ui.py:1178`). Gioi han theo `url` chu KHONG lay
 /// cookie cua tab hien tai (co the la trang OAuth/loi sau redirect — review P1 I-2). KHONG log
 /// gia tri.
 ///

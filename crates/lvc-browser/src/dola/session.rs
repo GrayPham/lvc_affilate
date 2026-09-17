@@ -175,16 +175,19 @@ pub async fn ensure_japanese(page: &Page) -> Result<bool, BrowserError> {
     .await;
     match switched {
         Ok(()) => {
-            let after = eval_retry::<LangState>(page, DOLA_LANG_JS, Duration::from_secs(10), 4)
-                .await
-                .ok()
-                .and_then(|st| dola_lang_needs_switch(Some(&st)));
-            match after {
-                None => tracing::info!("sau khi doi: tieng Nhat"),
-                Some(l) => tracing::warn!(
-                    lang = %l,
-                    "sau khi doi van chua phai tieng Nhat - nhan tieng Nhat co the khong khop"
-                ),
+            // Doc lai chi de log (Python :1159-1162, loi -> pass). M-2: loi doc lai KHONG duoc
+            // bao la "tieng Nhat".
+            match eval_retry::<LangState>(page, DOLA_LANG_JS, Duration::from_secs(10), 4).await {
+                Ok(st) => match dola_lang_needs_switch(Some(&st)) {
+                    None => tracing::info!("sau khi doi: tieng Nhat"),
+                    Some(l) => tracing::warn!(
+                        lang = %l,
+                        "sau khi doi van chua phai tieng Nhat - nhan tieng Nhat co the khong khop"
+                    ),
+                },
+                Err(e) => {
+                    tracing::debug!(error = %e, "khong doc lai duoc ngon ngu sau khi doi");
+                }
             }
         }
         Err(e) => tracing::warn!(error = %e, "dat ngon ngu Dola loi"),
@@ -231,12 +234,17 @@ fn marker_hits(texts: &[String], n: usize) -> Vec<String> {
         .collect()
 }
 
-/// `why` cua `AccountLoggedOutError` (`:1206`).
+/// `why` cua `AccountLoggedOutError` (`:1206`). Danh sach nhan in kieu Python `f"{[...][:3]}"`
+/// (`['a', 'b']`, `lvc_core::error::py_repr`) de thong diep khop byte (review Task 6 M-1).
 fn logged_out_why(has_sid: bool, texts: &[String]) -> String {
     if has_sid {
+        let items: Vec<String> = marker_hits(texts, 3)
+            .iter()
+            .map(|s| lvc_core::error::py_repr(s))
+            .collect();
         format!(
-            "login/guest button visible on page after reload: {:?}",
-            marker_hits(texts, 3)
+            "login/guest button visible on page after reload: [{}]",
+            items.join(", ")
         )
     } else {
         "no sessionid cookie".to_string()
@@ -335,7 +343,8 @@ pub async fn assert_logged_in_at(
 /// chu so. Loi JS/timeout/ket qua la -> `Ok(vec![])` (Python: "nhan chat theo URL nhu cu").
 ///
 /// # Errors
-/// Chi khi khong doc duoc cookie (CDP hong) — Python cung doc cookie NGOAI `try` (`:2470`).
+/// Chi khi khong doc duoc cookie (CDP hong) — Python cung doc cookie NGOAI `try` (`:2469`, goi
+/// `recent_conv_ids` o `:2472`).
 pub async fn recent_conv_ids(page: &Page) -> Result<Vec<String>, BrowserError> {
     let cookies = ops::cookies(page, DOLA_URL).await?;
     let arg = serde_json::json!({
@@ -536,13 +545,21 @@ mod tests {
             .map(ToString::to_string)
             .collect();
         let why = logged_out_why(true, &texts);
-        assert!(
-            why.starts_with("login/guest button visible on page after reload: "),
-            "{why}"
+        // M-1: repr danh sach kieu Python `['a', 'b']` (f"{[...][:3]}") — khop byte voi Python
+        assert_eq!(
+            why,
+            "login/guest button visible on page after reload: ['ログイン', 'Guest', 'Sign in']"
         );
-        assert!(why.contains("ログイン") && why.contains("Guest") && why.contains("Sign in"));
         assert!(!why.contains("Log In"), "chi 3 nhan dau: {why}");
-        assert!(!why.contains("Home"));
+        assert_eq!(
+            logged_out_why(true, &[]),
+            "login/guest button visible on page after reload: []"
+        );
+        // chuoi co dau nhay don -> repr Python dung nhay kep
+        assert_eq!(
+            logged_out_why(true, &["Guest's".to_string()]),
+            "login/guest button visible on page after reload: [\"Guest's\"]"
+        );
     }
 
     #[test]
