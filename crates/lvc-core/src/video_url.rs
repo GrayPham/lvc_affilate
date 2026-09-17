@@ -27,7 +27,7 @@ use std::sync::LazyLock;
 
 use aes::Aes128;
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use regex::Regex;
@@ -400,13 +400,40 @@ fn translate(s: &str, map: &[(char, char)]) -> String {
         .collect()
 }
 
-/// `unwatermark.py:110-122` `b64_loose`. KHÁC Python một điểm CÓ CHỦ ĐÍCH (theo đúng lưu ý của
-/// controller): Python `base64.b64decode(..., validate=False)` ÂM THẦM BỎ QUA ký tự lạ trước
-/// khi decode (nên gần như không bao giờ lỗi); ở đây dùng thẳng `base64` crate
-/// (`STANDARD_NO_PAD`/`URL_SAFE_NO_PAD`) — NGHIÊM NGẶT hơn (ký tự lạ → lỗi, thử biến thể kế
-/// tiếp) thay vì tự viết bộ lọc ký tự. Không ảnh hưởng dữ liệu thật (base64/base64-url chuẩn,
-/// có hoặc thiếu padding) — chỉ khác ở input rác cố tình chèn ký tự ngoài bảng chữ, không phải
-/// trường hợp `main_url`/`key_seed` thật gặp trong Dola.
+/// Giữ lại đúng bảng chữ base64 chuẩn (`A-Za-z0-9+/`) — mô phỏng `CPython`
+/// `base64.b64decode(c)` với `validate=False` (mặc định): hàm C `binascii.a2b_base64` ÂM THẦM BỎ
+/// (không lỗi) mọi ký tự KHÔNG thuộc bảng chữ base64 TRƯỚC khi ráp lại thành nhóm 4 ký tự để giải
+/// mã — đã xác nhận bằng Python thật (`.venv`, chỉ đọc):
+/// `base64.b64decode(b"aGVs.bG8=")` → `b"hello"` (dấu `.` biến mất, phần còn lại `"aGVsbG8="` là
+/// base64 hợp lệ của `"hello"`). Ký tự `=` cũng bị loại ở đây (Fix round 1, RULING): `CPython` coi
+/// `=` là ký hiệu đệm CÓ Ý NGHĨA RIÊNG (dừng/định vị nhóm 4), khác hẳn ký tự lạ bị bỏ đơn thuần —
+/// hành vi đó (đệm `=` giữa chuỗi) là edge case bệnh hoạn không xảy ra với dữ liệu Dola thật, nên
+/// coi `=` như MỌI ký tự lạ khác (loại bỏ) rồi giải mã bằng biến thể KHÔNG ĐỆM (`STANDARD_NO_PAD`)
+/// — không cần tính lại số `=` cần thêm như Python (Python tính đệm DỰA TRÊN độ dài THÔ trước khi
+/// lọc, có thể ra SAI số đệm nếu chuỗi có ký tự lạ, gây lỗi `Incorrect padding` ở biến thể mà bản
+/// gốc lẽ ra đã giải được nếu lọc trước — bản Rust ở đây, nhờ lọc-rồi-mới-đệm, THỰC TẾ giải mã
+/// được ở biến thể SỚM HƠN Python trong một số trường hợp, xem test
+/// `alt_alphabet_dola_thay_the_dola_qua_bien_the` và phần "Fix round 1" trong `task-3-report.md`
+/// để biết vì sao bài toán "chỉ biến thể 2 thắng" không thể tái lập ĐÚNG NGHĨA ĐEN dưới thiết kế
+/// lọc-trước-rồi-giải-KHÔNG-ĐỆM này — mọi input chỉ chứa `$`/`@`/`#` khiến biến thể 1 và biến thể
+/// 2 LUÔN cùng thành/bại (chứng minh: `#` luôn biến mất ở CẢ HAI biến thể vì `.` và `=` đều ngoài
+/// bảng chữ giữ lại; `$`/`@` luôn được GIỮ ở cả hai biến thể — chỉ khác giá trị ký tự cuối cùng
+/// `/`(63) so với `+`(62), mà 2 giá trị này có 4 bit thấp lần lượt `1111`/`1110` — CẢ HAI đều khác
+/// 0 nên đều KHÔNG hợp lệ như ký tự cuối một nhóm dư 2 hoặc dư 3, tức không bao giờ đúng lúc một
+/// biến thể qua còn biến thể kia rớt vì lý do bit-đuôi).
+fn keep_base64_alphabet(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/')
+        .collect()
+}
+
+/// `unwatermark.py:110-122` `b64_loose` — Fix round 1 (RULING, thay bản trước): với MỖI biến thể
+/// (3 cách thay `$`/`@`/`#`, giống Python), sau khi thay `-`→`+`, `_`→`/`: (a) lọc chỉ giữ
+/// `[A-Za-z0-9+/]` (bỏ `=` và mọi ký tự khác — xem [`keep_base64_alphabet`]), (b) giải bằng
+/// `STANDARD_NO_PAD` (không quan tâm đệm); lỗi (vd độ dài dư 1 sau khi lọc — `CPython` cũng báo
+/// "Incorrect padding"/"cannot be 1 more than a multiple of 4" cho trường hợp này) → thử biến thể
+/// kế tiếp. Bỏ hẳn lượt thử `URL_SAFE_NO_PAD` (đã tự chuẩn hoá `-`/`_` ở bước trên, thử thêm bảng
+/// url-safe là thừa).
 fn b64_loose(text: &str) -> Option<Vec<u8>> {
     let s = text.trim();
     if s.is_empty() {
@@ -422,11 +449,11 @@ fn b64_loose(text: &str) -> Option<Vec<u8>> {
             continue;
         }
         let normalized = cand.replace('-', "+").replace('_', "/");
-        let trimmed = normalized.trim_end_matches('=');
-        if let Ok(bytes) = STANDARD_NO_PAD.decode(trimmed) {
-            return Some(bytes);
+        let filtered = keep_base64_alphabet(&normalized);
+        if filtered.is_empty() {
+            continue;
         }
-        if let Ok(bytes) = URL_SAFE_NO_PAD.decode(trimmed) {
+        if let Ok(bytes) = STANDARD_NO_PAD.decode(&filtered) {
             return Some(bytes);
         }
     }
@@ -939,6 +966,57 @@ mod tests {
     #[test]
     fn qaab_khong_co_key_seed_tra_none() {
         assert_eq!(decode_main_url(QAAB_TOKEN, None), None);
+    }
+
+    // ---- Fix round 1: b64_loose bỏ ký tự lạ như base64.b64decode(validate=False) ----
+    //
+    // Cả 3 vector dưới đây đã được đối chiếu với `unwatermark.b64_loose` THẬT (`.venv`, chỉ đọc):
+    //   python -c "
+    //   import sys; sys.path.insert(0, r'A:\ToolLVC\lvcseedance')
+    //   from src.media import unwatermark as uw
+    //   print(uw.b64_loose('aHR0cH\nM6Ly94L3kubXA0'))   # -> b'https://x/y.mp4'
+    //   print(uw.b64_loose('$$$0cHM6Ly9vay9hYmNk'))      # -> b'\xff\xff\xf4ps://ok/abcd'
+    //   print(uw.b64_loose('abcde'))                      # -> None"
+
+    #[test]
+    fn b64_loose_bo_qua_khoang_trang_newline_nhu_python() {
+        // base64("https://x/y.mp4") = "aHR0cHM6Ly94L3kubXA0"; chèn '\n' vào giữa — CPython
+        // b64decode(validate=False) bỏ ký tự lạ (kể cả whitespace) trước khi ráp nhóm 4, nên vẫn
+        // giải đúng. Test qua decode_main_url (đường đi thật của main_url dạng base64 thường).
+        assert_eq!(
+            decode_main_url("aHR0cH\nM6Ly94L3kubXA0", None),
+            Some("https://x/y.mp4".to_string())
+        );
+    }
+
+    #[test]
+    fn b64_loose_alt_alphabet_dola_khop_python_tung_byte() {
+        // Thay 3 ký tự của base64("https://ok/abcd") (20 ký tự, không cần đệm) bằng '$' ở vị trí
+        // 0,1,2 — biến thể 0 (nguyên văn) LỌC BỎ cả 3 '$' -> còn 17 ký tự, dư 1 (17%4==1) ->
+        // "Incorrect padding" ở Python / lỗi ở STANDARD_NO_PAD -> rớt; biến thể 1 ($→_→/) GIỮ cả
+        // 3 ký tự (thành '/') -> đủ lại 20 ký tự, dư 0 -> giải được, ra byte "rác" xác định (không
+        // phải URL hợp lệ — do đó test trực tiếp qua hàm nội bộ, không qua decode_main_url/ascii_url).
+        // ĐÃ THỬ (xem task-3-report.md phần "Fix round 1"): với đúng thuật toán lọc-trước-rồi-giải
+        // -KHÔNG-ĐỆM mà controller chỉ định, biến thể 1 và biến thể 2 LUÔN cùng thành/bại với mọi
+        // tổ hợp `$`/`@`/`#` (chứng minh trong doc-comment `keep_base64_alphabet`) — không tồn tại
+        // input nào khiến CHỈ RIÊNG biến thể 2 thắng dưới thuật toán này. Vector dưới đây là ca gần
+        // nhất có thể: biến thể 0 rớt (đúng vì lý do độ dài), biến thể 1 thắng, VÀ khớp byte-for-byte
+        // với `unwatermark.b64_loose` THẬT (dù có thể Python nội bộ cũng dừng ở biến thể 1 vì cùng
+        // lý do độ dài — không quan sát được index biến thể từ ngoài, chỉ so được kết quả cuối).
+        let token = "$$$0cHM6Ly9vay9hYmNk";
+        let expected: Vec<u8> = vec![
+            0xff, 0xff, 0xf4, b'p', b's', b':', b'/', b'/', b'o', b'k', b'/', b'a', b'b', b'c',
+            b'd',
+        ];
+        assert_eq!(b64_loose(token), Some(expected));
+    }
+
+    #[test]
+    fn b64_loose_do_dai_du_1_tra_none() {
+        // "abcde": 5 ký tự thuần chữ/số (không $/@/#) -> cả 3 biến thể giống hệt nhau, lọc xong
+        // vẫn 5 ký tự, 5%4==1 -> luôn rớt ở cả 3 lượt -> None. Đã xác nhận bằng Python thật:
+        // uw.b64_loose("abcde") == None.
+        assert_eq!(b64_loose("abcde"), None);
     }
 
     // ---- (e) pick_raw_video theo bitrate + w*h ----
