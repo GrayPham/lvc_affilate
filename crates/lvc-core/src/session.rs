@@ -30,6 +30,17 @@ pub const SESSION_PROBE_JS: &str = r#"
 }
 "#;
 
+/// M-10: khop Python `browser.py:169` (`DOLA_REGION_RESTRICTED`) — path xuat hien trong URL
+/// khi Dola chan theo khu vuc. Duoc dung o ca hai example (`probe_login`, `probe_profile`)
+/// thay vi lap lai chuoi literal.
+pub const DOLA_REGION_RESTRICTED: &str = "/security/region-restricted";
+
+/// `url` co chua path chan khu vuc cua Dola khong.
+#[must_use]
+pub fn is_region_restricted(url: &str) -> bool {
+    url.contains(DOLA_REGION_RESTRICTED)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionState {
@@ -125,6 +136,14 @@ mod tests {
     }
 
     #[test]
+    fn is_region_restricted_khop_path_con_lai_thi_khong() {
+        assert!(is_region_restricted(
+            "https://www.dola.com/security/region-restricted?x=1"
+        ));
+        assert!(!is_region_restricted("https://www.dola.com/chat"));
+    }
+
+    #[test]
     fn khong_sessionid_la_logged_out() {
         assert_eq!(classify_session(false, &[], true), SessionState::LoggedOut);
     }
@@ -152,6 +171,10 @@ mod tests {
 
     #[test]
     fn probe_js_khop_python() {
+        // M-8: ghim do dai chinh xac (431 byte, khop Python browser.py:328-340 tung ky tu) —
+        // cac assert starts_with/contains ben duoi qua yeu, se khong bat duoc mot doan chen/xoa
+        // giua nhung diem neo do.
+        assert_eq!(SESSION_PROBE_JS.len(), 431);
         assert!(SESSION_PROBE_JS.starts_with('\n'));
         assert!(SESSION_PROBE_JS.ends_with("}\n"));
         assert!(SESSION_PROBE_JS.contains("el.childElementCount === 0"));

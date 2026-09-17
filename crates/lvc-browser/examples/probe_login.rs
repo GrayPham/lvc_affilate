@@ -10,8 +10,14 @@ use lvc_core::{parse_netscape, validate_dola_cookies};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let profile_dir = PathBuf::from(&args[1]);
-    let cookies_txt = tokio::fs::read_to_string(&args[2]).await?;
+    let (Some(profile_arg), Some(cookies_arg)) = (args.get(1), args.get(2)) else {
+        eprintln!(
+            "cach dung: probe_login <profile_dir> <cookies.txt> [--headed] [--proxy scheme://host:port]"
+        );
+        std::process::exit(2);
+    };
+    let profile_dir = PathBuf::from(profile_arg);
+    let cookies_txt = tokio::fs::read_to_string(cookies_arg).await?;
     let headed = args.iter().any(|a| a == "--headed");
     let proxy = args
         .iter()
@@ -53,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "url": probe.url,
             "has_sessionid": probe.has_sessionid,
             "composer": probe.composer,
-            "region_restricted": probe.url.contains("/security/region-restricted"),
+            "region_restricted": lvc_core::is_region_restricted(&probe.url),
             "login_markers_seen": probe.texts.iter().filter(|t| lvc_core::has_login_marker(t)).collect::<Vec<_>>(),
             "screenshot": shot,
         }))?

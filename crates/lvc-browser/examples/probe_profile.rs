@@ -101,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "url": probe.url,
             "has_sessionid": probe.has_sessionid,
             "composer": probe.composer,
-            "region_restricted": probe.url.contains("/security/region-restricted"),
+            "region_restricted": lvc_core::is_region_restricted(&probe.url),
             "login_markers_seen": markers,
             "texts_sample": probe.texts.iter().take(25).collect::<Vec<_>>(),
             "screenshot": shot,

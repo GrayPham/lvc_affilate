@@ -29,5 +29,8 @@ pub use progress::{BatchProgress, TaskStatus, batch_progress};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
 pub use scheduling::{fit_duration_to_mode, mode_fallback_chain};
-pub use session::{SESSION_PROBE_JS, SessionState, classify_session, has_login_marker};
+pub use session::{
+    DOLA_REGION_RESTRICTED, SESSION_PROBE_JS, SessionState, classify_session, has_login_marker,
+    is_region_restricted,
+};
 pub use value::{LogoMode, Model, Ratio};

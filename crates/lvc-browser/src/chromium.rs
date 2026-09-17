@@ -242,7 +242,7 @@ impl BrowserDriver for ChromiumDriver {
         tokio::fs::create_dir_all(&opts.profile_dir).await?;
         profile::disable_session_restore(&opts.profile_dir).await?;
         probe_lockfile_busy(&opts.profile_dir)?;
-        let (browser, mut handler) = Browser::launch(Self::config(opts)?)
+        let (mut browser, mut handler) = Browser::launch(Self::config(opts)?)
             .await
             .map_err(|e| map_launch_error(&e))?;
         let handler_task = tokio::spawn(async move {
@@ -252,35 +252,53 @@ impl BrowserDriver for ChromiumDriver {
                 }
             }
         });
-        let page = browser.new_page("about:blank").await?;
-        page.execute(SetLocaleOverrideParams::builder().locale(LOCALE).build())
+        // M-12: neu buoc nao duoi day loi, TRUOC day ham tra Err ngay va lam `browser` bi drop
+        // — Drop cua Browser chi canh bao (khong doi CDP), va Child ben duoi kill_on_drop
+        // (TerminateProcess) giet Chrome GIUA chung khi no co the dang ghi profile (giong hai
+        // vi tri da fix o `close()`, xem review Task 3-6 I-3). Gom lai trong mot khoi de khi
+        // loi thi dong nhe nhang (`Browser::close`) truoc khi tra Err, thay vi de drop giet.
+        let init_result: Result<Page, BrowserError> = async {
+            let page = browser.new_page("about:blank").await?;
+            page.execute(SetLocaleOverrideParams::builder().locale(LOCALE).build())
+                .await?;
+            // Review Task 3-6 (I-1): navigator.language(s) VA header Accept-Language deu bat
+            // nguon tu danh sach accept-languages cua renderer, chu KHONG phai tu
+            // SetLocaleOverrideParams (cai do chi doi ICU cho Intl/Date). --lang=ja-JP chon UI
+            // locale "ja" co danh sach accept-languages mac dinh la "ja,en-US,en" ->
+            // navigator.language tra ve "ja". Cach Playwright dat duoc "ja-JP" chinh xac la
+            // goi Emulation.setUserAgentOverride voi userAgent="" (chuoi rong = KHONG ghi de
+            // UA, Chromium bo qua phan do) va acceptLanguage=locale — khong dung script tiem
+            // nao ca.
+            page.execute(
+                SetUserAgentOverrideParams::builder()
+                    .user_agent("")
+                    .accept_language(LOCALE)
+                    .build()
+                    .map_err(BrowserError::Launch)?,
+            )
             .await?;
-        // Review Task 3-6 (I-1): navigator.language(s) VA header Accept-Language deu bat nguon
-        // tu danh sach accept-languages cua renderer, chu KHONG phai tu SetLocaleOverrideParams
-        // (cai do chi doi ICU cho Intl/Date). --lang=ja-JP chon UI locale "ja" co danh sach
-        // accept-languages mac dinh la "ja,en-US,en" -> navigator.language tra ve "ja". Cach
-        // Playwright dat duoc "ja-JP" chinh xac la goi Emulation.setUserAgentOverride voi
-        // userAgent="" (chuoi rong = KHONG ghi de UA, Chromium bo qua phan do) va
-        // acceptLanguage=locale — khong dung script tiem nao ca.
-        page.execute(
-            SetUserAgentOverrideParams::builder()
-                .user_agent("")
-                .accept_language(LOCALE)
-                .build()
-                .map_err(BrowserError::Launch)?,
-        )
-        .await?;
-        page.execute(
-            SetTimezoneOverrideParams::builder()
-                .timezone_id(TIMEZONE)
-                .build()
-                .map_err(BrowserError::Launch)?,
-        )
-        .await?;
-        // Review Task 3-6 (C-1): KHONG goi page.enable_stealth_mode() — than ham cua no (xem
-        // doc ChromiumDriver o tren) tu tao nhieu dau hieu bi phat hien hon la an toan. Co san
-        // --disable-blink-features=AutomationControlled (qua .hide() o config()) da du de
-        // navigator.webdriver tra ve false/undefined mot cach NATIVE.
+            page.execute(
+                SetTimezoneOverrideParams::builder()
+                    .timezone_id(TIMEZONE)
+                    .build()
+                    .map_err(BrowserError::Launch)?,
+            )
+            .await?;
+            // Review Task 3-6 (C-1): KHONG goi page.enable_stealth_mode() — than ham cua no
+            // (xem doc ChromiumDriver o tren) tu tao nhieu dau hieu bi phat hien hon la an
+            // toan. Co san --disable-blink-features=AutomationControlled (qua LAUNCH_ARGS) da
+            // du de navigator.webdriver tra ve false/undefined mot cach NATIVE.
+            Ok(page)
+        }
+        .await;
+        let page = match init_result {
+            Ok(page) => page,
+            Err(e) => {
+                let _ = browser.close().await;
+                handler_task.abort();
+                return Err(e);
+            }
+        };
         Ok(ChromiumSession {
             browser,
             page,
@@ -324,21 +342,29 @@ impl BrowserDriver for ChromiumDriver {
     }
 
     async fn goto(&self, s: &ChromiumSession, url: &str) -> Result<(), BrowserError> {
-        s.page
-            .goto(url)
-            .await
-            .map_err(|e| BrowserError::Navigation {
-                url: url.into(),
-                reason: e.to_string(),
-            })?;
-        s.page
-            .wait_for_navigation()
-            .await
-            .map_err(|e| BrowserError::Navigation {
-                url: url.into(),
-                reason: e.to_string(),
-            })?;
-        Ok(())
+        // M-6: wait_for_navigation() khong co deadline rieng — no "park" toi lan `Page` load
+        // KE TIEP (handler/target.rs), nen mot SPA khong bao gio phat su kien load lai (hoac
+        // mot redirect vo han) se treo vinh vien. Boc timeout 60s ngoai ca goto+wait (khop
+        // Python: /chat cho toi 60s).
+        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            s.page
+                .goto(url)
+                .await
+                .map_err(|e| BrowserError::Navigation {
+                    url: url.into(),
+                    reason: e.to_string(),
+                })?;
+            s.page
+                .wait_for_navigation()
+                .await
+                .map_err(|e| BrowserError::Navigation {
+                    url: url.into(),
+                    reason: e.to_string(),
+                })?;
+            Ok::<(), BrowserError>(())
+        })
+        .await
+        .map_err(|_elapsed| BrowserError::Timeout(format!("dieu huong toi {url} qua 60s")))?
     }
 
     async fn probe_session(&self, s: &ChromiumSession) -> Result<SessionProbe, BrowserError> {
