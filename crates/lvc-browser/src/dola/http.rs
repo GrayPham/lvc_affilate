@@ -7,7 +7,7 @@
 //! | [`LOGIN_INVALID_CODES`] (re-export) | `hub_browser.py:746` | `lvc_core::chain` |
 //! | [`POLL_UA`] | `hub_browser.py:747` | CHI de tham khao — R2: UA THAT cua trinh duyet (`ops::user_agent`) |
 //! | [`POLL_PARAMS`] | `hub_browser.py:748-750` | chep nguyen van, DUNG THU TU (test so byte voi nguon) |
-//! | [`DolaHttp::new`] | `HttpSession.__init__` `:801-810` + `_sess` `:819-826` | timeout total 40 s, proxy `aiohttp_proxy_parts` (`proxies.py:105-110`) |
+//! | [`DolaHttp::new`] | `HttpSession.__init__` `:801-810` + `_sess` `:817-823` | timeout total 40 s, proxy `aiohttp_proxy_parts` (`proxies.py:105-110`) |
 //! | [`DolaHttp::pull_chain`] / [`DolaHttp::pull_chain_at`] | `HttpSession.poll` `:853-873` | POST + query + body `POLL_JS` (`video_worker.py:19-57`) |
 //! | [`poll_body`] | `:856-860` / `POLL_JS` dong 37-55 | JSON `cmd 3100` |
 //! | [`PullOutcome::set_cookies`] | `:867-868` (`cookie_jar` -> `_cookies`) | cap `(ten, gia tri)` tu `Set-Cookie` |
@@ -16,7 +16,7 @@
 //! | [`output_path`] | `:176` `f"{account}_{time.strftime('%Y%m%d_%H%M%S')}.mp4"` | UTC (ruling #4, `util::timestamp_utc_at`) |
 //!
 //! # Header (so voi Python)
-//! | Header | poll (`_sess` `:823-825` + `:861`) | `fetch_raw_video` (`:236`) | `download` (`:181-182`) |
+//! | Header | poll (`_sess` `:820-822` + `:861`) | `fetch_raw_video` (`:236`) | `download` (`:181-182`) |
 //! |---|---|---|---|
 //! | `User-Agent` | `POLL_UA` -> **UA that** (R2) | aiohttp mac dinh -> **UA that** (ruling) | aiohttp mac dinh -> **UA that** (ruling) |
 //! | `Accept` | `*/*` | `application/json,text/plain,*/*` | `*/*` (reqwest mac dinh = aiohttp mac dinh) |
@@ -37,8 +37,9 @@
 //!   (Python: `resolve_proxy` cung ra 1 proxy hieu luc cua tai khoan).
 //! - **Cookie**: khong co `cookie_store` (feature `cookies` KHONG bat -> reqwest khong co jar) — header
 //!   `Cookie` dat tuong minh moi lan poll; `Set-Cookie` tra ve cho caller tu gop (Python gop vao dict
-//!   `_cookies` de sync ve file). `Max-Age <= 0` bo qua (jar aiohttp xoa cookie do); `Expires` qua khu
-//!   KHONG xu ly (Dola lam moi msToken bang gia tri moi, khong xoa).
+//!   `_cookies` de sync ve file). Cookie HET HAN (`Max-Age <= 0`, hoac `Expires <= now` khi khong co
+//!   `Max-Age` hop le — parser ngay RFC 6265 `util::cookie_date_unix`) bo qua nhu jar aiohttp xoa
+//!   cookie do (fix vong 1, I-2; chi tiet + 2 diem lech aiohttp o [`parse_set_cookie_at`]).
 //! - **`fetch_raw_video`**: Python `except Exception: return None` cho MOI loi; o day loi mang/timeout
 //!   -> `Err(Http)` (caller — Task 11 — coi nhu `None`, thu `fallback_api` ke tiep), HTTP != 200 hay
 //!   JSON hong -> `Ok(None)` nhu Python.
@@ -74,7 +75,7 @@ use super::util;
 
 /// `hub_browser.py:862` — endpoint pull hoi thoai.
 pub const POLL_URL: &str = "https://www.dola.com/im/chain/single";
-/// `hub_browser.py:824` `Origin` / `:861` tien to `Referer`.
+/// `hub_browser.py:822` `Origin` / `:861` tien to `Referer`.
 pub const DOLA_ORIGIN: &str = "https://www.dola.com";
 /// `hub_browser.py:747` `POLL_UA` — CHI DE THAM KHAO (chep nguyen van). Ruling R2: KHONG dung; UA
 /// gui di la UA THAT cua trinh duyet (`ops::user_agent`) do caller truyen vao [`DolaHttp::new`].
@@ -97,32 +98,48 @@ pub const POLL_PARAMS: [(&str, &str); 14] = [
     ("web_platform", "browser"),
     ("use-olympus-account", "1"),
 ];
-/// `hub_browser.py:823` `Accept-Language`.
+/// `hub_browser.py:821` `Accept-Language`.
 pub const ACCEPT_LANGUAGE_JA: &str = "ja-JP,ja;q=0.9";
 /// `unwatermark.py:236` header `accept` khi GET `fallback_api`.
 pub const RAW_ACCEPT: &str = "application/json,text/plain,*/*";
-/// `hub_browser.py:822` `ClientTimeout(total=40)` — timeout MAC DINH cua client (poll).
+/// `hub_browser.py:820` `ClientTimeout(total=40)` — timeout MAC DINH cua client (poll).
 pub const POLL_TIMEOUT: Duration = Duration::from_secs(40);
 /// `unwatermark.py:27` `FETCH_TIMEOUT = 30` — gia tri Task 11 nen truyen cho `fetch_raw_video`.
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 /// `video_worker.py:177` `ClientTimeout(total=300)`.
 pub const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
-/// `hub_browser.py:825` / `POLL_JS` dong 34.
+/// `hub_browser.py:822` / `POLL_JS` dong 34.
 const AGW_JS_CONV: &str = "str";
 /// `hub_browser.py:861` / `POLL_JS` dong 33.
 const POLL_CONTENT_TYPE: &str = "application/json; encoding=utf-8";
-/// `hub_browser.py:871` `str(status_desc)[:120]`.
+/// `hub_browser.py:872` `str(status_desc)[:120]`.
 const DESC_MAX_CHARS: usize = 120;
 
 /// Ket qua mot lan poll: `ChainPoll` (nhu dict Python) + cookie moi tu `Set-Cookie`
 /// (`hub_browser.py:867-868`: Dola lam moi `msToken`/... -> caller cap nhat chuoi `Cookie` cua minh
 /// cho lan poll sau, va sync ve file neu muon). Tra ve CA KHI HTTP != 200 (Python cap nhat jar ngay
-/// khi nhan header, chi cham copy sang dict — ket qua cuoi nhu nhau).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// khi nhan header, chi cham copy sang dict — ket qua cuoi nhu nhau). `Debug` tu viet (fix vong 1,
+/// I-1): in `poll` binh thuong, `set_cookies` CHI TEN (`[("msToken", "***"), ...]`) — gia tri la
+/// msToken/sessionid, khong bao gio duoc ra log du caller `{:?}` ca struct.
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct PullOutcome {
     pub poll: ChainPoll,
     /// `(ten, gia tri)` theo thu tu header `Set-Cookie`; caller UPSERT vao map cookie cua minh.
     pub set_cookies: Vec<(String, String)>,
+}
+
+impl std::fmt::Debug for PullOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let masked: Vec<(&str, &str)> = self
+            .set_cookies
+            .iter()
+            .map(|(name, _)| (name.as_str(), "***"))
+            .collect();
+        f.debug_struct("PullOutcome")
+            .field("poll", &self.poll)
+            .field("set_cookies", &masked)
+            .finish()
+    }
 }
 
 /// Client HTTP dung chung cho ca ba loai request (poll/fetch/download) cua MOT tai khoan: cung UA,
@@ -144,7 +161,7 @@ impl std::fmt::Debug for DolaHttp {
 }
 
 impl DolaHttp {
-    /// `HttpSession._sess` `:819-826`: mot session, timeout total 40 s, UA co dinh; proxy
+    /// `HttpSession._sess` `:818-823`: mot session, timeout total 40 s, UA co dinh; proxy
     /// `aiohttp_proxy_parts` -> `proxy=server, proxy_auth=BasicAuth(user, pw)` (`:807-808`).
     /// `user_agent` = UA THAT cua trinh duyet (R2). Khong co cookie jar (xem doc module).
     ///
@@ -231,7 +248,7 @@ impl DolaHttp {
         let web_tab_id = uuid::Uuid::new_v4().to_string();
         let mut params: Vec<(&str, &str)> = POLL_PARAMS.to_vec();
         params.push(("web_tab_id", &web_tab_id));
-        // :857-860 body; :861 header rieng; :823-825 header session
+        // :857-860 body; :861 header rieng; :820-822 header session
         let body = poll_body(conv, &uuid::Uuid::new_v4().to_string());
         let referer = format!("{DOLA_ORIGIN}/chat/{conv}");
         let host_path = url_host_path(poll_url);
@@ -436,12 +453,31 @@ pub fn output_path(out_dir: &Path, account: &str, now: SystemTime) -> PathBuf {
     out_dir.join(format!("{account}_{}.mp4", util::timestamp_utc_at(now)))
 }
 
-/// Mot header `Set-Cookie` -> `(ten, gia tri)`: phan truoc `;` dau tien, `name=value` (cat khoang
-/// trang, bo dau `"` bao quanh nhu `http.cookies` Python); `Max-Age <= 0` = xoa cookie -> `None`
-/// (jar aiohttp khong giu — `_cookies` Python giu gia tri CU, caller o day cung vay vi khong nhan
-/// cap nao). Thieu `=`/ten rong -> `None`. Cac thuoc tinh khac (`Domain`, `Path`, `Expires`...) bo qua.
+/// Mot header `Set-Cookie` -> `(ten, gia tri)` tai thoi diem hien tai — xem [`parse_set_cookie_at`].
 #[must_use]
 pub fn parse_set_cookie(line: &str) -> Option<(String, String)> {
+    parse_set_cookie_at(line, SystemTime::now())
+}
+
+/// Mot header `Set-Cookie` -> `(ten, gia tri)`: phan truoc `;` dau tien, `name=value` (cat khoang
+/// trang, bo dau `"` bao quanh nhu `http.cookies` Python); thieu `=`/ten rong -> `None`.
+/// Het han = XOA cookie -> `None` (jar aiohttp khong giu -> `_cookies` Python giu gia tri CU; caller
+/// o day cung vay vi khong nhan cap nao) theo RFC 6265 §5.2.1/§5.2.2/§5.3 buoc 5 (fix vong 1, I-2):
+/// - `Max-Age` HOP LE (so nguyen) thang `Expires`: `<= 0` -> xoa; `> 0` -> giu. Khong hop le -> bo qua
+///   thuoc tinh do (nhu khong co).
+/// - Khong co `Max-Age` hop le: `Expires` parse duoc ([`util::cookie_date_unix`], RFC 1123 / RFC 850 /
+///   asctime nhu trinh duyet) va `<= now` -> xoa; tuong lai -> giu; khong parse duoc -> bo qua thuoc
+///   tinh (cookie phien -> giu).
+/// - Lap lai thuoc tinh: lan HOP LE cuoi thang (RFC 6265 §5.3 "the last attribute").
+///
+/// `Domain`/`Path`/... bo qua (caller giu MOT chuoi Cookie cho `www.dola.com`).
+///
+/// Lech aiohttp (co chu y, deu theo RFC/trinh duyet — oracle jar aiohttp 3.14.3 cho cac ca khac):
+/// aiohttp `if expire_time:` coi epoch 0 (`Thu, 01 Jan 1970 00:00:00 GMT` — idiom xoa pho bien) la
+/// "khong parse duoc" -> GIU; va `Max-Age` khong hop le lam aiohttp bo luon `Expires` -> GIU. Ca hai
+/// o day -> xoa (ruling fix vong 1: `Expires <= now` = xoa).
+#[must_use]
+pub fn parse_set_cookie_at(line: &str, now: SystemTime) -> Option<(String, String)> {
     let mut parts = line.split(';');
     let (name, value) = parts.next()?.split_once('=')?;
     let name = name.trim();
@@ -453,13 +489,29 @@ pub fn parse_set_cookie(line: &str) -> Option<(String, String)> {
         .strip_prefix('"')
         .and_then(|v| v.strip_suffix('"'))
         .unwrap_or(value);
+    let mut max_age: Option<i64> = None;
+    let mut expires: Option<i64> = None;
     for attr in parts {
         let (k, v) = attr
             .split_once('=')
             .map_or((attr.trim(), ""), |(k, v)| (k.trim(), v.trim()));
-        if k.eq_ignore_ascii_case("max-age") && v.parse::<i64>().is_ok_and(|n| n <= 0) {
-            return None;
+        if k.eq_ignore_ascii_case("max-age") {
+            if let Ok(n) = v.parse::<i64>() {
+                max_age = Some(n);
+            }
+        } else if k.eq_ignore_ascii_case("expires") {
+            if let Some(t) = util::cookie_date_unix(v) {
+                expires = Some(t);
+            }
         }
+    }
+    let is_expired = match (max_age, expires) {
+        (Some(n), _) => n <= 0,
+        (None, Some(t)) => t <= util::unix_secs(now),
+        (None, None) => false,
+    };
+    if is_expired {
+        return None;
     }
     Some((name.to_string(), value.to_string()))
 }
@@ -648,7 +700,7 @@ mod tests {
         );
 
         let req = only_request(&server).await;
-        // Header phien (hub_browser.py:823-825) + header rieng poll (:861)
+        // Header phien (hub_browser.py:820-822) + header rieng poll (:861)
         assert_eq!(header(&req, "cookie"), Some(COOKIE));
         assert_eq!(header(&req, "agw-js-conv"), Some("str"));
         assert_eq!(header(&req, "origin"), Some("https://www.dola.com"));
@@ -777,7 +829,8 @@ mod tests {
     }
 
     /// `for c in s.cookie_jar: self._cookies[c.key] = c.value` (:867-868): moi Set-Cookie -> cap
-    /// (ten, gia tri), theo thu tu; `Max-Age=0` = xoa -> bo qua (jar aiohttp khong giu).
+    /// (ten, gia tri), theo thu tu; `Max-Age=0` / `Expires` qua khu = xoa -> bo qua (jar aiohttp
+    /// khong giu; fix vong 1 them `Expires`), `Expires` tuong lai -> giu.
     #[tokio::test]
     async fn pull_chain_gom_nhieu_set_cookie() {
         let server = MockServer::start().await;
@@ -787,7 +840,15 @@ mod tests {
                     .set_body_json(json!({}))
                     .append_header("set-cookie", "msToken=t1; Max-Age=86400; Path=/")
                     .append_header("set-cookie", "ttwid=\"quoted\"; Path=/; HttpOnly")
-                    .append_header("set-cookie", "gone=; Max-Age=0; Path=/"),
+                    .append_header("set-cookie", "gone=; Max-Age=0; Path=/")
+                    .append_header(
+                        "set-cookie",
+                        "dead=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/",
+                    )
+                    .append_header(
+                        "set-cookie",
+                        "alive=v; Expires=Mon, 01 Jan 2035 00:00:00 GMT; Path=/",
+                    ),
             )
             .mount(&server)
             .await;
@@ -800,7 +861,35 @@ mod tests {
             vec![
                 ("msToken".to_string(), "t1".to_string()),
                 ("ttwid".to_string(), "quoted".to_string()),
+                ("alive".to_string(), "v".to_string()),
             ]
+        );
+    }
+
+    /// Fix vong 1 (I-1): `Debug` che GIA TRI cookie — chi in ten + `***`.
+    #[test]
+    fn pull_outcome_debug_che_gia_tri_cookie() {
+        let out = PullOutcome {
+            poll: ChainPoll {
+                ok: true,
+                status: 200,
+                ..ChainPoll::default()
+            },
+            set_cookies: vec![
+                ("msToken".to_string(), "SECRETVAL1".to_string()),
+                ("sessionid".to_string(), "SECRETVAL2".to_string()),
+            ],
+        };
+        let s = format!("{out:?}");
+        assert!(s.contains("PullOutcome"), "{s}");
+        assert!(s.contains("ok: true"), "{s}");
+        assert!(s.contains("(\"msToken\", \"***\")"), "{s}");
+        assert!(s.contains("(\"sessionid\", \"***\")"), "{s}");
+        assert!(!s.contains("SECRETVAL"), "lo gia tri cookie: {s}");
+        let alt = format!("{out:#?}");
+        assert!(
+            !alt.contains("SECRETVAL"),
+            "lo gia tri cookie ({{:#?}}): {alt}"
         );
     }
 
@@ -1043,6 +1132,95 @@ mod tests {
         assert_eq!(parse_set_cookie(""), None);
     }
 
+    /// Fix vong 1 (I-2): `Expires` <= now = xoa (bo qua, caller giu gia tri cu); tuong lai = upsert;
+    /// khong parse duoc = cookie phien (upsert); `Max-Age` HOP LE thang `Expires` (RFC 6265 §5.3
+    /// buoc 5); `Max-Age` khong hop le bi bo qua -> xet `Expires`; nhieu `Expires`/`Max-Age`: lan
+    /// HOP LE cuoi thang. Oracle jar aiohttp 3.14.3 (`update_cookies` roi liet ke) cho cac dong
+    /// khong danh dau; 2 dong danh dau `(lech aiohttp)` theo RFC/trinh duyet — xem doc ham.
+    #[test]
+    fn parse_set_cookie_expires_theo_now() {
+        // now = 2026-09-18 01:02:03 UTC
+        let now = UNIX_EPOCH + Duration::from_secs(1_789_693_323);
+        let at = |line: &str| parse_set_cookie_at(line, now);
+        let keep = Some(("a".to_string(), "NEW".to_string()));
+        assert_eq!(at("a=NEW; Expires=Wed, 21 Oct 2015 07:28:00 GMT"), None);
+        assert_eq!(at("a=NEW; Expires=Mon, 01 Jan 2035 00:00:00 GMT"), keep);
+        assert_eq!(
+            at("a=NEW; Expires=Fri, 18 Sep 2026 01:02:03 GMT"),
+            None,
+            "== now"
+        );
+        assert_eq!(
+            at("a=NEW; Expires=Fri, 18 Sep 2026 01:02:04 GMT"),
+            keep,
+            "now + 1"
+        );
+        // (lech aiohttp: `if expire_time:` coi 0 la falsy -> giu; RFC/trinh duyet: qua khu -> xoa)
+        assert_eq!(at("a=NEW; Expires=Thu, 01 Jan 1970 00:00:00 GMT"), None);
+        assert_eq!(at("a=NEW; Expires=Thu, 31 Dec 1969 23:59:59 GMT"), None);
+        assert_eq!(
+            at("a=NEW; Expires=garbage"),
+            keep,
+            "khong parse duoc = cookie phien"
+        );
+        assert_eq!(at("a=NEW; Expires="), keep);
+        assert_eq!(at("a=NEW; Expires"), keep);
+        // Ba dinh dang qua khu
+        assert_eq!(at("a=NEW; Expires=Sunday, 06-Nov-94 08:49:37 GMT"), None);
+        assert_eq!(at("a=NEW; Expires=Sun Nov  6 08:49:37 1994"), None);
+        assert_eq!(
+            at("a=NEW; expires=Sun, 06 Nov 1994 08:49:37 GMT; Path=/"),
+            None
+        );
+        // Max-Age thang Expires
+        assert_eq!(
+            at("a=NEW; Max-Age=10; Expires=Wed, 21 Oct 2015 07:28:00 GMT"),
+            keep
+        );
+        assert_eq!(
+            at("a=NEW; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Max-Age=10"),
+            keep
+        );
+        assert_eq!(
+            at("a=NEW; Max-Age=0; Expires=Mon, 01 Jan 2035 00:00:00 GMT"),
+            None
+        );
+        // (lech aiohttp: Max-Age khong hop le -> aiohttp bo luon Expires -> giu; RFC §5.2.2 bo
+        // thuoc tinh do -> xet Expires -> xoa)
+        assert_eq!(
+            at("a=NEW; Max-Age=abc; Expires=Wed, 21 Oct 2015 07:28:00 GMT"),
+            None
+        );
+        assert_eq!(at("a=NEW; Max-Age=abc"), keep);
+        assert_eq!(at("a=NEW; Max-Age="), keep);
+        // Lan hop le cuoi thang
+        assert_eq!(
+            at(
+                "a=NEW; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Expires=Mon, 01 Jan 2035 00:00:00 GMT"
+            ),
+            keep
+        );
+        assert_eq!(
+            at(
+                "a=NEW; Expires=Mon, 01 Jan 2035 00:00:00 GMT; Expires=Wed, 21 Oct 2015 07:28:00 GMT"
+            ),
+            None
+        );
+        assert_eq!(
+            at("a=NEW; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Expires=garbage"),
+            None
+        );
+        assert_eq!(at("a=NEW; Max-Age=0; Max-Age=5"), keep);
+        assert_eq!(at("a=NEW; Max-Age=5; Max-Age=0"), None);
+        assert_eq!(at("a=NEW; Max-Age=5; Max-Age=abc"), keep);
+        // Gia tri rong + Expires qua khu (idiom xoa pho bien) -> bo qua, KHONG ghi de bang chuoi rong
+        assert_eq!(
+            at("a=; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Path=/"),
+            None
+        );
+        assert_eq!(at("a=NEW"), keep);
+    }
+
     #[test]
     fn url_host_path_bo_query_va_fragment() {
         assert_eq!(
@@ -1082,7 +1260,7 @@ mod tests {
     fn hang_so_theo_python() {
         assert_eq!(POLL_URL, "https://www.dola.com/im/chain/single");
         assert_eq!(DOLA_ORIGIN, "https://www.dola.com");
-        assert_eq!(POLL_TIMEOUT.as_secs(), 40); // hub_browser.py:822
+        assert_eq!(POLL_TIMEOUT.as_secs(), 40); // hub_browser.py:820
         assert_eq!(FETCH_TIMEOUT.as_secs(), 30); // unwatermark.py:27
         assert_eq!(DOWNLOAD_TIMEOUT.as_secs(), 300); // video_worker.py:177
         assert_eq!(POLL_PARAMS.len(), 14);
