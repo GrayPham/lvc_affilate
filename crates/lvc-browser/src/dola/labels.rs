@@ -126,6 +126,8 @@ pub const PASTE_RESULT_JS: &str = "() => document.documentElement.dataset.dolaPa
 /// `video_worker_ui.py:790` `ATTACH_CARD_SEL` — thumbnail anh dinh kem trong composer (do DOM
 /// 2026-09-17).
 pub const ATTACH_CARD_SEL: &str = r#"[class*="image-container-"] [class*="container-"]"#;
+/// `video_worker_ui.py:791` `COUNT_ATTACH_JS` (f-string tren [`ATTACH_CARD_SEL`]) — so the dinh kem.
+pub const COUNT_ATTACH_JS: &str = r#"() => document.querySelectorAll('[class*="image-container-"] [class*="container-"]').length"#;
 
 /// `video_worker_ui.py:1019-1025` `DOLA_LANG_JS` — ngon ngu dang chay: `ls` (localStorage
 /// `i18nextLng`), `ck` (cookie `i18next`), `ul` (cookie `user_language_code`), `jp` (co nut 高速/プロ).
@@ -151,6 +153,9 @@ pub const DOLA_SET_JA_JS: &str = r"() => {
 
 /// `video_worker_ui.py:1055` `MODE_BTN_JS` — co nut che do bat dau bang 高速/プロ (trang da on dinh).
 pub const MODE_BTN_JS: &str = "() => !![...document.querySelectorAll('button')].find(b => /^(高速|プロ)/.test((b.innerText || '').trim()))";
+
+/// `video_worker_ui.py:1948` `_BUTTONS_JS` — 25 nhan nut dau tien (cho thong diep `MODE_UNAVAILABLE`).
+pub const BUTTONS_JS: &str = "() => [...document.querySelectorAll('button')].map(b => (b.innerText||'').trim()).filter(Boolean).slice(0, 25)";
 
 /// `video_worker_ui.py:1087-1095` `SIDEBAR_LAST_LEAF_JS` — la cuoi cua `nav|aside` (hang tai khoan)
 /// cho duong Cai dat UI. R4: duong UI KHONG duoc port; giu hang de tham chieu/Task sau.
@@ -254,6 +259,32 @@ pub const COOKIE_OK_FINDER: &str = "(() => { const b = [...document.querySelecto
 
 /// `_close_open_menus` (Task 7): co menu dang mo khong.
 pub const OPEN_MENU_JS: &str = r#"!!document.querySelector('[role="menu"]')"#;
+
+/// `video_worker_ui.py:2003` — o nhap de xoa nhap cu khi composer con mo (`select_mode`).
+pub const DRAFT_BOX_SEL: &str = "div[contenteditable='true'], textarea";
+
+/// `video_worker_ui.py:1929` — ung vien 2 cua `_wait_mode_button`: nhan che do o dau/sau khoang trang.
+pub const MODE_BTN_LOOSE_SRC: &str = r"(?:^|\s|\n)(高速|Nhanh|Fast|プロ|Pro)";
+/// `video_worker_ui.py:1930` — ung vien 3: `button:has-text("高速"), button:has-text("Fast"), ...` =
+/// nut DAU TIEN theo DOM co chu (chuan hoa khoang trang, khong phan biet hoa/thuong) CHUA mot trong
+/// 5 nhan; KHONG loc visible (caller kiem nhu Python `count() and is_visible()`).
+pub const MODE_HAS_TEXT_FINDER: &str = "[...document.querySelectorAll('button')].find(b => { const t = (b.innerText||'').replace(/\\s+/g,' ').trim().toLowerCase(); return ['高速', 'fast', 'nhanh', 'pro', 'プロ'].some(l => t.includes(l)); })";
+/// `video_worker_ui.py:2037` — muc menu che do Nhanh / Pro (`has_text=`, IGNORECASE).
+pub const FAST_ITEM_SRC: &str = r"(?:^|\s|\n)(高速|Nhanh|Fast)";
+pub const PRO_ITEM_SRC: &str = r"(?:^|\s|\n)(プロ|Pro)";
+
+/// `video_worker_ui.py:1903-1904` — muc menu thoi luong `rf"^\s*{int(duration)}s(?:\b|\s|$)"`.
+#[must_use]
+pub fn dur_item_src(duration: u16) -> String {
+    format!(r"^\s*{duration}s(?:\b|\s|$)")
+}
+
+/// `video_worker_ui.py:2192` — muc menu ti le `rf"^\s*{re.escape(ratio)}(?:\b|\s|$)"` (Python
+/// KHONG co IGNORECASE; `finder_menu_item_in` them `i` — vo hai voi chu so/dau `:`).
+#[must_use]
+pub fn ratio_item_src(ratio: &str) -> String {
+    format!(r"^\s*{}(?:\b|\s|$)", regex::escape(ratio))
+}
 
 /// `video_worker_ui.py:1854-1856` — nhan che do (da ngon ngu: Nhat/Viet/Anh).
 pub const FAST_MODE_LABELS: [&str; 3] = ["高速", "Nhanh", "Fast"];
@@ -464,6 +495,22 @@ pub fn finder_text_exact(text: &str) -> String {
          const same = (e) => norm(e.textContent) === t; \
          return [...document.querySelectorAll('*')].find(e => e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE' \
          && same(e) && (e.childElementCount === 0 || ![...e.children].some(same))) || null; }})()"
+    )
+}
+
+/// Phan tu SAU NHAT dau tien theo DOM co text (chuan hoa khoang trang, ha thuong) CHUA `text` — gan
+/// `page.get_by_text(text, exact=False).first` / `page.click("text=...")` (Playwright: lax = chuoi
+/// con, khong phan biet hoa/thuong, chuan hoa `\s+`; chi lay phan tu ma KHONG con nao cung khop).
+/// Dung cho option model (`:2160`), `get_by_text(re.compile(re.escape("モデル")))` (`:2148`) va
+/// `page.click("text=" + UI_LABELS[...])` (`:2074`, `:2190`). `text` ma hoa JSON.
+#[must_use]
+pub fn finder_text_lax(text: &str) -> String {
+    let json = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        "(() => {{ const norm = (s) => (s||'').replace(/\\s+/g,' ').trim().toLowerCase(); const t = norm({json}); \
+         const has = (e) => norm(e.textContent).includes(t); \
+         return [...document.querySelectorAll('*')].find(e => e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE' && e.tagName !== 'NOSCRIPT' \
+         && has(e) && ![...e.children].some(has)) || null; }})()"
     )
 }
 
@@ -734,6 +781,54 @@ mod tests {
         );
     }
 
+    /// Task 7: hang/regex inline trong cac ham compose cua Python (`:791`, `:1929-1930`, `:1948`,
+    /// `:2003`, `:2037`, `:1903-1904`, `:2192`).
+    #[test]
+    fn hang_inline_cho_compose() {
+        assert_eq!(
+            COUNT_ATTACH_JS,
+            format!("() => document.querySelectorAll('{ATTACH_CARD_SEL}').length")
+        );
+        assert_eq!(MODE_BTN_LOOSE_SRC, r"(?:^|\s|\n)(高速|Nhanh|Fast|プロ|Pro)");
+        assert_eq!(FAST_ITEM_SRC, r"(?:^|\s|\n)(高速|Nhanh|Fast)");
+        assert_eq!(PRO_ITEM_SRC, r"(?:^|\s|\n)(プロ|Pro)");
+        assert_eq!(DRAFT_BOX_SEL, "div[contenteditable='true'], textarea");
+        assert!(
+            BUTTONS_JS.starts_with("() => [...document.querySelectorAll('button')]"),
+            "{BUTTONS_JS}"
+        );
+        assert!(BUTTONS_JS.ends_with(".slice(0, 25)"), "{BUTTONS_JS}");
+        // :1930 `button:has-text("高速"), ...` — substring khong phan biet hoa/thuong, chuan hoa
+        // khoang trang, nut DAU TIEN theo DOM (khong loc visible — caller kiem).
+        for l in ["'高速'", "'fast'", "'nhanh'", "'pro'", "'プロ'"] {
+            assert!(MODE_HAS_TEXT_FINDER.contains(l), "{MODE_HAS_TEXT_FINDER}");
+        }
+        assert!(MODE_HAS_TEXT_FINDER.contains("toLowerCase()"));
+        assert!(MODE_HAS_TEXT_FINDER.contains(r"replace(/\s+/g,' ')"));
+        // :1903-1904 `rf"^\s*{int(duration)}s(?:\b|\s|$)"` (IGNORECASE)
+        assert_eq!(dur_item_src(15), r"^\s*15s(?:\b|\s|$)");
+        // :2192 `rf"^\s*{re.escape(ratio)}(?:\b|\s|$)"` — re.escape("16:9") == "16:9"
+        assert_eq!(ratio_item_src("16:9"), r"^\s*16:9(?:\b|\s|$)");
+        assert_eq!(ratio_item_src("a.b"), r"^\s*a\.b(?:\b|\s|$)");
+    }
+
+    /// `get_by_text(text, exact=False)` / `text=...` (khong nhay): chuan hoa khoang trang, khong
+    /// phan biet hoa/thuong, CHUOI CON, phan tu sau nhat dau tien theo DOM.
+    #[test]
+    fn finder_text_lax_ma_hoa_json_va_lowercase() {
+        let js = finder_text_lax("Dreamina Seedance 2.5");
+        assert!(js.contains("norm(\"Dreamina Seedance 2.5\")"), "{js}");
+        assert!(js.contains("toLowerCase()"), "{js}");
+        assert!(js.contains(".includes(t)"), "{js}");
+        assert!(js.contains(r"replace(/\s+/g,' ')"), "{js}");
+        assert!(
+            js.contains("![...e.children].some(has)"),
+            "phai la phan tu sau nhat: {js}"
+        );
+        let tricky = finder_text_lax("a\"b\\c");
+        assert!(tricky.contains(r#""a\"b\\c""#), "{tricky}");
+    }
+
     #[test]
     fn duration_hook_script_thay_dur() {
         assert_eq!(DURATION_HOOK_JS.matches("__DUR__").count(), 1);
@@ -829,6 +924,10 @@ mod tests {
         if !same_bytes(&src, "ABILITY_TAG_RE", ABILITY_TAG_SRC) {
             bad.push("ABILITY_TAG_RE");
         }
+        // Task 7: `_BUTTONS_JS` (:1948) la hang module (ten bat dau `_`)
+        if !same_bytes(&src, "_BUTTONS_JS", BUTTONS_JS) {
+            bad.push("_BUTTONS_JS");
+        }
         // M-4: VIDEO_ID_RE (re-export lvc-core) — bo tien to `(?i)` roi so voi :1432
         let video_id_src = VIDEO_ID_RE
             .as_str()
@@ -864,6 +963,15 @@ mod tests {
             format!("page.locator('{MENU_ITEM_SEL}', has_text=item_re)"),
             format!("page.locator('{DUR_MENU_ITEM_SEL}', has_text=re.compile("),
             "page.locator('button:has-text(\"OK\"), button:has-text(\"Đồng ý\")')".to_string(),
+            // Task 7 (:791 f-string, :1929-1930, :2003, :2037, :1903-1904, :2192)
+            "COUNT_ATTACH_JS = f\"() => document.querySelectorAll('{ATTACH_CARD_SEL}').length\"".to_string(),
+            format!("has_text=re.compile(r\"{MODE_BTN_LOOSE_SRC}\", re.IGNORECASE)"),
+            "page.locator('button:has-text(\"高速\"), button:has-text(\"Fast\"), button:has-text(\"Nhanh\"), button:has-text(\"Pro\"), button:has-text(\"プロ\")')".to_string(),
+            format!("page.locator(\"{DRAFT_BOX_SEL}\")"),
+            format!("re.compile(r\"{FAST_ITEM_SRC}\", re.IGNORECASE) if mode == \"fast\" else re.compile(r\"{PRO_ITEM_SRC}\", re.IGNORECASE)"),
+            r#"has_text=re.compile(
+                rf"^\s*{int(duration)}s(?:\b|\s|$)", re.IGNORECASE)"#.to_string(),
+            r#"page.locator('[role="menuitem"]', has_text=re.compile(rf"^\s*{re.escape(ratio)}(?:\b|\s|$)"))"#.to_string(),
         ] {
             assert!(src.contains(&needle), "khong thay trong Python: {needle}");
         }
