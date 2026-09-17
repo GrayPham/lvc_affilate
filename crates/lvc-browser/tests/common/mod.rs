@@ -1,6 +1,6 @@
-//! Helper dung chung cho smoke test (`ops_smoke.rs`, `session_smoke.rs`, `compose_smoke.rs`, `refs_smoke.rs`): server HTTP ti hon phuc
-//! vu `tests/fixtures/` tren `127.0.0.1:0` + mo Chromium headless voi profile tam. KHONG bao gio
-//! goi dola.com.
+//! Helper dung chung cho smoke test (`ops_smoke.rs`, `session_smoke.rs`, `compose_smoke.rs`,
+//! `refs_smoke.rs`, `submit_smoke.rs`): server HTTP ti hon phuc vu `tests/fixtures/` tren
+//! `127.0.0.1:0` + mo Chromium headless voi profile tam. KHONG bao gio goi dola.com.
 //!
 //! Vi sao HTTP chu khong `file://` (do 2026-09-18 tren Chromium 1234): `fetch()` tu origin `file://`
 //! bi CORS chan ("Failed to fetch") va `Network.responseReceived` KHONG bao gio ban, nen
@@ -8,6 +8,8 @@
 #![allow(dead_code)] // moi file test chi dung mot phan helper
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use lvc_browser::chromium::{ChromiumDriver, ChromiumSession};
 use lvc_browser::{BrowserDriver, LaunchOpts, ops};
@@ -33,10 +35,20 @@ pub fn fixtures_dir() -> PathBuf {
 /// `conversation.conversation_id`, id qua `id`, va mot id KHONG phai so (phai bi loc).
 pub const RECENT_CONV_BODY: &str = r#"{"downlink_body":{"pull_recent_conv_chain_downlink_body":{"cells":[{"conversation":{"conversation_id":"3841796000000000689"}},{"id":12345},{"id":"abc"}]}}}"#;
 
+/// Task 9: tu lan goi `recent_conv` THU HAI tro di (cung mot server) — co them chat MOI
+/// `777000000000000001` dung dau (moi nhat truoc), de test nhanh "URL roi vao chat cu ->
+/// `recent_conv_ids` tim chat moi" cua `after_submit` (`video_worker_ui.py:2578-2587`).
+pub const RECENT_CONV_BODY_LATER: &str = r#"{"downlink_body":{"pull_recent_conv_chain_downlink_body":{"cells":[{"conversation":{"conversation_id":"777000000000000001"}},{"conversation":{"conversation_id":"3841796000000000689"}},{"id":12345}]}}}"#;
+
+/// Id MOI ma `RECENT_CONV_BODY_LATER` them vao.
+pub const RECENT_CONV_NEW_ID: &str = "777000000000000001";
+
 /// Tra (status, content-type, body) cho duong dan HTTP: endpoint gia lap `upload`/`recent_conv` cua
-/// Dola tra 200 JSON, `/upload/v1/loi` tra 500 (de chac `count_2xx` KHONG dem non-2xx), con lai doc
-/// file trong `tests/fixtures/` (cam `..`).
-pub fn route(path: &str) -> (&'static str, &'static str, Vec<u8>) {
+/// Dola tra 200 JSON (`recent_call` = so lan `/im/chain/recent_conv` DA duoc goi truoc do tren server
+/// nay: 0 -> `RECENT_CONV_BODY`, >= 1 -> `RECENT_CONV_BODY_LATER`), `/upload/v1/loi` tra 500 (de
+/// chac `count_2xx` KHONG dem non-2xx), `/chat` va `/chat/<so>` -> `chat_submit.html` (URL hinh dang
+/// Dola cho `dola::submit`), con lai doc file trong `tests/fixtures/` (cam `..`).
+pub fn route(path: &str, recent_call: usize) -> (&'static str, &'static str, Vec<u8>) {
     match path {
         "/alice/resource/prepare_upload" | "/upload/v1/x" => {
             ("200 OK", "application/json", b"{\"ok\":true}".to_vec())
@@ -44,8 +56,24 @@ pub fn route(path: &str) -> (&'static str, &'static str, Vec<u8>) {
         "/im/chain/recent_conv" => (
             "200 OK",
             "application/json",
-            RECENT_CONV_BODY.as_bytes().to_vec(),
+            if recent_call == 0 {
+                RECENT_CONV_BODY
+            } else {
+                RECENT_CONV_BODY_LATER
+            }
+            .as_bytes()
+            .to_vec(),
         ),
+        // Task 9: trang chat gia lap o /chat va /chat/<id> (pushState/goto sau khi gui).
+        p if p == "/chat"
+            || p.strip_prefix("/chat/")
+                .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())) =>
+        {
+            match std::fs::read(fixtures_dir().join("chat_submit.html")) {
+                Ok(b) => ("200 OK", "text/html; charset=utf-8", b),
+                Err(_) => ("404 Not Found", "text/plain", b"khong co".to_vec()),
+            }
+        }
         // Task 7: fixture compose.html gui /chat/completion (qua hook duration) - chi can 200.
         "/chat/completion" => ("200 OK", "application/json", b"{}".to_vec()),
         "/upload/v1/loi" => (
@@ -73,11 +101,13 @@ pub async fn serve_fixtures() -> (String, tokio::task::JoinHandle<()>) {
         .await
         .expect("bind 127.0.0.1:0");
     let port = listener.local_addr().unwrap().port();
+    let recent_calls = Arc::new(AtomicUsize::new(0));
     let task = tokio::spawn(async move {
         loop {
             let Ok((mut sock, _)) = listener.accept().await else {
                 break;
             };
+            let recent_calls = Arc::clone(&recent_calls);
             tokio::spawn(async move {
                 let mut buf = vec![0_u8; 16 * 1024];
                 let mut n = 0;
@@ -101,7 +131,12 @@ pub async fn serve_fixtures() -> (String, tokio::task::JoinHandle<()>) {
                     .next()
                     .unwrap_or("/")
                     .to_string();
-                let (status, ctype, body) = route(&path);
+                let recent_call = if path == "/im/chain/recent_conv" {
+                    recent_calls.fetch_add(1, Ordering::SeqCst)
+                } else {
+                    0
+                };
+                let (status, ctype, body) = route(&path, recent_call);
                 let head = format!(
                     "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
                      Cache-Control: no-store\r\nConnection: close\r\n\r\n",
@@ -126,7 +161,7 @@ pub struct Fx {
 }
 
 impl Fx {
-    /// `path` vd `"composer.html"` hoac `"chat.html?login=1"`.
+    /// `path` vd `"composer.html"`, `"chat.html?login=1"` hoac `"chat?captcha=1"` (route `/chat`).
     pub async fn open(path: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let (base, server) = serve_fixtures().await;

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>chat_submit fixture (gia lap trang /chat Dola cho smoke test dola::submit)</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: sans-serif; }
+  [role=menu] { border: 1px solid #888; padding: 6px; width: 220px; background: #fff; }
+  [role=menuitem] { padding: 4px 6px; cursor: pointer; }
+  #captcha-wrap iframe { width: 300px; height: 120px; border: 1px solid #c33; }
+  #log { white-space: pre; font-size: 11px; }
+</style>
+</head>
+<body>
+<!--
+  Server test (tests/common/mod.rs) phuc vu file nay o duong dan `/chat` va `/chat/<so>` de URL co
+  hinh dang nhu Dola (`pick_new_conv_id` doc DOAN CUOI cua path). Query string dieu khien fixture:
+    (mac dinh)       -> 1000 ms sau Enter: history.pushState('/chat/123456789012') (chat MOI)
+    ?captcha=1       -> pushState NGAY khi Enter + 500 ms sau chen <iframe src="bdcaptcha.html">
+                        (captcha phai thang du da co conversation id — R3 kiem captcha truoc)
+    ?noconv=1        -> KHONG bao gio pushState (-> NO_CONVERSATION sau Limits.no_conversation_timeout_s)
+    ?login_after=1   -> sau Enter hien nut ログイン (raise_if_logged_out -> LOGGED_OUT revoked)
+    ?jump=1          -> 1000 ms sau Enter: pushState('/chat/12345') = chat CU (co trong
+                        /im/chain/recent_conv lan dau); lan goi recent_conv thu 2+ server tra them
+                        id MOI 777000000000000001 (xem RECENT_CONV_BODY_LATER)
+    ?dur=none        -> composer KHONG co nut thoi luong (15 s -> giu 10 s + hook ADR-044)
+    ?nofetch=1       -> Enter KHONG goi fetch /chat/completion (hook khong bao gio `patched:N`)
+  Enter trong o soan -> log `send "<text>"`, xoa o, goi window.fetch('/chat/completion', body co
+  "duration":10) qua stub fetch (ghi `fetch <url> body=<body>`; hook DURATION_HOOK_JS boc ben ngoai
+  nen stub thay body DA doi). Menu `[role=menu]` tao/xoa dong, Escape xoa.
+  Moi lan tai trang: sessionStorage.lvc_loads += 1.
+-->
+<div id="mode-wrap"><button id="mode-btn">高速</button></div>
+<div id="login-wrap"></div>
+<button id="create-btn">動画を作成</button>
+<div id="composer-extra"></div>
+<textarea id="prompt" rows="4" cols="60"></textarea>
+<div id="captcha-wrap"></div>
+<div>loads=<span id="loads">0</span></div>
+<pre id="log"></pre>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(line) { logEl.textContent += line + '\n'; }
+  var q = new URLSearchParams(location.search);
+
+  var loads = 0;
+  try {
+    loads = parseInt(sessionStorage.getItem('lvc_loads') || '0', 10) + 1;
+    sessionStorage.setItem('lvc_loads', String(loads));
+  } catch (e) {}
+  document.getElementById('loads').textContent = String(loads);
+  log('load ' + loads + ' ' + location.pathname + location.search);
+
+  document.addEventListener('click', function (e) {
+    log('click ' + (e.target.id || e.target.tagName));
+  });
+  document.addEventListener('keydown', function (e) {
+    log('keydown ' + e.key);
+    if (e.key === 'Escape') {
+      document.querySelectorAll('[role="menu"]').forEach(function (m) { m.remove(); });
+    }
+  });
+
+  // Stub fetch: ghi body roi goi fetch THAT (hook DURATION_HOOK_JS boc ben ngoai stub nay).
+  var origFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var u = typeof input === 'string' ? input : (input && input.url);
+    var b = init && typeof init.body === 'string' ? init.body : '';
+    log('fetch ' + u + ' body=' + b);
+    return origFetch(input, init);
+  };
+
+  function openMenu(anchor, id, items, onPick) {
+    var old = document.getElementById(id);
+    if (old) { old.remove(); return; }
+    var menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    menu.id = id;
+    items.forEach(function (label) {
+      var it = document.createElement('div');
+      it.setAttribute('role', 'menuitem');
+      it.textContent = label;
+      it.addEventListener('click', function () { onPick(label); menu.remove(); });
+      menu.appendChild(it);
+    });
+    anchor.insertAdjacentElement('afterend', menu);
+  }
+
+  var modeBtn = document.getElementById('mode-btn');
+  modeBtn.addEventListener('click', function () {
+    openMenu(modeBtn, 'mode-menu', ['高速', 'プロ'], function (label) {
+      modeBtn.textContent = label;
+      log('mode ' + label);
+    });
+  });
+
+  // Composer video: モデル / 10s / 比率.
+  var extra = document.getElementById('composer-extra');
+  var textarea = document.getElementById('prompt');
+  function buildComposer() {
+    var html = '<button id="model-btn">モデル\n2.0高速</button> ';
+    if (q.get('dur') !== 'none') html += '<button id="dur-btn">10s</button> ';
+    html += '<button id="ratio-btn">比率\n9:16</button>';
+    extra.innerHTML = html;
+    var modelBtn = document.getElementById('model-btn');
+    modelBtn.addEventListener('click', function () {
+      openMenu(modelBtn, 'model-menu',
+        ['Dreamina Seedance 2.0高速', 'Dreamina Seedance 2.5', 'Dreamina Seedance 1.0'],
+        function (label) {
+          modelBtn.textContent = 'モデル\n' + label.replace('Dreamina Seedance ', '');
+          log('model ' + label);
+        });
+    });
+    var durBtn = document.getElementById('dur-btn');
+    if (durBtn) {
+      durBtn.addEventListener('click', function () {
+        openMenu(durBtn, 'dur-menu', ['10s', '15s'], function (label) {
+          durBtn.textContent = label;
+          log('duration ' + label);
+        });
+      });
+    }
+    var ratioBtn = document.getElementById('ratio-btn');
+    ratioBtn.addEventListener('click', function () {
+      openMenu(ratioBtn, 'ratio-menu', ['9:16', '16:9', '1:1', '4:3', '3:4'], function (label) {
+        ratioBtn.textContent = '比率\n' + label;
+        log('ratio ' + label);
+      });
+    });
+  }
+  var createBtn = document.getElementById('create-btn');
+  createBtn.addEventListener('click', function () {
+    if (extra.firstChild) { extra.innerHTML = ''; log('composer closed'); return; }
+    buildComposer();
+  });
+
+  function pushConv(id) {
+    history.pushState({}, '', '/chat/' + id);
+    log('pushState /chat/' + id);
+  }
+  function showCaptcha() {
+    document.getElementById('captcha-wrap').innerHTML = '<iframe src="bdcaptcha.html"></iframe>';
+    log('captcha iframe');
+  }
+
+  // O soan: Enter (khong Shift) = gui.
+  textarea.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    log('send ' + JSON.stringify(textarea.value));
+    textarea.value = '';
+    if (q.get('nofetch') !== '1') {
+      var body = JSON.stringify({chat_ability: {ability_type: 17,
+        ability_param: JSON.stringify({model: 'seedance_v2.0', duration: 10})}});
+      window.fetch('/chat/completion', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body})
+        .then(function (r) { log('sent status=' + r.status); })
+        .catch(function (err) { log('sent error=' + err); });
+    }
+    if (q.get('login_after') === '1') {
+      document.getElementById('login-wrap').innerHTML = '<button id="login-btn">ログイン</button>';
+      log('login button shown');
+    }
+    if (q.get('captcha') === '1') {
+      pushConv('123456789012');
+      setTimeout(showCaptcha, 500);
+    } else if (q.get('noconv') === '1') {
+      // khong lam gi
+    } else if (q.get('jump') === '1') {
+      setTimeout(function () { pushConv('12345'); }, 1000);
+    } else {
+      setTimeout(function () { pushConv('123456789012'); }, 1000);
+    }
+  });
+})();
+</script>
+</body>
+</html>
