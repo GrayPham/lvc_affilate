@@ -64,10 +64,9 @@ pub enum DolaError {
 }
 
 impl DolaError {
-    /// Ma loi luu cot `failure_code` (spec §6.2): 7 bien the co ma Python; con lai `None` (loi "khong
-    /// ma": captcha, het credit, timeout poll, CDP...). `Browser(ProfileBusy)` cung `None` o day —
-    /// `PROFILE_BUSY` la ma cua POOL khi moi tai khoan deu ban (`browser_pool.py`), khong phai cua
-    /// mot lan gui.
+    /// Ma loi luu cot `failure_code` (spec §6.2): 7 bien the co ma Python + `Browser(ProfileBusy)` ->
+    /// `PROFILE_BUSY` (ruling Task 9 vong 1: Python `ProfileBusyError` -> `"PROFILE_BUSY"`); con lai
+    /// `None` (loi "khong ma": captcha, het credit, timeout poll, CDP khac...).
     #[must_use]
     pub fn failure_code(&self) -> Option<FailureCode> {
         match self {
@@ -78,6 +77,7 @@ impl DolaError {
             Self::NoConversation(_) => Some(FailureCode::NoConversation),
             Self::PromptViolation(_) => Some(FailureCode::PromptViolation),
             Self::AgentQuestion(_) => Some(FailureCode::AgentQuestion),
+            Self::Browser(BrowserError::ProfileBusy(_)) => Some(FailureCode::ProfileBusy),
             Self::ModeSwitch { .. }
             | Self::RatioUnavailable(_)
             | Self::RiskControl(_)
@@ -203,9 +203,10 @@ mod tests {
         }
     }
 
-    /// Bang phan loai Task 9 (plan): `failure_code` (7 bien the co ma, con lai `None`), `is_dead_chat`
+    /// Bang phan loai Task 9 (plan + ruling vong 1): `failure_code` (7 bien the co ma +
+    /// `Browser(ProfileBusy)` -> `PROFILE_BUSY`, con lai `None`), `is_dead_chat`
     /// (`PromptViolation | AgentQuestion | AgentNoVideo`), `rotates_account` (`LoggedOut | RiskControl |
-    /// AccountLimited | Credit | Browser(ProfileBusy)`). 17 bien the + 1 dong `Browser(_)` khac.
+    /// AccountLimited | Credit | Browser(ProfileBusy)`). 17 bien the + 2 dong `Browser(_)` khac.
     #[test]
     fn phan_loai_bang_17_dong() {
         use FailureCode as F;
@@ -263,22 +264,29 @@ mod tests {
             (DolaError::Credit("x".into()), None, false, true),
             (DolaError::Timeout("x".into()), None, false, false),
             (DolaError::BrowserClosed("x".into()), None, false, false),
+            // Ruling Task 9 vong 1: spec §6.2 co PROFILE_BUSY, Python ProfileBusyError -> "PROFILE_BUSY"
             (
                 DolaError::Browser(BrowserError::ProfileBusy("p".into())),
-                None,
+                Some(F::ProfileBusy),
                 false,
                 true,
             ),
             (DolaError::Http("x".into()), None, false, false),
-            // Browser(_) KHONG phai ProfileBusy -> khong xoay
+            // Browser(_) KHONG phai ProfileBusy -> khong ma, khong xoay
             (
                 DolaError::Browser(BrowserError::Timeout("t".into())),
                 None,
                 false,
                 false,
             ),
+            (
+                DolaError::Browser(BrowserError::Launch("l".into())),
+                None,
+                false,
+                false,
+            ),
         ];
-        assert_eq!(rows.len(), 18);
+        assert_eq!(rows.len(), 19);
         for (e, code, dead, rotates) in rows {
             assert_eq!(e.failure_code(), code, "failure_code {e}");
             assert_eq!(e.is_dead_chat(), dead, "is_dead_chat {e}");
@@ -304,6 +312,12 @@ mod tests {
                 .failure_code()
                 .map(FailureCode::as_str),
             Some("AGENT_QUESTION")
+        );
+        assert_eq!(
+            DolaError::Browser(BrowserError::ProfileBusy("p".into()))
+                .failure_code()
+                .map(FailureCode::as_str),
+            Some("PROFILE_BUSY")
         );
     }
 }
