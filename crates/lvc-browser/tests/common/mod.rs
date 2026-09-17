@@ -1,4 +1,4 @@
-//! Helper dung chung cho smoke test (`ops_smoke.rs`, `session_smoke.rs`, `compose_smoke.rs`): server HTTP ti hon phuc
+//! Helper dung chung cho smoke test (`ops_smoke.rs`, `session_smoke.rs`, `compose_smoke.rs`, `refs_smoke.rs`): server HTTP ti hon phuc
 //! vu `tests/fixtures/` tren `127.0.0.1:0` + mo Chromium headless voi profile tam. KHONG bao gio
 //! goi dola.com.
 //!
@@ -53,6 +53,10 @@ pub fn route(path: &str) -> (&'static str, &'static str, Vec<u8>) {
             "application/json",
             b"{}".to_vec(),
         ),
+        // Task 8: fixture refs.html goi /upload/v1/<n> mot lan cho moi anh (n tang dan).
+        p if p.starts_with("/upload/v1/") => {
+            ("200 OK", "application/json", b"{\"ok\":true}".to_vec())
+        }
         p if p.contains("..") => ("400 Bad Request", "text/plain", b"cam".to_vec()),
         p => match std::fs::read(fixtures_dir().join(p.trim_start_matches('/'))) {
             Ok(b) => ("200 OK", "text/html; charset=utf-8", b),

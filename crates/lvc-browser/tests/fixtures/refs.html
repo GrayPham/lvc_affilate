@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>refs fixture (gia lap upload anh tham chieu Dola cho smoke test dola::refs)</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: sans-serif; }
+  #box { min-height: 40px; border: 1px solid #888; padding: 6px; }
+  #thumbs img { width: 40px; height: 40px; border: 1px solid #ccc; margin: 2px; }
+  #log { white-space: pre; font-size: 11px; }
+</style>
+</head>
+<body>
+<!--
+  Query string dieu khien fixture (khong doi JS cua tool):
+    (mac dinh)     -> co input[type=file] (composer Nhanh) + textarea; change -> upload
+    ?noinput=1     -> KHONG co input/textarea; o soan [contenteditable=true] nhan paste (Pro/Agent)
+    ?nobox=1       -> (voi noinput) khong co o soan nao -> main world tra 'nobox'
+    ?preready=1    -> trang da dat window.__dolaPasteReady=true ma KHONG co listener (gia lap
+                      "bi chan": data-dola-paste-ready khong thanh '1') -> tool phai fallback PASTE_IMAGE_JS
+    ?slow=1        -> nhan file/paste nhung KHONG BAO GIO upload (duong het gio)
+    ?fail=1        -> upload goi /upload/v1/loi (server tra 500) - thumbnail van them
+    ?dup=1         -> moi anh upload 2 lan (Dola gop/lap -> "dinh thua")
+    ?delay=N       -> ms giua cac buoc upload (mac dinh 300) de tool phai poll
+    ?logos=N       -> N <img> co san luc tai (mac dinh 1, #logo) - thumbs phai la SO TANG THEM
+  Upload gia lap Dola (do that 2026-09-07): 1 POST /alice/resource/prepare_upload roi 1 POST
+  /upload/v1/<n> cho MOI anh, moi anh them 1 <img> vao #thumbs.
+  Listener paste doc clipboardData.files HAI LAN va ghi ca hai do dai (`paste files=A files2=B`):
+  voi Proxy doc-mot-lan cua PASTE_MAIN_WORLD_SCRIPT (ADR-014) A=1, B=0; fallback PASTE_IMAGE_JS
+  A=1, B=1. "Handler thu 2" (nhu ProseMirror handlePaste) upload lai neu B>0 -> dinh thua.
+  window.addEventListener duoc boc de dem listener 'message' (window.__lvc_msg_listeners).
+-->
+<div id="logos"></div>
+<div id="composer"></div>
+<div id="thumbs"></div>
+<pre id="log"></pre>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(line) { logEl.textContent += line + '\n'; }
+  var q = new URLSearchParams(location.search);
+  var delay = parseInt(q.get('delay') || '300', 10);
+  var seq = 0;
+  var PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+  // Dem listener 'message' (paste_image_once phai cai dung 1 lan)
+  window.__lvc_msg_listeners = 0;
+  var origAdd = window.addEventListener.bind(window);
+  window.addEventListener = function (type, fn, opts) {
+    if (type === 'message') window.__lvc_msg_listeners += 1;
+    return origAdd(type, fn, opts);
+  };
+
+  var nLogos = parseInt(q.get('logos') || '1', 10);
+  for (var i = 0; i < nLogos; i++) {
+    var logo = document.createElement('img');
+    logo.id = i === 0 ? 'logo' : 'logo' + i;
+    logo.src = PNG;
+    document.getElementById('logos').appendChild(logo);
+  }
+
+  if (q.get('preready')) { window.__dolaPasteReady = true; }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function addThumb(name) {
+    var img = document.createElement('img');
+    img.src = PNG;
+    img.alt = name;
+    document.getElementById('thumbs').appendChild(img);
+    log('thumb ' + name);
+  }
+
+  async function upload(names) {
+    if (q.get('slow')) { log('slow: khong upload'); return; }
+    await sleep(delay);
+    var r = await fetch('/alice/resource/prepare_upload', { method: 'POST', body: JSON.stringify({ n: names.length }) });
+    log('prepare status=' + r.status);
+    for (var i = 0; i < names.length; i++) {
+      await sleep(delay);
+      var path = q.get('fail') ? '/upload/v1/loi' : '/upload/v1/' + (++seq);
+      var u = await fetch(path, { method: 'POST', body: names[i] });
+      log('upload ' + path + ' status=' + u.status);
+      if (q.get('dup')) {
+        var p2 = '/upload/v1/' + (++seq);
+        var u2 = await fetch(p2, { method: 'POST', body: names[i] });
+        log('upload ' + p2 + ' status=' + u2.status + ' (dup)');
+      }
+      addThumb(names[i]);
+    }
+    log('done ' + names.length);
+  }
+
+  var composer = document.getElementById('composer');
+  if (!q.get('noinput')) {
+    var ta = document.createElement('textarea');
+    ta.id = 'prompt'; ta.rows = 3; ta.cols = 50;
+    var input = document.createElement('input');
+    input.type = 'file'; input.id = 'file-input'; input.multiple = true;
+    composer.appendChild(ta);
+    composer.appendChild(input);
+    input.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(input.files);
+      log('change files=' + files.length);
+      upload(files.map(function (f) { return f.name; }));
+    });
+  } else if (!q.get('nobox')) {
+    var box = document.createElement('div');
+    box.id = 'box'; box.setAttribute('contenteditable', 'true');
+    composer.appendChild(box);
+    // Nhu ProseMirror cua Dola: 2 handler cung doc clipboardData.files
+    box.addEventListener('paste', function (e) {
+      var f1 = Array.prototype.slice.call(e.clipboardData.files);
+      var f2 = Array.prototype.slice.call(e.clipboardData.files);
+      var desc = f1.map(function (f) { return f.name + ':' + f.type + ':' + f.size; }).join(',');
+      log('paste files=' + f1.length + ' files2=' + f2.length + ' ' + desc);
+      e.preventDefault();
+      if (f1.length) upload(f1.map(function (f) { return f.name; }));
+      if (f2.length) upload(f2.map(function (f) { return f.name; }));
+    });
+  }
+})();
+</script>
+</body>
+</html>
