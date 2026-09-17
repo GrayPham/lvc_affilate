@@ -34,6 +34,14 @@ pub const TIMEZONE: &str = "Asia/Tokyo";
 /// - `--user-data-dir`, `--remote-debugging-pipe`, `about:blank`: chromiumoxide tu lo
 ///   (dung `--remote-debugging-port=0`, khong co pipe).
 ///
+/// M-2: ba co SAU day KHONG co trong dong lenh patchright da bat, la lech CO CHU Y — ghi
+/// nhan o day thay vi xoa vi da do An toan tren dola.com (ADR-R012):
+/// - `--lang=ja-JP`: TA them (qua [`LOCALE`], xem ghi chu I-1 trong `launch()`) de
+///   `navigator.language`/Accept-Language ra "ja-JP" dung yeu cau, du patchright khong truyen.
+/// - `--window-size=1280,900` va `--remote-debugging-port=0`: CHROMIUMOXIDE tu them (qua
+///   `.window_size()` va cong CDP mac dinh khi khong tu dat port — xem `browser/config.rs`
+///   trong crate).
+///
 /// Ly do dung list nay thay vi bo Puppeteer-style co san cua chromiumoxide: chromiumoxide
 /// 0.9 tu dat `--enable-automation` + `--lang=en_US` (khong xoa le duoc — `ArgsBuilder` la
 /// `HashMap` gop theo khoa, module `argument` private) nen ta goi `disable_default_args()`
@@ -79,8 +87,9 @@ const PATCHRIGHT_DEFAULT_ARGS: [&str; 22] = [
 ///    thi nghiem P1 (chromiumoxide "lo" nhieu hon patchright ngay tu tang giao thuc).
 /// 2. `--disable-extensions` luon duoc chromiumoxide them khi khong cau hinh extension nao
 ///    (`browser/config.rs::launch`), khong tat duoc qua `BrowserConfig`.
-/// 3. Dung `--remote-debugging-port` (mo mot cong TCP) de noi CDP; patchright dung pipe
-///    (stdio), khong mo cong mang nao — de bi phat hien hon tu ben ngoai may.
+/// 3. Dung `--remote-debugging-port` (mo mot cong TCP tren 127.0.0.1) de noi CDP; patchright
+///    dung pipe (stdio), khong mo cong mang nao — de bi phat hien hon tu tien trinh khac tren
+///    cung may (khong phai "tu ben ngoai may": cong chi bind loopback).
 /// 4. `Page::enable_stealth_mode()` co san cua chromiumoxide KHONG duoc goi (xem C-1, review
 ///    Task 3-6): than ham no tu lam nhieu dieu con te hon — UA gia nam 2022 khong khop build
 ///    Chrome that dang chay, giao dien JS thay `navigator.webdriver`/`plugins` khong native,
@@ -155,6 +164,41 @@ fn map_launch_error(e: &chromiumoxide::error::CdpError) -> BrowserError {
     }
 }
 
+/// I-3: danh sach co dua vao builder qua `.arg()`, tach thanh ham THUAN de gate test duoc
+/// (khong can Chrome) cac rang buoc "dung 1 lan", "co lang=ja-JP", "khong co
+/// enable-automation" ma truoc day chi biet duoc qua doc source chromiumoxide. KHONG co "--"
+/// (dung nguyen quy uoc cua `Arg`/`.arg()` — xem vi tri goi). Dung THU TU se dua vao builder.
+#[must_use]
+pub(crate) fn chrome_args(opts: &LaunchOpts) -> Vec<String> {
+    let mut args: Vec<String> = PATCHRIGHT_DEFAULT_ARGS
+        .iter()
+        .map(|a| (*a).to_string())
+        .collect();
+    args.push(format!("lang={LOCALE}"));
+    for a in LAUNCH_ARGS {
+        // Arg::from(&str) coi CA CHUOI (ke ca "--") la khoa, roi ArgsBuilder tu them "--" khi
+        // render -> giu nguyen chuoi co san se ra "----foo". Bo "--" dau de chi con dung 1
+        // cap "--" sau khi render.
+        args.push(a.trim_start_matches("--").to_string());
+    }
+    if opts.headless {
+        // Review Task 3-6 (minor): Playwright them co nay o che do headless de gia lap thiet
+        // bi khong co cam ung (chuot/ban phim), khop may desktop that hon mac dinh cua
+        // headless Chrome.
+        args.push(
+            "blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
+                .to_string(),
+        );
+    }
+    if opts.window_offscreen && !opts.headless {
+        args.push("window-position=-32000,-32000".to_string());
+    }
+    if let Some(p) = &opts.proxy_server {
+        args.push(format!("proxy-server={p}"));
+    }
+    args
+}
+
 impl ChromiumDriver {
     fn config(opts: &LaunchOpts) -> Result<BrowserConfig, BrowserError> {
         // ADR-R012: Chromium nhan `--user-data-dir` TUONG DOI thi chi nap 7-8/79 cookie cua
@@ -164,43 +208,24 @@ impl ChromiumDriver {
         let profile_dir = std::path::absolute(&opts.profile_dir)?;
         let mut b = BrowserConfig::builder()
             .user_data_dir(&profile_dir)
-            .hide() // bo navigator.webdriver that (--disable-blink-features=AutomationControlled)
-            // Review Task 3-6 (minor): hide() chi tu null viewport NEU no dang la
-            // Some(Viewport::default()) — ep ro bang .viewport(None) o day de khong phu thuoc
-            // vao trung hop do. Viewport khac None se khien chromiumoxide tu goi
-            // Emulation.setDeviceMetricsOverride VA setTouchEmulationEnabled(true) — dau hieu
-            // "desktop co cam ung" rat de bi phat hien, khac may that.
+            // M-1: bo .hide() — no chi lam hai viec: (1) dat --disable-blink-features=
+            // AutomationControlled, da co san trong LAUNCH_ARGS (qua chrome_args()) nen goi
+            // .hide() tao ra co nay HAI LAN (ArgsBuilder gop theo khoa nen khong sao tren dong
+            // lenh that, nhung chrome_args() se khong con phan anh dung "list se dua vao
+            // builder" cho unit test I-3); (2) null hoa viewport NEU no dang la
+            // Some(Viewport::default()) — ta da ep ro bang .viewport(None) ngay duoi day nen
+            // khong phu thuoc vao hieu ung phu do cua .hide().
             .viewport(None)
             .window_size(1280, 900)
             // Review Task 3-6 (minor): giu Security.setIgnoreCertificateErrors nhu mac dinh
             // (khong goi), giong Python — tranh che loi proxy/MITM that trong Task 7.
             .respect_https_errors()
             .disable_default_args(); // xem ghi chu PATCHRIGHT_DEFAULT_ARGS o tren
-        for a in PATCHRIGHT_DEFAULT_ARGS {
+        for a in chrome_args(opts) {
             b = b.arg(a);
         }
-        b = b.arg(format!("lang={LOCALE}"));
-        for a in LAUNCH_ARGS {
-            // Arg::from(&str) coi CA CHUOI (ke ca "--") la khoa, roi ArgsBuilder tu them
-            // "--" khi render -> giu nguyen chuoi co san se ra "----foo". Bo "--" dau de
-            // chi con dung 1 cap "--" sau khi render.
-            b = b.arg(a.trim_start_matches("--"));
-        }
-        if opts.headless {
-            // Review Task 3-6 (minor): Playwright them co nay o che do headless de gia lap
-            // thiet bi khong co cam ung (chuot/ban phim), khop may desktop that hon mac dinh
-            // cua headless Chrome.
-            b = b.arg(
-                "blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
-            );
-        } else {
+        if !opts.headless {
             b = b.with_head();
-        }
-        if opts.window_offscreen && !opts.headless {
-            b = b.arg("window-position=-32000,-32000");
-        }
-        if let Some(p) = &opts.proxy_server {
-            b = b.arg(format!("proxy-server={p}"));
         }
         if let Some(exe) = &opts.chrome_executable {
             b = b.chrome_executable(exe);
@@ -422,7 +447,11 @@ mod tests {
             headless: true,
             proxy_server: None,
             window_offscreen: false,
-            chrome_executable: None,
+            // I-4: chrome_executable=None khien BrowserConfigBuilder::build() goi
+            // detection::default_executable() -> test unit nay se loi tren may KHONG cai
+            // Chrome/Edge (trai voi "gate khong phu thuoc Chrome"). Dat mot duong dan gia:
+            // build() KHONG stat file nay, chi luu path.
+            chrome_executable: Some(PathBuf::from("chrome.exe")),
         };
         let cfg = ChromiumDriver::config(&opts).expect("config");
         let dir = cfg.user_data_dir.expect("user_data_dir phai duoc dat");
@@ -432,5 +461,92 @@ mod tests {
             dir.display()
         );
         assert!(dir.ends_with("accounts/tuong_doi"), "{}", dir.display());
+        // I-4: cung ghim "khong co tien to \\?\" — std::path::absolute (GetFullPathNameW)
+        // khong them tien to nay, nhung canonicalize() (neu ai do doi sang) thi co, va van
+        // "tuyet doi" + "ends_with" van khop nen khong bi bat neu chi test 2 dieu tren.
+        assert!(
+            !dir.to_string_lossy().starts_with(r"\\?\"),
+            "user_data_dir co tien to verbatim \\\\?\\: {}",
+            dir.display()
+        );
+    }
+
+    /// I-3: ghim cac rang buoc dong lenh launch bang mot ham THUAN (khong can Chrome) — gate
+    /// truoc day khong test duoc 5 co trong `LAUNCH_ARGS`, --lang=ja-JP, hay "khong co
+    /// --enable-automation" (chi biet duoc qua doc chromiumoxide, xem final-review.md I-3).
+    #[test]
+    fn chrome_args_chua_du_5_launch_args_dung_1_lan() {
+        let opts = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            headless: true,
+            proxy_server: None,
+            window_offscreen: false,
+            chrome_executable: None,
+        };
+        let args = chrome_args(&opts);
+        for flag in LAUNCH_ARGS {
+            let want = flag.trim_start_matches("--");
+            assert_eq!(
+                args.iter().filter(|a| a.as_str() == want).count(),
+                1,
+                "co {want:?} phai xuat hien dung 1 lan trong {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn chrome_args_chua_lang_ja_jp() {
+        let opts = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            headless: true,
+            proxy_server: None,
+            window_offscreen: false,
+            chrome_executable: None,
+        };
+        assert!(chrome_args(&opts).iter().any(|a| a == "lang=ja-JP"));
+    }
+
+    #[test]
+    fn chrome_args_khong_enable_automation_va_khong_co_bo_qua_chu_dinh() {
+        let opts = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            headless: false,
+            proxy_server: None,
+            window_offscreen: false,
+            chrome_executable: None,
+        };
+        let args = chrome_args(&opts);
+        assert!(
+            !args.iter().any(|a| a.contains("enable-automation")),
+            "khong duoc co enable-automation: {args:?}"
+        );
+        assert!(!args.iter().any(|a| a.contains("disable-popup-blocking")));
+        assert!(!args.iter().any(|a| a.contains("disable-default-apps")));
+    }
+
+    #[test]
+    fn chrome_args_blink_settings_chi_khi_headless() {
+        let base = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            headless: true,
+            proxy_server: None,
+            window_offscreen: false,
+            chrome_executable: None,
+        };
+        assert!(
+            chrome_args(&base)
+                .iter()
+                .any(|a| a.starts_with("blink-settings="))
+        );
+
+        let headed = LaunchOpts {
+            headless: false,
+            ..base
+        };
+        assert!(
+            !chrome_args(&headed)
+                .iter()
+                .any(|a| a.starts_with("blink-settings="))
+        );
     }
 }

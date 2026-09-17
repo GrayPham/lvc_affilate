@@ -59,6 +59,31 @@ async fn navigator_language_la_ja_jp() {
 
 #[tokio::test]
 #[ignore = "can Chrome/Chromium tren may; chay: cargo test -p lvc-browser -- --ignored"]
+async fn timezone_la_asia_tokyo() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = ChromiumDriver;
+    let s = d.launch(&opts_headless(&dir)).await.expect("launch");
+    let tz: String = s
+        .page
+        .evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
+        .await
+        .unwrap()
+        .into_value()
+        .unwrap();
+    assert_eq!(tz, "Asia/Tokyo");
+    let offset: i64 = s
+        .page
+        .evaluate("new Date().getTimezoneOffset()")
+        .await
+        .unwrap()
+        .into_value()
+        .unwrap();
+    assert_eq!(offset, -540, "UTC+9 -> getTimezoneOffset() == -540");
+    d.close(s).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "can Chrome/Chromium tren may; chay: cargo test -p lvc-browser -- --ignored"]
 async fn cookie_dieu_huong_probe_screenshot() {
     let dir = tempfile::tempdir().unwrap();
     let d = ChromiumDriver;
