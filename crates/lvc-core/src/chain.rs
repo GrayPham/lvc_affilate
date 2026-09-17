@@ -80,16 +80,32 @@ fn truncate_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-/// So sanh "la tin cua bot" — `POLL_JS` dong 72 `Number(m.user_type) === 2` (so SO). KHAC
-/// `parse_chain` (Python) dong 763 `str(m.get("user_type")) == "2"` (so CHUOI) — xem doc comment
-/// dau file, muc 1. Chi xu ly `user_type` dang so (JSON Number); API Dola thuc te luon tra so.
+/// So sanh "la tin cua bot". CA HAI ban goc deu chap nhan `user_type` la SO LAN CHUOI so:
+/// Python (`hub_browser.py:763`) `str(m.get("user_type")) == "2"` khop voi so nguyen `2` (vi
+/// `str(2)=="2"`) LAN chuoi `"2"` (vi `str("2")=="2"`); JS (`video_worker.py:72`)
+/// `Number(m.user_type) === 2` khop voi ca hai qua ep kieu `Number(...)`. Fix round 1 (RULING):
+/// ban truoc chi xu ly `Value::Number`, bo sot `Value::String` -> voi `user_type: "2"` (chuoi)
+/// thi `hasType` van dung (co gia tri, khong null) nhung khong tin nao khop "la bot" -> `latest`
+/// RONG thay vi la tin bot — sai giong mis-read Python da sua 2026-09-17 (b4f68ec).
+///
+/// Diem LECH THAT giua hai ban (van giu, xem doc comment dau file muc 1) chi o cach so sanh SO:
+/// `user_type = 2.0` (float) -> Python `str(2.0)="2.0"!="2"` KHONG khop, JS `Number(2.0)===2`
+/// KHOP; o day theo `POLL_JS` (so sanh xap xi thay vi `==` truc tiep tren f64 de tranh
+/// `clippy::float_cmp`).
 fn user_type_is_bot(v: Option<&Value>) -> bool {
     let Some(v) = v else { return false };
-    match v.as_i64() {
-        Some(n) => n == 2,
-        // JSON "2.0" duoc serde_json luu duoi dang f64 (as_i64() = None) -> so sanh xap xi de
-        // tranh so sanh f64 truc tiep (clippy::float_cmp).
-        None => v.as_f64().is_some_and(|f| (f - 2.0).abs() < f64::EPSILON),
+    match v {
+        // JS `Number("2")` (trim khoang trang, parse so) — Python `str("2")=="2"` cung khop.
+        Value::String(s) => s
+            .trim()
+            .parse::<f64>()
+            .is_ok_and(|f| (f - 2.0).abs() < f64::EPSILON),
+        _ => match v.as_i64() {
+            Some(n) => n == 2,
+            // JSON "2.0" duoc serde_json luu duoi dang f64 (as_i64() = None) -> so sanh xap xi
+            // de tranh so sanh f64 truc tiep (clippy::float_cmp).
+            None => v.as_f64().is_some_and(|f| (f - 2.0).abs() < f64::EPSILON),
+        },
     }
 }
 
@@ -348,6 +364,34 @@ mod tests {
         assert_eq!(r.texts.len(), 2);
         assert!(r.ok);
         assert_eq!(r.status, 200);
+    }
+
+    #[test]
+    fn user_type_dang_chuoi_so_cung_duoc_nhan_la_bot() {
+        // Fix round 1: user_type = "2" (CHUOI, khong phai so) — Python `str(m.get("user_type"))
+        // == "2"` va JS `Number(m.user_type) === 2` DEU khop; day KHONG phai diem lech giua hai
+        // ban goc (xem "Khac biet" dau file, muc 1 chi noi ve 2 vs 2.0), ma la truong hop co ban
+        // truoc do chua duoc xu ly (bug that: hasType dung nhung latest_idx tra None -> latest
+        // rong, khong phai loi "roi ve messages[0]" nhu mo ta ban dau, nhung van la SAI so voi
+        // Python/POLL_JS — sua boi RULING vong 1).
+        let body = json!({ "downlink_body": { "pull_singe_chain_downlink_body": { "messages": [
+            { "user_type": "2", "content": [ { "content": { "text_block": { "text": "tin bot dang chuoi" } } } ] }
+        ] } } });
+        let r = parse_chain(&body);
+        assert_eq!(r.latest, vec!["tin bot dang chuoi".to_string()]);
+    }
+
+    #[test]
+    fn user_type_chuoi_1_roi_2_chon_dung_tin_bot() {
+        // Fix round 1: tin[0] user_type "1" (chuoi), tin[1] user_type "2" (chuoi) -> latest phai
+        // la tin[1], khong phai roi ve tin[0] (day chinh la mis-read Python sua 2026-09-17,
+        // b4f68ec, neu latest_idx sai ve 0/None).
+        let body = json!({ "downlink_body": { "pull_singe_chain_downlink_body": { "messages": [
+            { "user_type": "1", "content": [ { "content": { "text_block": { "text": "prompt cua tool" } } } ] },
+            { "user_type": "2", "content": [ { "content": { "text_block": { "text": "tra loi cua bot" } } } ] }
+        ] } } });
+        let r = parse_chain(&body);
+        assert_eq!(r.latest, vec!["tra loi cua bot".to_string()]);
     }
 
     #[test]
