@@ -27,7 +27,9 @@ use std::sync::LazyLock;
 
 use aes::Aes128;
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
+use base64::alphabet;
+use base64::engine::general_purpose::STANDARD;
+use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use regex::Regex;
@@ -234,13 +236,32 @@ fn urlencode_pairs(pairs: &[(String, String)]) -> String {
         .join("&")
 }
 
-/// `unwatermark.py:31-35` `replace_query` — giữ query cũ (đúng thứ tự xuất hiện), ghi đè giá trị
-/// của khoá đã có, khoá mới (trong `params`, chưa có trong query) nối thêm vào cuối theo đúng
-/// thứ tự trong `params` (giống Python: `dict.update` không đổi vị trí khoá đã tồn tại).
+/// `dict(parse_qsl(...))` của Python (`unwatermark.py:33`) — gộp khoá trùng: GIỮ vị trí xuất hiện
+/// ĐẦU TIÊN của khoá nhưng lấy GIÁ TRỊ của lần xuất hiện CUỐI CÙNG (đúng ngữ nghĩa xây `dict` từ
+/// danh sách cặp có khoá trùng trong Python — khoá đã có chỉ cập nhật giá trị, không đổi vị trí).
+/// Fix round 2 (I-2, RULING): bản trước KHÔNG gộp, giữ nguyên mọi cặp trùng khoá, khiến
+/// `replace_query` chỉ ghi đè LẦN XUẤT HIỆN ĐẦU của khoá trong `RAW_PARAMS` và giữ nguyên các lần
+/// trùng còn lại — sai so với Python (đã xác nhận bằng oracle, xem `task-3-report.md` "Fix round 2").
+fn dict_from_pairs(pairs: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut merged: Vec<(String, String)> = Vec::with_capacity(pairs.len());
+    for (k, v) in pairs {
+        if let Some(existing) = merged.iter_mut().find(|(ek, _)| *ek == k) {
+            existing.1 = v;
+        } else {
+            merged.push((k, v));
+        }
+    }
+    merged
+}
+
+/// `unwatermark.py:31-35` `replace_query` — `dict(parse_qsl(...))` ([`dict_from_pairs`]) rồi
+/// `.update(params)`: khoá đã có (kể cả khoá trùng đã gộp) chỉ ĐỔI GIÁ TRỊ, giữ nguyên vị trí;
+/// khoá mới (trong `params`, chưa có trong query) nối thêm vào cuối theo đúng thứ tự trong
+/// `params`.
 #[must_use]
 pub fn replace_query(url: &str, params: &[(&str, &str)]) -> String {
     let parts = urlsplit(url);
-    let mut pairs = parse_qsl(parts.query);
+    let mut pairs = dict_from_pairs(parse_qsl(parts.query));
     for &(k, v) in params {
         if let Some(existing) = pairs.iter_mut().find(|(pk, _)| pk == k) {
             existing.1 = v.to_string();
@@ -408,32 +429,52 @@ fn translate(s: &str, map: &[(char, char)]) -> String {
 /// base64 hợp lệ của `"hello"`). Ký tự `=` cũng bị loại ở đây (Fix round 1, RULING): `CPython` coi
 /// `=` là ký hiệu đệm CÓ Ý NGHĨA RIÊNG (dừng/định vị nhóm 4), khác hẳn ký tự lạ bị bỏ đơn thuần —
 /// hành vi đó (đệm `=` giữa chuỗi) là edge case bệnh hoạn không xảy ra với dữ liệu Dola thật, nên
-/// coi `=` như MỌI ký tự lạ khác (loại bỏ) rồi giải mã bằng biến thể KHÔNG ĐỆM (`STANDARD_NO_PAD`)
-/// — không cần tính lại số `=` cần thêm như Python (Python tính đệm DỰA TRÊN độ dài THÔ trước khi
-/// lọc, có thể ra SAI số đệm nếu chuỗi có ký tự lạ, gây lỗi `Incorrect padding` ở biến thể mà bản
-/// gốc lẽ ra đã giải được nếu lọc trước — bản Rust ở đây, nhờ lọc-rồi-mới-đệm, THỰC TẾ giải mã
-/// được ở biến thể SỚM HƠN Python trong một số trường hợp, xem test
-/// `alt_alphabet_dola_thay_the_dola_qua_bien_the` và phần "Fix round 1" trong `task-3-report.md`
-/// để biết vì sao bài toán "chỉ biến thể 2 thắng" không thể tái lập ĐÚNG NGHĨA ĐEN dưới thiết kế
-/// lọc-trước-rồi-giải-KHÔNG-ĐỆM này — mọi input chỉ chứa `$`/`@`/`#` khiến biến thể 1 và biến thể
-/// 2 LUÔN cùng thành/bại (chứng minh: `#` luôn biến mất ở CẢ HAI biến thể vì `.` và `=` đều ngoài
-/// bảng chữ giữ lại; `$`/`@` luôn được GIỮ ở cả hai biến thể — chỉ khác giá trị ký tự cuối cùng
-/// `/`(63) so với `+`(62), mà 2 giá trị này có 4 bit thấp lần lượt `1111`/`1110` — CẢ HAI đều khác
-/// 0 nên đều KHÔNG hợp lệ như ký tự cuối một nhóm dư 2 hoặc dư 3, tức không bao giờ đúng lúc một
-/// biến thể qua còn biến thể kia rớt vì lý do bit-đuôi).
+/// coi `=` như MỌI ký tự lạ khác (loại bỏ) rồi giải mã bằng [`B64_LOOSE_ENGINE`] (không đệm, CHẤP
+/// NHẬN bit dư — xem Fix round 2 ngay dưới) — không cần tính lại số `=` cần thêm như Python (Python
+/// tính đệm DỰA TRÊN độ dài THÔ trước khi lọc, có thể ra SAI số đệm nếu chuỗi có ký tự lạ, gây lỗi
+/// "Incorrect padding" ở biến thể mà bản gốc lẽ ra đã giải được nếu lọc trước — bản Rust ở đây,
+/// nhờ lọc-rồi-mới-đệm, THỰC TẾ giải mã được ở biến thể SỚM HƠN Python trong một số trường hợp,
+/// xem test `b64_loose_alt_alphabet_dola_khop_python_tung_byte` và phần "Fix round 1"/"Fix round 2"
+/// trong `task-3-report.md`).
+///
+/// Vì sao bài toán "chỉ biến thể 2 thắng" (round 1) không thể tái lập ĐÚNG NGHĨA ĐEN dưới thiết kế
+/// lọc-trước-rồi-giải này — SỬA LẠI sau Fix round 2 (bản round-1 gán nhầm quy tắc "bit dư phải
+/// bằng 0" cho `CPython`; đó là quy tắc của ENGINE RUST CŨ, không phải của `CPython`): mọi input
+/// chỉ chứa `$`/`@`/`#` khiến biến thể 1 và biến thể 2 LUÔN cùng thành/bại, vì (a) `#` luôn biến
+/// mất ở CẢ HAI biến thể (`.` và `=` đều ngoài bảng chữ giữ lại) nên không góp ký tự nào; (b)
+/// `$`/`@` luôn được GIỮ ở cả hai biến thể (thành `/` hoặc `+`, đều thuộc bảng giữ lại) nên ĐỘ DÀI
+/// sau lọc giống hệt nhau giữa 2 biến thể — sự thành/bại của [`B64_LOOSE_ENGINE`] (đã cho phép bit
+/// dư) chỉ còn phụ thuộc ĐỘ DÀI (dư 1 theo mod 4 thì luôn rớt, dư 0/2/3 thì luôn qua), mà độ dài
+/// này GIỐNG NHAU giữa biến thể 1 và 2 — nên chúng LUÔN cùng thành/bại, không bao giờ có ca "chỉ
+/// biến thể 2 qua".
 fn keep_base64_alphabet(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/')
         .collect()
 }
 
-/// `unwatermark.py:110-122` `b64_loose` — Fix round 1 (RULING, thay bản trước): với MỖI biến thể
-/// (3 cách thay `$`/`@`/`#`, giống Python), sau khi thay `-`→`+`, `_`→`/`: (a) lọc chỉ giữ
-/// `[A-Za-z0-9+/]` (bỏ `=` và mọi ký tự khác — xem [`keep_base64_alphabet`]), (b) giải bằng
-/// `STANDARD_NO_PAD` (không quan tâm đệm); lỗi (vd độ dài dư 1 sau khi lọc — `CPython` cũng báo
-/// "Incorrect padding"/"cannot be 1 more than a multiple of 4" cho trường hợp này) → thử biến thể
-/// kế tiếp. Bỏ hẳn lượt thử `URL_SAFE_NO_PAD` (đã tự chuẩn hoá `-`/`_` ở bước trên, thử thêm bảng
-/// url-safe là thừa).
+/// Fix round 2 (I-3, RULING): `STANDARD_NO_PAD` (crate `base64`) từ chối bit dư khác 0 ở ký tự
+/// cuối (`InvalidLastSymbol`) — `CPython` `binascii.a2b_base64` (non-strict, mặc định) KHÔNG kiểm
+/// tra điều này, luôn chấp nhận. Oracle (`.venv`, chỉ đọc): `base64.b64decode('YmN=')` → `b'bc'`,
+/// `base64.b64decode('bG9=')` → `b'lo'`, `uw.decode_main_url('aHR0cHM6Ly9vay9hYmN')` →
+/// `'https://ok/abc'` — cả 3 ca này `STANDARD_NO_PAD` cũ từ chối. Engine tuỳ biến: bảng chữ chuẩn,
+/// không đệm khi mã hoá, KHÔNG YÊU CẦU đệm khi giải (`RequireNone` — đã lọc bỏ `=` trước đó nên
+/// input không bao giờ còn `=`), và CHO PHÉP bit dư.
+const B64_LOOSE_ENGINE: GeneralPurpose = GeneralPurpose::new(
+    &alphabet::STANDARD,
+    GeneralPurposeConfig::new()
+        .with_encode_padding(false)
+        .with_decode_padding_mode(DecodePaddingMode::RequireNone)
+        .with_decode_allow_trailing_bits(true),
+);
+
+/// `unwatermark.py:110-122` `b64_loose` — Fix round 1 (RULING): với MỖI biến thể (3 cách thay
+/// `$`/`@`/`#`, giống Python), sau khi thay `-`→`+`, `_`→`/`: (a) lọc chỉ giữ `[A-Za-z0-9+/]` (bỏ
+/// `=` và mọi ký tự khác — xem [`keep_base64_alphabet`]), (b) giải bằng [`B64_LOOSE_ENGINE`] (Fix
+/// round 2: không đệm, CHẤP NHẬN bit dư như `CPython`); lỗi (chỉ còn xảy ra khi độ dài dư 1 sau
+/// lọc — `CPython` cũng báo "Incorrect padding"/"cannot be 1 more than a multiple of 4" cho trường
+/// hợp này) → thử biến thể kế tiếp. Bỏ hẳn lượt thử `URL_SAFE_NO_PAD` (đã tự chuẩn hoá `-`/`_` ở
+/// bước trên, thử thêm bảng url-safe là thừa).
 fn b64_loose(text: &str) -> Option<Vec<u8>> {
     let s = text.trim();
     if s.is_empty() {
@@ -453,7 +494,7 @@ fn b64_loose(text: &str) -> Option<Vec<u8>> {
         if filtered.is_empty() {
             continue;
         }
-        if let Ok(bytes) = STANDARD_NO_PAD.decode(&filtered) {
+        if let Ok(bytes) = B64_LOOSE_ENGINE.decode(&filtered) {
             return Some(bytes);
         }
     }
@@ -599,6 +640,14 @@ pub fn decode_main_url(main_url: &str, key_seed: Option<&str>) -> Option<String>
 /// Đọc `entry.get(key)` rồi `int(float(...))` kiểu Python (`_score.n`, `unwatermark.py:190-198`):
 /// chuỗi/khoá thiếu/không parse được → 0; số âm (không mong đợi cho bitrate/width) cũng chốt 0
 /// (không panic, không lùi về số âm vô nghĩa cho điểm `u64`).
+///
+/// M-3 (review round 2, chỉ tài liệu — không sửa hành vi, "None có thể xảy ra với
+/// bitrate/width/height thực tế"): 3 khác biệt CÓ CHỦ ĐÍCH với Python `int(float(x))` cho input
+/// phi thực tế: (a) số âm — Python `int(float(-5))` vẫn là số âm (truthy, có thể thắng điểm), ở
+/// đây chốt `0`; (b) chuỗi có gạch dưới ngăn cách chữ số (`"1_000"`) — Python `float("1_000") ==
+/// 1000.0`, `str::parse::<f64>` của Rust không hỗ trợ cú pháp này nên trả `0`; (c) `bool` JSON
+/// (`true`/`false`) — Python `int(True) == 1`, nhánh `_ => None` ở đây không xử lý `Value::Bool`
+/// nên trả `0`.
 fn json_number_trunc(entry: &Map<String, Value>, key: &str) -> u64 {
     let f = match entry.get(key) {
         Some(Value::Number(n)) => n.as_f64(),
@@ -663,14 +712,20 @@ fn pick_video_data<'a>(body: &'a Value) -> Option<&'a Map<String, Value>> {
 
 /// `unwatermark.py:202-222` `pick_raw_video` — duyệt `video_list` (hoặc coi cả `data` là MỘT
 /// entry nếu không có `video_list` non-empty), giải mã `main_url`/`play_url` bằng
-/// [`decode_main_url`] (seed dò bằng [`find_key_seed`] trên chính `body`), chọn entry điểm
-/// `bitrate + w*h` cao nhất. Chữ ký rút gọn theo đúng `task-3-brief.md` (trả thẳng
-/// `Option<String>` — URL của bản tốt nhất — thay vì `dict` đầy đủ như Python; không nhận
-/// `api_url` riêng vì brief không đưa tham số đó, tương đương gọi Python với `api_url=""`).
+/// [`decode_main_url`] (seed dò bằng [`find_key_seed`] trên `body` RỒI fallback `api_url` — Fix
+/// round 2, I-1, RULING), chọn entry điểm `bitrate + w*h` cao nhất. Chữ ký rút gọn theo đúng
+/// `task-3-brief.md` cho phần trả về (trả thẳng `Option<String>` — URL của bản tốt nhất — thay vì
+/// `dict` đầy đủ như Python) NHƯNG "Python thắng brief" áp dụng cho phần tham số: bản trước
+/// (`fix(core): Task 3` gốc) bỏ hẳn `api_url`, tương đương luôn gọi Python với `api_url=""` — SAI
+/// vì người gọi thật `unwatermark.fetch_raw_video` (`:225-240`) LUÔN truyền URL `fallback_api` (đã
+/// `replace_query`'d, mang `&key_seed=...` trong query theo docstring đầu file `:4-5`) làm
+/// `api_url`; nếu JSON trả về không tự chứa `key_seed`, bỏ tham số này khiến qAAB KHÔNG BAO GIỜ
+/// giải được dù Python giải bình thường. Task 10 (lớp HTTP) PHẢI truyền đúng URL `fallback_api`
+/// (sau khi `replace_query` với `RAW_PARAMS`) làm `api_url`, giống hệt `fetch_raw_video` Python.
 #[must_use]
-pub fn pick_raw_video(body: &Value) -> Option<String> {
+pub fn pick_raw_video(body: &Value, api_url: &str) -> Option<String> {
     let data_obj = pick_video_data(body)?;
-    let seed = find_key_seed(body, "");
+    let seed = find_key_seed(body, api_url);
     // Không bọc lại `data_obj` vào `Value` tạm (tránh giữ tham chiếu tới giá trị tạm thời) —
     // làm việc thẳng trên `&Map<String, Value>`: nhánh `video_list` lọc bớt phần tử KHÔNG phải
     // object (khớp Python `if not isinstance(e, dict): continue` ngay từ bước gom `entries`,
@@ -740,6 +795,16 @@ fn utf8_decode_ignore(bytes: &[u8]) -> String {
 /// `int(float(...))`), NGOẠI LỆ ĐÓ THOÁT KHỎI CẢ VÒNG LẶP, mọi candidate đã tìm được TRƯỚC ĐÓ bị
 /// bỏ, hàm rơi thẳng về `fallback_url`. Ở đây mô phỏng bằng `return` sớm nguyên hàm khi gặp
 /// trường hợp đó (không phải `continue`).
+///
+/// M-2 (review round 2, chấp nhận là divergence — CHƯA sửa): `base64::engine::general_purpose::
+/// STANDARD` (nghiêm ngặt) từ chối ký tự lạ trong `main_url`, trong khi Python
+/// `base64.b64decode(main_url)` (KHÔNG `validate=True`) âm thầm bỏ ký tự lạ như [`b64_loose`] —
+/// oracle: `main_url = "aHR0cDovL2EvbG93\nLm1wNA=="` → Python `http://a/low.mp4`, Rust hiện tại
+/// rơi về `download_url`. Dữ liệu Dola thật (base64 chuẩn, không ký tự lạ chèn giữa) không gặp ca
+/// này; cố tình KHÔNG áp cùng bộ lọc [`keep_base64_alphabet`]/[`B64_LOOSE_ENGINE`] của
+/// `b64_loose` vào đây để giữ đúng ranh giới "bản CŨ/đơn giản" mà Python tự mô tả (không tái dùng
+/// cơ chế qAAB/`b64_loose` — đổi cơ chế giải base64 ở nhánh legacy này là một quyết định thiết kế
+/// riêng, để dành cho task/round sau nếu thực tế cần).
 #[must_use]
 pub fn extract_unwatermarked_url(video_model: &str, download_url: &str) -> String {
     let vm_str = if video_model.is_empty() {
@@ -898,6 +963,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn replace_query_gop_khoa_trung_giu_vi_tri_dau_gia_tri_cuoi() {
+        // Fix round 2 (I-2): Python `dict(parse_qsl(...))` (unwatermark.py:33) gộp khoá trùng —
+        // giữ VỊ TRÍ xuất hiện ĐẦU TIÊN nhưng GIÁ TRỊ của lần xuất hiện CUỐI CÙNG. Oracle
+        // (`.venv`, chỉ đọc): uw.replace_query("https://h/p?channel=x&a=1&channel=y", RAW_PARAMS)
+        // -> "https://h/p?channel=no&a=1&codec_type=8&logo_type=unwatermarked" ('channel' đứng ở
+        // vị trí đầu vì đó là vị trí đầu tiên nó xuất hiện trong query gốc, dù giá trị cuối cùng
+        // trước khi RAW_PARAMS ghi đè là 'y', không phải 'x').
+        let out = replace_query("https://h/p?channel=x&a=1&channel=y", &RAW_PARAMS);
+        assert_eq!(
+            out,
+            "https://h/p?channel=no&a=1&codec_type=8&logo_type=unwatermarked"
+        );
+    }
+
+    #[test]
+    fn replace_query_khoa_trung_khong_trong_raw_params_giu_gia_tri_cuoi() {
+        // Oracle: uw.replace_query("https://h/p?a=1&a=2&b=", RAW_PARAMS)
+        // -> "https://h/p?a=2&b=&channel=no&codec_type=8&logo_type=unwatermarked" — 'a' không nằm
+        // trong RAW_PARAMS nên KHÔNG bị ghi đè, giữ nguyên giá trị CUỐI ('2') từ bước gộp dict.
+        let out = replace_query("https://h/p?a=1&a=2&b=", &RAW_PARAMS);
+        assert_eq!(
+            out,
+            "https://h/p?a=2&b=&channel=no&codec_type=8&logo_type=unwatermarked"
+        );
+    }
+
     // ---- (c) decode_main_url — base64 thường ----
 
     #[test]
@@ -1019,6 +1111,21 @@ mod tests {
         assert_eq!(b64_loose("abcde"), None);
     }
 
+    #[test]
+    fn b64_loose_chap_nhan_bit_du_nhu_cpython() {
+        // Fix round 2 (I-3): CPython `binascii.a2b_base64` (non-strict, mặc định) KHÔNG kiểm tra
+        // các bit dư (không bắt buộc bit thấp của ký tự cuối phải là 0) — khác `STANDARD_NO_PAD`
+        // của crate `base64` (nghiêm ngặt, từ chối `InvalidLastSymbol`). Oracle (`.venv`, chỉ đọc):
+        //   uw.b64_loose("YmN=") == b"bc"; uw.b64_loose("bG9=") == b"lo";
+        //   uw.decode_main_url("aHR0cHM6Ly9vay9hYmN") == "https://ok/abc"
+        assert_eq!(b64_loose("YmN="), Some(b"bc".to_vec()));
+        assert_eq!(b64_loose("bG9="), Some(b"lo".to_vec()));
+        assert_eq!(
+            decode_main_url("aHR0cHM6Ly9vay9hYmN", None),
+            Some("https://ok/abc".to_string())
+        );
+    }
+
     // ---- (e) pick_raw_video theo bitrate + w*h ----
 
     #[test]
@@ -1037,7 +1144,7 @@ mod tests {
         });
         // v1: 500 + 640*480 = 307700; v2: 2000 + 1280*720 = 923600 -> v2 thắng.
         assert_eq!(
-            pick_raw_video(&body),
+            pick_raw_video(&body, ""),
             Some("https://high/1080p.mp4".to_string())
         );
     }
@@ -1045,7 +1152,38 @@ mod tests {
     #[test]
     fn pick_raw_video_khong_co_entry_hop_le_tra_none() {
         let body = json!({"video_info": {"data": {"video_list": {}}}});
-        assert_eq!(pick_raw_video(&body), None);
+        assert_eq!(pick_raw_video(&body, ""), None);
+    }
+
+    #[test]
+    fn pick_raw_video_dung_key_seed_tu_api_url_fallback() {
+        // Fix round 2 (I-1): Python `pick_raw_video(payload, api_url)` (unwatermark.py:202-222)
+        // dò key_seed CẢ trong `payload` LẪN `api_url` (`find_key_seed(payload, api_url)`,
+        // unwatermark.py:210) — người gọi thật `fetch_raw_video` (unwatermark.py:240) luôn truyền
+        // URL fallback_api (mang `&key_seed=...` trong query) làm `api_url`. Oracle (`.venv`,
+        // chỉ đọc, dùng lại đúng QAAB_TOKEN/QAAB_KEY_SEED_B64 đã xác minh ở nhóm test (d)):
+        //   payload = {"video_info": {"data": {"video_list": {"v1": {
+        //       "main_url": QAAB_TOKEN, "bitrate": 100, "vwidth": 100, "vheight": 100}}}}}
+        //   uw.pick_raw_video(payload, "") -> None
+        //   uw.pick_raw_video(payload, f"https://vod-urls-mya.byteintlapi.com/video/fplay/1/sig/vid?channel=no&key_seed={QAAB_KEY_SEED_B64}")
+        //       -> {'url': 'https://ok/', ...}
+        let body = json!({
+            "video_info": {
+                "data": {
+                    "video_list": {
+                        "v1": {"main_url": QAAB_TOKEN, "bitrate": 100, "vwidth": 100, "vheight": 100}
+                    }
+                }
+            }
+        });
+        assert_eq!(pick_raw_video(&body, ""), None);
+        let api_url = format!(
+            "https://vod-urls-mya.byteintlapi.com/video/fplay/1/sig/vid?channel=no&key_seed={QAAB_KEY_SEED_B64}"
+        );
+        assert_eq!(
+            pick_raw_video(&body, &api_url),
+            Some("https://ok/".to_string())
+        );
     }
 
     // ---- (f) extract_unwatermarked_url ----
