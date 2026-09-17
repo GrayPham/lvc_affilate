@@ -1,4 +1,4 @@
-//! Helper dung chung cho smoke test (`ops_smoke.rs`, `session_smoke.rs`): server HTTP ti hon phuc
+//! Helper dung chung cho smoke test (`ops_smoke.rs`, `session_smoke.rs`, `compose_smoke.rs`): server HTTP ti hon phuc
 //! vu `tests/fixtures/` tren `127.0.0.1:0` + mo Chromium headless voi profile tam. KHONG bao gio
 //! goi dola.com.
 //!
@@ -46,6 +46,8 @@ pub fn route(path: &str) -> (&'static str, &'static str, Vec<u8>) {
             "application/json",
             RECENT_CONV_BODY.as_bytes().to_vec(),
         ),
+        // Task 7: fixture compose.html gui /chat/completion (qua hook duration) - chi can 200.
+        "/chat/completion" => ("200 OK", "application/json", b"{}".to_vec()),
         "/upload/v1/loi" => (
             "500 Internal Server Error",
             "application/json",

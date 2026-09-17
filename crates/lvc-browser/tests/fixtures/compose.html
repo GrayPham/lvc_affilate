@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>compose fixture (gia lap composer Dola cho smoke test dola::compose)</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: sans-serif; }
+  [role=menu] { border: 1px solid #888; padding: 6px; width: 220px; background: #fff; }
+  [role=menuitem] { padding: 4px 6px; cursor: pointer; }
+  #cookie-wrap { background: #ffe; padding: 6px; }
+  #ability-tag { display: inline-block; border: 1px solid #66c; padding: 2px 6px; }
+  #ability-tag svg { width: 12px; height: 12px; vertical-align: middle; background: #66c; cursor: pointer; }
+  .attach { position: relative; width: 120px; height: 90px; background: #ddd; display: inline-block; margin: 4px; }
+  /* nut x KHONG hien san (nhu Dola): chi hien 100ms sau mouseenter the (xem JS) */
+  .attach .x { position: absolute; right: 0; top: 0; width: 16px; height: 16px; line-height: 16px;
+               text-align: center; background: #c33; color: #fff; cursor: pointer; display: none; }
+  #log { white-space: pre; font-size: 11px; }
+</style>
+</head>
+<body>
+<!--
+  Query string dieu khien fixture (khong doi JS cua tool):
+    ?mode=pro        -> nut che do ban dau la プロ (mac dinh 高速)
+    ?nomode=1        -> KHONG co nut che do (ke ca sau reload) -> select_mode phai bao MODE_UNAVAILABLE
+    ?stuck=1         -> bam muc menu che do KHONG doi duoc nhan (-> ModeSwitch)
+    ?cookie=1        -> co cookie banner voi nut "OK"
+    ?open=1          -> composer video da mo san (モデル/10s/比率)
+    ?dur=none        -> composer mo ra KHONG co nut thoi luong (ruling NOTES 3.7: 10 s van Ok)
+    ?tag=1           -> composer mo + the ky nang "動画を作成" (SVG ✕) + nhap cu "nhap cu" trong o soan,
+                        va nut che do BI GO KHOI DOM (do that 2026-09-17) - go the moi thay lai nut
+                        (nut model hien "モデル 1.0" de khong dinh regex nut che do)
+    ?model=X         -> nhan ban dau cua nut model la "モデル" + xuong dong + X (mac dinh 2.0高速)
+    ?attach=N        -> N the dinh kem cu `[class*="image-container-"] [class*="container-"]`
+    ?ratiomenu=empty -> menu ti le khong co muc nao (-> RATIO_UNAVAILABLE)
+    ?create=hidden   -> nut 動画を作成 display:none (-> khong mo duoc composer)
+  Menu `[role=menu]` duoc TAO/XOA dong (nhu radix): Escape xoa moi menu. Enter trong o soan ->
+  ghi log `send "<text>"`, xoa o, va goi window.fetch('/chat/completion', body co "duration":10)
+  qua stub fetch (ghi `fetch <url> body=<body>` roi goi fetch that) - hook ADR-044 doi duration.
+  Moi lan tai trang: sessionStorage.lvc_loads += 1.
+-->
+<div id="cookie-wrap"></div>
+<div id="mode-wrap"><button id="mode-btn">高速</button></div>
+<button id="create-btn">動画を作成</button>
+<div id="composer-extra"></div>
+<div id="attach-wrap"></div>
+<textarea id="prompt" rows="4" cols="60"></textarea>
+<div>loads=<span id="loads">0</span></div>
+<pre id="log"></pre>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(line) { logEl.textContent += line + '\n'; }
+  var q = new URLSearchParams(location.search);
+
+  var loads = 0;
+  try {
+    loads = parseInt(sessionStorage.getItem('lvc_loads') || '0', 10) + 1;
+    sessionStorage.setItem('lvc_loads', String(loads));
+  } catch (e) {}
+  document.getElementById('loads').textContent = String(loads);
+  log('load ' + loads + ' ' + location.search);
+
+  // Ghi MOI su kien de test doc lai qua ops::eval_json.
+  document.addEventListener('mousedown', function (e) {
+    log('mousedown ' + e.clientX + ' ' + e.clientY + ' ' + (e.target.id || e.target.tagName));
+  });
+  document.addEventListener('click', function (e) {
+    log('click ' + (e.target.id || e.target.tagName) + ' detail=' + e.detail);
+  });
+  document.addEventListener('keydown', function (e) {
+    log('keydown ' + e.key + ' code=' + e.code + ' ctrl=' + e.ctrlKey + ' shift=' + e.shiftKey + ' keyCode=' + e.keyCode);
+    if (e.key === 'Escape') {
+      var menus = document.querySelectorAll('[role="menu"]');
+      menus.forEach(function (m) { m.remove(); });
+      if (menus.length) log('escape');
+    }
+  });
+  document.addEventListener('keyup', function (e) { log('keyup ' + e.key); });
+
+  // Stub fetch: ghi body roi goi fetch THAT (hook DURATION_HOOK_JS boc ben ngoai stub nay).
+  var origFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var u = typeof input === 'string' ? input : (input && input.url);
+    var b = init && typeof init.body === 'string' ? init.body : '';
+    log('fetch ' + u + ' body=' + b);
+    return origFetch(input, init);
+  };
+
+  // Menu dong: tao [role=menu] ngay sau `anchor`, moi muc [role=menuitem]; bam muc -> onPick.
+  function openMenu(anchor, id, items, onPick) {
+    var old = document.getElementById(id);
+    if (old) { old.remove(); return; }
+    var menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    menu.id = id;
+    items.forEach(function (label) {
+      var it = document.createElement('div');
+      it.setAttribute('role', 'menuitem');
+      it.textContent = label;
+      it.addEventListener('click', function () { onPick(label); menu.remove(); });
+      menu.appendChild(it);
+    });
+    anchor.insertAdjacentElement('afterend', menu);
+  }
+
+  // Cookie banner
+  if (q.get('cookie') === '1') {
+    var cw = document.getElementById('cookie-wrap');
+    cw.innerHTML = '<span>Cookie?</span> <button id="cookie-ok">OK</button>';
+    document.getElementById('cookie-ok').addEventListener('click', function () {
+      cw.innerHTML = '';
+      log('cookie ok');
+    });
+  }
+
+  // Nut che do: mo menu 高速/プロ; bam muc doi chu (tru ?stuck=1).
+  var modeWrap = document.getElementById('mode-wrap');
+  function wireModeButton() {
+    var btn = document.getElementById('mode-btn');
+    if (!btn) return;
+    if (q.get('mode') === 'pro') btn.textContent = 'プロ';
+    btn.addEventListener('click', function () {
+      openMenu(btn, 'mode-menu', ['高速', 'プロ'], function (label) {
+        if (q.get('stuck') === '1') { log('mode stuck'); return; }
+        btn.textContent = label;
+        log('mode ' + label);
+      });
+    });
+  }
+  wireModeButton();
+  if (q.get('nomode') === '1') modeWrap.innerHTML = '';
+
+  // Composer video: モデル / 10s / 比率 (+ the ky nang khi ?tag=1).
+  var extra = document.getElementById('composer-extra');
+  var textarea = document.getElementById('prompt');
+  function buildComposer() {
+    // ?tag=1: nhan model "1.0" de nut model KHONG chua 高速/プロ (neu khong, ung vien 1 cua
+    // _wait_mode_button se nhan nham nut model la nut che do - nhu Python voi has_text=MODE_BTN_RE).
+    var initialModel = q.get('model') || (q.get('tag') === '1' ? '1.0' : '2.0高速');
+    var html = '<button id="model-btn">モデル\n' + initialModel + '</button> ';
+    if (q.get('dur') !== 'none') html += '<button id="dur-btn">10s</button> ';
+    html += '<button id="ratio-btn">比率\n9:16</button>';
+    if (q.get('tag') === '1') {
+      html += ' <div id="ability-tag" data-input-engine-action-source="actionbar" data-value="17" contenteditable="false">' +
+              '<div>動画を作成</div><svg class="exit-skill-close-btn-x1" viewBox="0 0 12 12"></svg></div>';
+    }
+    extra.innerHTML = html;
+
+    var modelBtn = document.getElementById('model-btn');
+    modelBtn.addEventListener('click', function () {
+      openMenu(modelBtn, 'model-menu',
+        ['Dreamina Seedance 2.0高速', 'Dreamina Seedance 2.5', 'Dreamina Seedance 1.0'],
+        function (label) {
+          modelBtn.textContent = 'モデル\n' + label.replace('Dreamina Seedance ', '');
+          log('model ' + label);
+        });
+    });
+    var durBtn = document.getElementById('dur-btn');
+    if (durBtn) {
+      durBtn.addEventListener('click', function () {
+        openMenu(durBtn, 'dur-menu', ['10s', '15s'], function (label) {
+          durBtn.textContent = label;
+          log('duration ' + label);
+        });
+      });
+    }
+    var ratioBtn = document.getElementById('ratio-btn');
+    ratioBtn.addEventListener('click', function () {
+      var items = q.get('ratiomenu') === 'empty' ? [] : ['9:16', '16:9', '1:1', '4:3', '3:4'];
+      openMenu(ratioBtn, 'ratio-menu', items, function (label) {
+        ratioBtn.textContent = '比率\n' + label;
+        log('ratio ' + label);
+      });
+    });
+    var tag = document.getElementById('ability-tag');
+    if (tag) {
+      tag.querySelector('svg').addEventListener('click', function () {
+        tag.remove();
+        extra.innerHTML = '';
+        // Dola ve lai thanh nut che do sau khi go the (do that 2026-09-17)
+        modeWrap.innerHTML = '<button id="mode-btn">高速</button>';
+        wireModeButton();
+        log('tag cleared');
+      });
+    }
+  }
+  var createBtn = document.getElementById('create-btn');
+  if (q.get('create') === 'hidden') createBtn.style.display = 'none';
+  createBtn.addEventListener('click', function () {
+    if (extra.firstChild) { extra.innerHTML = ''; log('composer closed'); return; }
+    buildComposer();
+  });
+  if (q.get('open') === '1' || q.get('tag') === '1') buildComposer();
+  if (q.get('tag') === '1') {
+    modeWrap.innerHTML = '';
+    textarea.value = 'nhap cu';
+  }
+
+  // The dinh kem cu: ✕ o goc tren phai chi hien 100 ms SAU mouseenter (Python hover + 250 ms).
+  var nAttach = parseInt(q.get('attach') || '0', 10);
+  var attachWrap = document.getElementById('attach-wrap');
+  for (var i = 0; i < nAttach; i++) {
+    (function (idx) {
+      var outer = document.createElement('div');
+      outer.className = 'image-container-7f3';
+      var card = document.createElement('div');
+      card.className = 'container-a1b attach';
+      card.id = 'attach-' + idx;
+      var x = document.createElement('span');
+      x.className = 'x';
+      x.textContent = '×';
+      card.appendChild(x);
+      outer.appendChild(card);
+      attachWrap.appendChild(outer);
+      card.addEventListener('mouseenter', function () {
+        log('mouseenter attach-' + idx);
+        setTimeout(function () { x.style.display = 'block'; }, 100);
+      });
+      x.addEventListener('click', function () {
+        outer.remove();
+        log('attach removed ' + idx);
+      });
+    })(i);
+  }
+
+  // O soan: ghi input; Enter (khong Shift) = gui -> fetch /chat/completion voi duration 10.
+  textarea.addEventListener('input', function (e) {
+    log('input ' + e.inputType + ' ' + JSON.stringify(textarea.value));
+  });
+  textarea.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    log('send ' + JSON.stringify(textarea.value));
+    textarea.value = '';
+    var body = JSON.stringify({chat_ability: {ability_type: 17,
+      ability_param: JSON.stringify({model: 'seedance_v2.0', duration: 10})}});
+    window.fetch('/chat/completion', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body})
+      .then(function (r) { log('sent status=' + r.status); })
+      .catch(function (err) { log('sent error=' + err); });
+  });
+})();
+</script>
+</body>
+</html>
