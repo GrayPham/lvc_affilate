@@ -498,6 +498,43 @@ P0 phát hiện lệch (mode agent, bỏ 30s…).
 **Hệ quả:** P0.5 này; mọi phase sau đối chiếu với `8ec1cfac`; nếu Python tiếp tục đổi, mở
 ADR mới chứ không trượt ngầm.
 
+### ADR-R012 — Cửa tử P1 MỞ: chromiumoxide giữ được phiên Dola (2026-09-17)
+
+**Đo thật:** 2026-09-17 15:24 UTC, máy Windows Server 2022, `crates/lvc-browser/examples/probe_profile.rs`,
+bản copy profile Python `qertqegfdsacd` (14 profile gốc không đụng), binary
+`ms-playwright/chromium-1234/chrome-win64/chrome.exe` (đúng bản patchright 1.62.3 dùng, UA Chrome/151),
+headed, **không gửi prompt**. Kết quả: `Storage.getCookies` trước goto = 79/79 cookie
+(27 dola, `sessionid` có); `goto /chat` + 6 s → `state: logged_in`, `has_sessionid: true`,
+`composer: true`, 0 login marker, không `region-restricted`; screenshot thấy avatar tài
+khoản + lịch sử chat + nút 高速. `navigator.webdriver=false`, `navigator.language=ja-JP`.
+
+**Quyết định:** giữ chromiumoxide làm driver (ADR-R002 phương án A); **không** mở sidecar
+Python. Tiến P2.
+
+**Hai bẫy đã dẫm phải trên đường (ghi để không lặp):**
+
+1. **Sai binary → "logged_out" giả.** Google Chrome 153 mở profile do Chromium 1234 tạo:
+   cookie không giải mã được (khoá OS-crypt gắn theo bản cài) → 0 sessionid. Profile của
+   tài khoản nào phải mở bằng đúng binary đã tạo nó; `pool_usage.db` cột `browser` là
+   nguồn sự thật (`chromium` = bản Playwright của patchright, không phải Chrome hệ thống).
+2. **`--user-data-dir` TƯƠNG ĐỐI → mất cookie bất định.** Cùng binary, cùng DB (79 dòng,
+   journal rỗng, integrity ok, mọi giá trị giải mã được bằng DPAPI + AES-GCM, hash host
+   khớp), nhưng Chromium chỉ nạp 7–8/79 cookie, tập nạp đổi giữa các lần chạy, và
+   `sessionid` luôn thiếu — kể cả khi đã dùng nguyên bộ cờ patchright. Đường dẫn tuyệt đối
+   nạp 79/79. Cơ chế bên trong Chromium không xác định được từ ngoài; kết luận thực nghiệm
+   đủ chắc (3 lần tương đối = thiếu, 2 lần tuyệt đối = đủ). Driver ép `std::path::absolute`
+   trong `ChromiumDriver::config`, ghim bằng test `config_ep_user_data_dir_tuyet_doi`.
+
+**Đổi kèm:** `PATCHRIGHT_DEFAULT_ARGS` thay bộ cờ Puppeteer chép tay từ chromiumoxide bằng
+bộ cờ **thật** patchright 1.62.3 truyền (bắt qua `DEBUG=pw:browser`), trừ cờ đã có trong
+`LAUNCH_ARGS` và cờ chromiumoxide tự lo. Không phải nguyên nhân lỗi, nhưng là parity với
+công cụ đã chạy ổn với Dola; phải rà lại mỗi khi nâng patchright/chromiumoxide.
+
+**Chưa chứng minh (để P2 đo tiếp):** gửi prompt + nhận video qua CDP có bị Dola chặn ở
+tầng `a_bogus`/fetch hook hay không — cửa tử này chỉ chứng minh *phiên đăng nhập* sống.
+
+**Bác:** sidecar Python (đã bác lần 2 bởi người dùng với đầy đủ thông tin, 2026-09-17).
+
 ## 14. Câu hỏi còn mở
 
 1. **Di trú**: có chạy song song bản Python và bản Rust một thời gian không, hay cắt hẳn?

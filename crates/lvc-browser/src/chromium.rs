@@ -26,38 +26,46 @@ pub const LAUNCH_ARGS: [&str; 5] = [
 pub const LOCALE: &str = "ja-JP";
 pub const TIMEZONE: &str = "Asia/Tokyo";
 
-/// chromiumoxide 0.9 tu dat mot bo co Puppeteer-style theo mac dinh (xem static rieng
-/// `DEFAULT_ARGS` trong `browser/config.rs` cua chromiumoxide — module `argument` KHONG
-/// `pub` nen khong doc, ghi de tung co, hay xoa mot co don le duoc; `ArgsBuilder` noi bo
-/// la `HashMap` GOP gia tri theo khoa chu khong GHI DE). Bo do co san `--enable-automation`
-/// va `--lang=en_US`. De giu dung 2 ngu nghia bat buoc cua ke hoach (bo --enable-automation,
-/// khoa ja-JP), ta goi `disable_default_args()` roi lap lai cac co con lai (tham khao source
-/// chromiumoxide-0.9.1/src/browser/config.rs, khong co tren docs.rs vi private) TRU
-/// "enable-automation", va doi "lang" thanh `LOCALE` (dat rieng, khong nam trong mang nay).
-/// Review Task 3-6 (I-4): bo them "disable-popup-blocking" va "disable-default-apps" —
-/// patchright liet ca hai vao "Command Flags Leaks" can go bo de khong bi soi. Vay con lai
-/// 20/24 co goc (24 - enable-automation - lang - popup-blocking - default-apps = 20).
-const DEFAULT_ARGS_SANS_AUTOMATION: [&str; 20] = [
+/// Bo co MAC DINH cua patchright 1.62.3 (Chromium 1234), chep NGUYEN VAN tu dong lenh that
+/// ma patchright khoi chay (bat `DEBUG=pw:browser` khi Python goi
+/// `launch_persistent_context(..., ignore_default_args=["--enable-automation"])`), TRU:
+/// - `--disable-blink-features=AutomationControlled`, `--disable-infobars`, `--no-first-run`,
+///   `--no-default-browser-check`: da co trong [`LAUNCH_ARGS`] (patchright cung truyen trung).
+/// - `--user-data-dir`, `--remote-debugging-pipe`, `about:blank`: chromiumoxide tu lo
+///   (dung `--remote-debugging-port=0`, khong co pipe).
+///
+/// Ly do dung list nay thay vi bo Puppeteer-style co san cua chromiumoxide: chromiumoxide
+/// 0.9 tu dat `--enable-automation` + `--lang=en_US` (khong xoa le duoc — `ArgsBuilder` la
+/// `HashMap` gop theo khoa, module `argument` private) nen ta goi `disable_default_args()`
+/// roi tu dat co; va cong cu Python da chay on dinh voi Dola bang dung bo co nay, nen giu
+/// parity thay vi tu che. `--no-sandbox` giu vi Playwright tren Windows luon truyen
+/// (`chromiumSandbox: false`). `--disable-extensions` chromiumoxide luon them khi khong cau
+/// hinh extension (khong tat duoc) — Python khong co co nay; ghi nhan, chua thay anh huong.
+/// NHAC: kiem tra lai list nay moi khi nang cap patchright/chromiumoxide (khong co canh bao
+/// bien dich nao bao lech).
+const PATCHRIGHT_DEFAULT_ARGS: [&str; 22] = [
+    "disable-field-trial-config",
     "disable-background-networking",
-    "enable-features=NetworkService,NetworkServiceInProcess",
     "disable-background-timer-throttling",
     "disable-backgrounding-occluded-windows",
     "disable-breakpad",
-    "disable-client-side-phishing-detection",
-    "disable-component-extensions-with-background-pages",
     "disable-dev-shm-usage",
-    "disable-features=TranslateUI",
+    "disable-edgeupdater",
+    "disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion",
+    "enable-features=CDPScreenshotNewSurface",
     "disable-hang-monitor",
-    "disable-ipc-flooding-protection",
     "disable-prompt-on-repost",
     "disable-renderer-backgrounding",
-    "disable-sync",
+    "disable-updater-scheduler",
     "force-color-profile=srgb",
-    "metrics-recording-only",
-    "no-first-run",
     "password-store=basic",
     "use-mock-keychain",
-    "enable-blink-features=IdleDetection",
+    "no-service-autorun",
+    "export-tagged-pdf",
+    "disable-search-engine-choice-screen",
+    "edge-skip-compat-layer-relaunch",
+    "disable-sync",
+    "no-sandbox",
 ];
 
 /// Driver chromiumoxide (CDP thuan) cho `BrowserDriver`. Review Task 3-6 (I-5): ghi lai o day
@@ -88,8 +96,13 @@ pub struct ChromiumSession {
 
 impl ChromiumDriver {
     fn config(opts: &LaunchOpts) -> Result<BrowserConfig, BrowserError> {
+        // ADR-R012: Chromium nhan `--user-data-dir` TUONG DOI thi chi nap 7-8/79 cookie cua
+        // profile (bat dinh giua cac lan chay) → mat sessionid → "logged_out" gia. Duong dan
+        // TUYET DOI nap du 79/79. Playwright luon truyen tuyet doi; ta ep o day de khong
+        // phu thuoc vao cwd cua tien trinh goi.
+        let profile_dir = std::path::absolute(&opts.profile_dir)?;
         let mut b = BrowserConfig::builder()
-            .user_data_dir(&opts.profile_dir)
+            .user_data_dir(&profile_dir)
             .hide() // bo navigator.webdriver that (--disable-blink-features=AutomationControlled)
             // Review Task 3-6 (minor): hide() chi tu null viewport NEU no dang la
             // Some(Viewport::default()) — ep ro bang .viewport(None) o day de khong phu thuoc
@@ -101,8 +114,8 @@ impl ChromiumDriver {
             // Review Task 3-6 (minor): giu Security.setIgnoreCertificateErrors nhu mac dinh
             // (khong goi), giong Python — tranh che loi proxy/MITM that trong Task 7.
             .respect_https_errors()
-            .disable_default_args(); // xem ghi chu DEFAULT_ARGS_SANS_AUTOMATION o tren
-        for a in DEFAULT_ARGS_SANS_AUTOMATION {
+            .disable_default_args(); // xem ghi chu PATCHRIGHT_DEFAULT_ARGS o tren
+        for a in PATCHRIGHT_DEFAULT_ARGS {
             b = b.arg(a);
         }
         b = b.arg(format!("lang={LOCALE}"));
@@ -291,5 +304,33 @@ impl BrowserDriver for ChromiumDriver {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), s.browser.wait()).await;
         s.handler.abort();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    /// ADR-R012: duong dan profile tuong doi PHAI duoc ep tuyet doi truoc khi thanh
+    /// `--user-data-dir` (tuong doi → Chromium nap thieu cookie, mat sessionid).
+    #[test]
+    fn config_ep_user_data_dir_tuyet_doi() {
+        let opts = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/tuong_doi"),
+            headless: true,
+            proxy_server: None,
+            window_offscreen: false,
+            chrome_executable: None,
+        };
+        let cfg = ChromiumDriver::config(&opts).expect("config");
+        let dir = cfg.user_data_dir.expect("user_data_dir phai duoc dat");
+        assert!(
+            dir.is_absolute(),
+            "user_data_dir van tuong doi: {}",
+            dir.display()
+        );
+        assert!(dir.ends_with("accounts/tuong_doi"), "{}", dir.display());
     }
 }
