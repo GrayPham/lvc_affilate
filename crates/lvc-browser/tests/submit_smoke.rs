@@ -5,7 +5,7 @@
 //!
 //! Fixture: nut che do 高速, 動画を作成 -> composer (モデル 2.0高速 / 10s / 比率 9:16), o soan; Enter ->
 //! `send "<text>"` + fetch `/chat/completion` (duration 10) roi tuy query: `pushState('/chat/<id>')`
-//! sau 1 s (mac dinh), `?captcha=1` (iframe bdcaptcha.html sau 500 ms), `?noconv=1`, `?login_after=1`,
+//! sau 1 s (mac dinh), `?captcha=1|late|jump` (iframe bdcaptcha.html), `?noconv=1`, `?login_after=1`,
 //! `?jump=1` (chat CU + `recent_conv` tra chat moi tu lan goi 2), `?dur=none`, `?nofetch=1`.
 
 mod common;
@@ -157,6 +157,64 @@ async fn submit_fast_captcha_bao_risk_control() {
         frames.iter().any(|u| u.contains("bdcaptcha.html")),
         "{frames:?}"
     );
+    fx.close().await;
+}
+
+/// Vong 2 I-1: captcha xuat hien SAU khi URL da co conversation id (300 ms sau pushState, ca hai truoc
+/// nhip 1 s dau) -> van `RISK_CONTROL` (moi nhip kiem captcha truoc khi doc URL).
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test submit_smoke -- --ignored"]
+async fn submit_fast_captcha_sau_conv_id_van_bao_risk_control() {
+    let fx = Fx::open("chat?captcha=late").await;
+    let p = fx.page();
+    set_fake_dola_sessionid(p).await;
+    let limits = Limits::default();
+    let ctx = SubmitCtx::new(p, &limits);
+    let err = submit_at(
+        &ctx,
+        &req(Mode::Fast, 10, None),
+        &fx.url("chat?captcha=late"),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, DolaError::RiskControl(_)), "{err:?}");
+    let log = fx.log().await;
+    assert!(
+        pos(&log, "pushState /chat/123456789012") < pos(&log, "captcha iframe"),
+        "{log}"
+    );
+    assert!(ops::url(p).await.unwrap().ends_with("/chat/123456789012"));
+    fx.close().await;
+}
+
+/// Vong 2 I-1c: nhanh chat CU -> `recent_conv` -> goto `/chat/<id moi>` + 2 s; trang moi hien captcha
+/// ngay khi tai -> kiem tra `has_captcha` NGAY TRUOC khi tra id phai bat duoc -> `RISK_CONTROL`
+/// (khong tra `Ok(id)` de roi poll toi TIMEOUT khong ma).
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test submit_smoke -- --ignored"]
+async fn submit_fast_captcha_tren_chat_moi_sau_goto_bao_risk_control() {
+    let fx = Fx::open("chat?captcha=jump").await;
+    let p = fx.page();
+    set_fake_dola_sessionid(p).await;
+    let limits = Limits::default();
+    let ctx = SubmitCtx::new(p, &limits);
+    let res = submit_at(
+        &ctx,
+        &req(Mode::Fast, 10, None),
+        &fx.url("chat?captcha=jump"),
+    )
+    .await;
+    let err = match res {
+        Err(e) => e,
+        Ok(id) => panic!("phai RISK_CONTROL, lai tra id {id}"),
+    };
+    assert!(matches!(err, DolaError::RiskControl(_)), "{err:?}");
+    assert!(err.rotates_account());
+    let url = ops::url(p).await.unwrap();
+    assert_eq!(url, fx.url(&format!("chat/{RECENT_CONV_NEW_ID}")), "{url}");
+    assert_eq!(loads(&fx).await, 2);
+    let log = fx.log().await;
+    assert!(log.contains("captcha iframe"), "{log}");
     fx.close().await;
 }
 

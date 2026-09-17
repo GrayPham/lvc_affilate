@@ -18,6 +18,11 @@
     (mac dinh)       -> 1000 ms sau Enter: history.pushState('/chat/123456789012') (chat MOI)
     ?captcha=1       -> pushState NGAY khi Enter + 500 ms sau chen <iframe src="bdcaptcha.html">
                         (captcha phai thang du da co conversation id — R3 kiem captcha truoc)
+    ?captcha=late    -> pushState 200 ms sau Enter, iframe captcha 300 ms SAU pushState (500 ms) —
+                        ca hai truoc nhip 1 s dau (vong 2 I-1)
+    ?captcha=jump    -> nhu ?jump=1 + dat sessionStorage.lvc_captcha_on_jump; trang tai o /chat/<id>
+                        (sau goto cua after_submit) hien iframe captcha NGAY khi tai -> kiem tra
+                        has_captcha ngay truoc khi tra id (vong 2 I-1c) phai bat duoc
     ?noconv=1        -> KHONG bao gio pushState (-> NO_CONVERSATION sau Limits.no_conversation_timeout_s)
     ?login_after=1   -> sau Enter hien nut ログイン (raise_if_logged_out -> LOGGED_OUT revoked)
     ?jump=1          -> 1000 ms sau Enter: pushState('/chat/12345') = chat CU (co trong
@@ -51,6 +56,14 @@
   } catch (e) {}
   document.getElementById('loads').textContent = String(loads);
   log('load ' + loads + ' ' + location.pathname + location.search);
+  var captchaMode = q.get('captcha') || '';
+  try {
+    if (captchaMode === 'jump') sessionStorage.setItem('lvc_captcha_on_jump', '1');
+    if (sessionStorage.getItem('lvc_captcha_on_jump') === '1' && /^\/chat\/\d+$/.test(location.pathname)) {
+      // trang chat MOI (sau goto) co captcha ngay khi tai
+      setTimeout(function () { showCaptcha(); }, 0);
+    }
+  } catch (e) {}
 
   document.addEventListener('click', function (e) {
     log('click ' + (e.target.id || e.target.tagName));
@@ -161,12 +174,15 @@
       document.getElementById('login-wrap').innerHTML = '<button id="login-btn">ログイン</button>';
       log('login button shown');
     }
-    if (q.get('captcha') === '1') {
+    if (captchaMode === '1') {
       pushConv('123456789012');
+      setTimeout(showCaptcha, 500);
+    } else if (captchaMode === 'late') {
+      setTimeout(function () { pushConv('123456789012'); }, 200);
       setTimeout(showCaptcha, 500);
     } else if (q.get('noconv') === '1') {
       // khong lam gi
-    } else if (q.get('jump') === '1') {
+    } else if (q.get('jump') === '1' || captchaMode === 'jump') {
       setTimeout(function () { pushConv('12345'); }, 1000);
     } else {
       setTimeout(function () { pushConv('123456789012'); }, 1000);

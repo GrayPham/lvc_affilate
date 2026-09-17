@@ -12,7 +12,7 @@
 //! | [`select_duration_or_hook`] | `:2274-2288` (15/30 khong co tren UI -> 10 s + hook ADR-044) |
 //! | [`hook_not_patched_msg`] | `:2296-2299` |
 //! | [`after_submit`] | `_after_submit` `:2533-2600` (captcha + conv id; KHONG poll — Task 11) |
-//! | [`has_captcha`] | `find_captcha_frame` `:692-696` |
+//! | [`has_captcha`] / [`has_captcha_in`] / [`captcha_error`] | `find_captcha_frame` `:692-696`; `RiskControlError` (R6) |
 //! | [`first_fresh`] / [`is_recent_tick`] | `pick_new_conv_id(tail, known, recent)` `:678-689`, `:2578` |
 //! | [`no_conversation_msg`] | `:2600` |
 //!
@@ -22,9 +22,17 @@
 //! conversation id (`:2563-2600`) => luon mat >= 20 s. O day chi co **MOT** vong
 //! `Limits::no_conversation_timeout_s` (30) x 1 s; MOI nhip: (a) frame nao chua `bdcaptcha.html` ->
 //! [`DolaError::RiskControl`] ngay (R6: khong giai slider o P2, pool cooldown 1800 s); (b) doc URL
-//! nhu Python. Ket qua: khong captcha -> co id sau ~1-2 s thay vi ~21 s; co captcha -> bao trong 1 s.
-//! Cai gia: captcha xuat hien SAU khi da co conversation id thi Task 11 (poll) moi thay — Python
-//! cung vay sau 20 s.
+//! nhu Python; (c) ngay TRUOC khi tra id (ca duong `New` lan duong nhay `Known` -> `recent_conv` ->
+//! goto) kiem [`has_captcha`] them mot lan (review vong 2 I-1c: dong khe iframe chen giua hai lenh CDP
+//! cua cung nhip, va captcha tren trang chat moi sau goto). Ket qua: khong captcha -> co id sau ~1-2 s
+//! thay vi ~21 s; co captcha -> bao trong 1 s.
+//!
+//! **Khe mu KHONG doi xung (I-1a):** Python bo lo captcha xuat hien tu t >= 20 s sau Enter (vong captcha
+//! chay du 20 s bat ke URL); Rust bo lo captcha xuat hien SAU nhip da tra id — thuong t ~ 1-2 s sau Enter
+//! (URL bi tu choi thi van o `/chat`, Rust kiem tiep du 30 s). Neu Dola dung `bdcaptcha.html` sau khi URL
+//! da co `/chat/<id>` (chua thay trong ghi chu Python), task se di tiep vao poll va ket thuc `TIMEOUT`
+//! khong ma, tai khoan KHONG cooldown. Vi vay Task 11 (poll) PHAI goi [`has_captcha`] moi nhip ->
+//! [`captcha_error`] (ca hai `pub`, re-export tu `dola`) — khi do khe dong hoan toan.
 //!
 //! # Khac Python — dieu huong (ruling #5)
 //! Python `:2461-2464`: `is_reused and page.url == chat_url` -> 1 s; khong thi `goto` + (3 s neu reused
@@ -112,7 +120,9 @@ pub struct SubmitCtx<'a> {
 }
 
 impl<'a> SubmitCtx<'a> {
-    /// `logs_dir` mac dinh `logs` (tuong doi thu muc lam viec, nhu Python).
+    /// `logs_dir` mac dinh `logs` — TUONG DOI thu muc lam viec (nhu Python `Path("logs")`). Dich vu
+    /// (Task 17) co the chay voi CWD khong phai thu muc du lieu: hay dung `SubmitCtx { .. }` truc tiep
+    /// voi `logs_dir` TUYET DOI (review vong 2 M-4); `new` chi tien cho test/CLI chay tai thu muc du an.
     #[must_use]
     pub fn new(page: &'a Page, limits: &'a Limits) -> Self {
         Self {
@@ -211,16 +221,41 @@ fn hook_not_patched_msg(state: &str) -> String {
     )
 }
 
-/// R6: chi phat hien, khong giai; pool cooldown 1800 s (`rotates_account`).
-fn captcha_error() -> DolaError {
+/// R6: chi phat hien, khong giai; pool cooldown 1800 s (`rotates_account`). `pub` de Task 11 (poll)
+/// nem cung loi khi [`has_captcha`] moi nhip (xem doc module, I-1).
+#[must_use]
+pub fn captcha_error() -> DolaError {
     DolaError::RiskControl(format!(
         "captcha detected ({CAPTCHA_FRAME_KEY}) — khong giai o P2"
     ))
 }
 
-/// `find_captcha_frame` `:692-696`: frame nao co `bdcaptcha.html` trong URL.
-fn has_captcha(frame_urls: &[String]) -> bool {
+/// `find_captcha_frame` `:692-696` phan thuan: frame nao co `bdcaptcha.html` trong URL.
+#[must_use]
+pub fn has_captcha_in(frame_urls: &[String]) -> bool {
     frame_urls.iter().any(|u| u.contains(CAPTCHA_FRAME_KEY))
+}
+
+/// `find_captcha_frame` `:692-696` tren trang: `Page.getFrameTree` ([`ops::frame_urls`]) roi
+/// [`has_captcha_in`]. Task 11 (poll) goi moi nhip (I-1b).
+///
+/// # Errors
+/// Loi CDP.
+pub async fn has_captcha(page: &Page) -> Result<bool, BrowserError> {
+    Ok(has_captcha_in(&ops::frame_urls(page).await?))
+}
+
+/// (c) Kiem captcha lan cuoi NGAY TRUOC khi tra conversation id (review vong 2 I-1c).
+async fn ensure_no_captcha(page: &Page, account: &str, tick: u32) -> Result<(), DolaError> {
+    if has_captcha(page).await? {
+        tracing::warn!(
+            account,
+            tick,
+            "Captcha detected (bdcaptcha.html) ngay truoc khi tra conversation id → RISK_CONTROL"
+        );
+        return Err(captcha_error());
+    }
+    Ok(())
 }
 
 /// `:684-687` `fresh = [x for x in (recent or []) if x and x not in known]` -> `fresh[0]`.
@@ -468,9 +503,10 @@ async fn screenshot_no_conv(page: &Page, logs_dir: &Path, account: &str) -> Stri
 
 /// Port `_after_submit` phan captcha + conversation id (`:2533-2600`, R3 — xem doc module): moi
 /// nhip 1 s (`Limits::no_conversation_timeout_s` nhip): (a) [`has_captcha`] -> `RiskControl`;
-/// (b) `pick_new_conv_id(url_tail, known)`: `New(id)` -> tra; `Known(id)` va [`is_recent_tick`] ->
-/// `recent_conv_ids` (`:2579`), id dau tien ∉ `known` -> `goto <chat_url>/<id>` + 2 s (loi chi
-/// warn, `:2581-2587`) -> tra. Het gio: anh `logs/no_conv_<account>_<ts>.png` ->
+/// (b) `pick_new_conv_id(url_tail, known)`: `New(id)` -> (c) kiem captcha lan cuoi -> tra; `Known(id)`
+/// va [`is_recent_tick`] -> `recent_conv_ids` (`:2579`), id dau tien ∉ `known` ->
+/// `goto <chat_url>/<id>` roi 2 s (loi chi warn, `:2581-2587`) -> (c) kiem captcha lan cuoi -> tra.
+/// Het gio: anh `logs/no_conv_<account>_<ts>.png` ->
 /// `raise_if_logged_out(account, "ngay sau khi gửi (ảnh <shot>)")` (`:2599`, `revoked`) ->
 /// `NoConversation` (`:2600`).
 ///
@@ -491,7 +527,7 @@ pub async fn after_submit(
     for i in 0..ticks {
         tokio::time::sleep(CONV_TICK).await; // :2566
         // (a) R3/R6: captcha -> bao ngay, khong giai
-        if has_captcha(&ops::frame_urls(page).await?) {
+        if has_captcha(page).await? {
             tracing::warn!(
                 account,
                 tick = i,
@@ -504,6 +540,7 @@ pub async fn after_submit(
         let tail = url_tail(&url);
         match pick_new_conv_id(tail, known) {
             ConvPick::New(id) => {
+                ensure_no_captcha(page, account, i).await?; // (c)
                 tracing::info!(account, conversation_id = %id, tick = i, "conversation_id");
                 return Ok(ConversationId(id));
             }
@@ -534,6 +571,7 @@ pub async fn after_submit(
                             "mở lại chat lỗi (vẫn poll theo id)"
                         );
                     }
+                    ensure_no_captcha(page, account, i).await?; // (c) — captcha tren trang chat moi
                     return Ok(ConversationId(fresh));
                 }
             }
@@ -745,12 +783,12 @@ mod tests {
             e.to_string(),
             "RISK_CONTROL: captcha detected (bdcaptcha.html) — khong giai o P2"
         );
-        assert!(has_captcha(&[
+        assert!(has_captcha_in(&[
             "http://x/chat".into(),
             "https://verify.example/bdcaptcha.html?x=1".into()
         ]));
-        assert!(!has_captcha(&["http://x/chat".into()]));
-        assert!(!has_captcha(&[]));
+        assert!(!has_captcha_in(&["http://x/chat".into()]));
+        assert!(!has_captcha_in(&[]));
     }
 
     /// Bien the `LoggedOut` tu `compose`/`refs` (`raise_if_logged_out(page, "", ...)`) mang `account`

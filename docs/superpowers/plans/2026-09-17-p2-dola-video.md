@@ -24,7 +24,7 @@
 - Poll `/im/chain/single` bằng **HTTP reqwest** (đã chứng minh chỉ cần cookie, ADR-029 Python), **không** bằng fetch trong trang. UA = `navigator.userAgent` thật của browser vừa mở (không hardcode).
 - Tải mp4: GET thuần, **không cookie**, timeout 300 s, đi qua proxy của tài khoản nếu có; `downloads/<account>_<YYYYmmdd_HHMMSS>.mp4`.
 - Thời lượng: fast `10` không cần hook; fast `15`/`30` cần hook `DURATION_HOOK_JS` (30 chỉ với model 2.5); pro-like `10|15` ghi trong prompt (đã có `pro_prompt`/`agent_prompt`).
-- `failure_code` đúng 13 giá trị của `lvc_core::FailureCode` + `None` (spec §6.2). Lỗi Python "không mã" (timeout poll, captcha, hết credit) → `None` + message có tiền tố như Python.
+- `failure_code` đúng 15 giá trị của `lvc_core::FailureCode` + `None` (spec §6.2; 13 + `RATIO_UNAVAILABLE`/`AGENT_NO_VIDEO` — ruling Task 9 vòng 2). Lỗi Python "không mã" (timeout poll, captcha, hết credit) → `None` + message có tiền tố như Python.
 - **Test live tốn credit** (Task 18) — CHỈ chạy khi người dùng đồng ý trong phiên; mọi task khác phải xanh **không cần browser** (smoke `#[ignore]` chạy trên fixture HTML cục bộ, không gọi dola.com).
 - Không đụng `A:\ToolLVC\lvcseedance` (DB, `accounts/`, code). Profile thử nghiệm = **bản copy**.
 - **Headed** cho mọi phiên Dola (headless cho UA `HeadlessChrome/…` — ADR-R012; Python chế độ `profile` cũng ép headed).

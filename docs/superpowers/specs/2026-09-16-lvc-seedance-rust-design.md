@@ -235,13 +235,15 @@ Bản gốc có ba tầng; tầng `KeyConcurrencyLimiter` theo API key biến m�
 
 Không có trạng thái `cancelled`; huỷ ghi `status='failed', failure_code='cancelled'`.
 
-### 6.2 `failure_code` — 13 giá trị
+### 6.2 `failure_code` — 15 giá trị
 
 `cancelled` · `LOGGED_OUT` · `429` · `ACCOUNT_UNAVAILABLE` · `PROMPT_VIOLATION` ·
 `REF_UPLOAD` · `PROFILE_BUSY` · `PROXY_DOWN` · `DURATION_UNAVAILABLE` · `AGENT_QUESTION` ·
-`MODE_UNAVAILABLE` · `NO_CONVERSATION` · `RESTART`
+`MODE_UNAVAILABLE` · `NO_CONVERSATION` · `RESTART` · `RATIO_UNAVAILABLE` · `AGENT_NO_VIDEO`
+(+`RATIO_UNAVAILABLE`, `AGENT_NO_VIDEO` theo Python HEAD 3d07c19 `KNOWN_FAILURE_CODES` `server.py:404-406`, P2 Task 9;
+`DOLA_REVOKED_STREAK`/`REAL_PERSON` để P3/P4)
 
-`DEAD_CHAT_CODES = (PROMPT_VIOLATION, AGENT_QUESTION)` chặn resume — chat cũ vô dụng.
+`DEAD_CHAT_CODES = (PROMPT_VIOLATION, AGENT_QUESTION, AGENT_NO_VIDEO)` chặn resume — chat cũ vô dụng.
 
 > Bản gốc nhận diện mã lỗi bằng **dò tiền tố chuỗi** trên text exception. Bản Rust dùng
 > `enum` + `thiserror` — mã lỗi là kiểu, không phải chuỗi.

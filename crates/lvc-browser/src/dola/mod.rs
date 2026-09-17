@@ -12,4 +12,7 @@ pub mod session;
 pub mod submit;
 
 pub use error::DolaError;
-pub use submit::{ConversationId, SubmitCtx, SubmitRequest, submit, submit_at, submit_timeout};
+pub use submit::{
+    ConversationId, SubmitCtx, SubmitRequest, captcha_error, has_captcha, submit, submit_at,
+    submit_timeout,
+};

@@ -3,11 +3,11 @@
 //! `REF_UPLOAD: ...`, `NO_CONVERSATION: ...`) hoac cac ngoai le rieng (`AccountLoggedOutError`,
 //! `RatioUnavailableError`, `DurationUnavailableError`, `ReferenceUploadError`...). Task 6 tao DU
 //! bien the theo plan Task 9 (ruling controller); Task 9 them phan loai cho engine (Task 15-17):
-//! [`DolaError::failure_code`] (ma luu DB — 13 gia tri Python + `None`), [`DolaError::is_dead_chat`]
-//! (`DEAD_CHAT_CODES`: chat cu vo dung, khong resume), [`DolaError::rotates_account`] (pool dong
-//! Chrome + xoay tai khoan — `generate_video` `except (AccountLoggedOutError, ProfileBusyError,
-//! RiskControlError, AccountLimitedError)` `video_worker_ui.py:2507-2509` + `CreditInsufficientError`
-//! o pool).
+//! [`DolaError::failure_code`] (ma luu DB — `lvc_core::FailureCode` 15 gia tri, spec §6.2 + `None`),
+//! [`DolaError::is_dead_chat`] (`DEAD_CHAT_CODES`: chat cu vo dung, khong resume),
+//! [`DolaError::rotates_account`] (pool xoay tai khoan — `browser_pool.py:1192-1262` `continue` tren
+//! `AccountLoggedOutError`/`RiskControlError`/`AccountLimitedError`/`Credit*Error`/`ProfileBusyError`;
+//! `generate_video` `:2507-2509` chi dong warm session cho 4 loai dau).
 
 use lvc_core::FailureCode;
 
@@ -64,24 +64,25 @@ pub enum DolaError {
 }
 
 impl DolaError {
-    /// Ma loi luu cot `failure_code` (spec §6.2): 7 bien the co ma Python + `Browser(ProfileBusy)` ->
-    /// `PROFILE_BUSY` (ruling Task 9 vong 1: Python `ProfileBusyError` -> `"PROFILE_BUSY"`); con lai
-    /// `None` (loi "khong ma": captcha, het credit, timeout poll, CDP khac...).
+    /// Ma loi luu cot `failure_code` (spec §6.2, `KNOWN_FAILURE_CODES` `server.py:404-406`): 9 bien
+    /// the co tien to ma Python (`RATIO_UNAVAILABLE`/`AGENT_NO_VIDEO` them o vong 2, ruling M-1) +
+    /// `Browser(ProfileBusy)` -> `PROFILE_BUSY` (vong 1: Python `ProfileBusyError` -> `"PROFILE_BUSY"`);
+    /// con lai `None` (loi "khong ma": captcha, het credit, han muc, timeout poll, CDP khac...).
     #[must_use]
     pub fn failure_code(&self) -> Option<FailureCode> {
         match self {
             Self::LoggedOut { .. } => Some(FailureCode::LoggedOut),
             Self::ModeUnavailable(_) => Some(FailureCode::ModeUnavailable),
+            Self::RatioUnavailable(_) => Some(FailureCode::RatioUnavailable),
             Self::DurationUnavailable(_) => Some(FailureCode::DurationUnavailable),
             Self::RefUpload(_) => Some(FailureCode::RefUpload),
             Self::NoConversation(_) => Some(FailureCode::NoConversation),
             Self::PromptViolation(_) => Some(FailureCode::PromptViolation),
             Self::AgentQuestion(_) => Some(FailureCode::AgentQuestion),
+            Self::AgentNoVideo(_) => Some(FailureCode::AgentNoVideo),
             Self::Browser(BrowserError::ProfileBusy(_)) => Some(FailureCode::ProfileBusy),
             Self::ModeSwitch { .. }
-            | Self::RatioUnavailable(_)
             | Self::RiskControl(_)
-            | Self::AgentNoVideo(_)
             | Self::AccountLimited(_)
             | Self::Credit(_)
             | Self::Timeout(_)
@@ -91,8 +92,9 @@ impl DolaError {
         }
     }
 
-    /// Chat cu VO DUNG — khong duoc resume/poll lai (`DEAD_CHAT_CODES` Python + `AGENT_NO_VIDEO`:
-    /// agent da tra loi bang chu, khong co video).
+    /// Chat cu VO DUNG — khong duoc resume/poll lai (`DEAD_CHAT_CODES` `server.py:407`:
+    /// `PROMPT_VIOLATION`, `AGENT_QUESTION`, `AGENT_NO_VIDEO` — agent da tra loi bang chu, khong co video).
+    /// Khop `FailureCode::is_dead_chat` cua ma tuong ung.
     #[must_use]
     pub fn is_dead_chat(&self) -> bool {
         matches!(
@@ -101,9 +103,11 @@ impl DolaError {
         )
     }
 
-    /// Pool phai DONG Chrome va XOAY tai khoan (`video_worker_ui.py:2507-2509`): mat phien, captcha
-    /// (cooldown 1800 s), han muc ngay, het credit, profile dang bi tien trinh khac giu. Loi
-    /// `Browser(_)` khac (CDP/timeout) -> khong xoay (thu lai cung tai khoan).
+    /// Pool XOAY tai khoan (`browser_pool.py:1192-1262`): mat phien, captcha (cooldown 1800 s), han
+    /// muc ngay, het credit, profile dang bi tien trinh khac giu. Viec DONG Chrome do pool quyet
+    /// (Python chi dong warm session cho `LoggedOut`/`ProfileBusy`/`RiskControl`/`AccountLimited`
+    /// `video_worker_ui.py:2507-2509`, giu phien khi het credit `browser_pool.py:1199-1215`; P2 khong
+    /// co warm session). Loi `Browser(_)` khac (CDP/timeout) -> khong xoay (thu lai cung tai khoan).
     #[must_use]
     pub fn rotates_account(&self) -> bool {
         matches!(
@@ -203,7 +207,7 @@ mod tests {
         }
     }
 
-    /// Bang phan loai Task 9 (plan + ruling vong 1): `failure_code` (7 bien the co ma +
+    /// Bang phan loai Task 9 (plan + ruling vong 1/2): `failure_code` (9 bien the co ma +
     /// `Browser(ProfileBusy)` -> `PROFILE_BUSY`, con lai `None`), `is_dead_chat`
     /// (`PromptViolation | AgentQuestion | AgentNoVideo`), `rotates_account` (`LoggedOut | RiskControl |
     /// AccountLimited | Credit | Browser(ProfileBusy)`). 17 bien the + 2 dong `Browser(_)` khac.
@@ -227,7 +231,13 @@ mod tests {
                 false,
                 false,
             ),
-            (DolaError::RatioUnavailable("x".into()), None, false, false),
+            // Vong 2 (ruling M-1): 2 ma trong KNOWN_FAILURE_CODES Python HEAD
+            (
+                DolaError::RatioUnavailable("x".into()),
+                Some(F::RatioUnavailable),
+                false,
+                false,
+            ),
             (
                 DolaError::DurationUnavailable("x".into()),
                 Some(F::DurationUnavailable),
@@ -259,7 +269,12 @@ mod tests {
                 true,
                 false,
             ),
-            (DolaError::AgentNoVideo("x".into()), None, true, false),
+            (
+                DolaError::AgentNoVideo("x".into()),
+                Some(F::AgentNoVideo),
+                true,
+                false,
+            ),
             (DolaError::AccountLimited("x".into()), None, false, true),
             (DolaError::Credit("x".into()), None, false, true),
             (DolaError::Timeout("x".into()), None, false, false),
@@ -294,7 +309,7 @@ mod tests {
         }
     }
 
-    /// Ma loi tra ve phai la 1 trong 13 gia tri Python (`FailureCode::as_str`), khong bia them.
+    /// Ma loi tra ve phai la 1 trong 15 gia tri `FailureCode` (`as_str` = chuoi Python), khong bia them.
     #[test]
     fn failure_code_khop_chuoi_python() {
         assert_eq!(
@@ -319,5 +334,29 @@ mod tests {
                 .map(FailureCode::as_str),
             Some("PROFILE_BUSY")
         );
+        assert_eq!(
+            DolaError::RatioUnavailable("x".into())
+                .failure_code()
+                .map(FailureCode::as_str),
+            Some("RATIO_UNAVAILABLE")
+        );
+        assert_eq!(
+            DolaError::AgentNoVideo("x".into())
+                .failure_code()
+                .map(FailureCode::as_str),
+            Some("AGENT_NO_VIDEO")
+        );
+        // Dead chat theo MA (server.py:2006) khop dead chat theo bien the
+        for e in [
+            DolaError::PromptViolation("x".into()),
+            DolaError::AgentQuestion("x".into()),
+            DolaError::AgentNoVideo("x".into()),
+        ] {
+            assert_eq!(
+                e.failure_code().map(FailureCode::is_dead_chat),
+                Some(true),
+                "{e}"
+            );
+        }
     }
 }
