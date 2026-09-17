@@ -185,9 +185,10 @@ enum PasteResult {
 // ---------------------------------------------------------------------------------------------
 
 /// `MIME_BY_SUFFIX.get(p.suffix.lower(), default)` `:709`, `:770`: `.jpg`/`.jpeg` -> `image/jpeg`,
-/// `.png` -> `image/png`, `.webp` -> `image/webp`; con lai `application/octet-stream` (ruling Task 8
-/// #3 — Python mac dinh `image/png`). `Path::extension` == `Path.suffix` khong dau cham (`a.` ->
-/// `""`, `.png` -> khong co, `a.tar.gz` -> `gz`).
+/// `.png` -> `image/png`, `.webp` -> `image/webp`; con lai `image/png` — dung mac dinh cua `:770`
+/// (`.get(p.suffix.lower(), "image/png")`; ruling Task 8 vong 1: parity thang, `.gif`/khong duoi
+/// van duoc dan voi `type` `image/png` nhu Python). `Path::extension` == `Path.suffix` khong dau
+/// cham (`a.` -> `""`, `.png` -> khong co, `a.tar.gz` -> `gz`).
 #[must_use]
 pub fn mime_by_suffix(path: &Path) -> &'static str {
     let ext = path
@@ -196,9 +197,9 @@ pub fn mime_by_suffix(path: &Path) -> &'static str {
         .unwrap_or_default();
     match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
         "webp" => "image/webp",
-        _ => "application/octet-stream",
+        // "png" va moi duoi khac
+        _ => "image/png",
     }
 }
 
@@ -420,8 +421,9 @@ mod tests {
     use super::*;
 
     /// `video_worker_ui.py:709` `MIME_BY_SUFFIX` (4 duoi, `suffix.lower()`); ngoai bang ->
-    /// `application/octet-stream` (ruling Task 8 #3; Python `:770` mac dinh `image/png`). Oracle
-    /// Python 2026-09-18: `Path(n).suffix.lower()` cho tung ten ben duoi.
+    /// `image/png` (`:770` `.get(p.suffix.lower(), "image/png")`, ruling Task 8 vong 1: parity).
+    /// Oracle Python 2026-09-18: `Path(n).suffix.lower()` cho tung ten ben duoi (`.gif`, `a`, `a.`,
+    /// `.png` dotfile, `a.tar.gz`, `a.png.bak` deu roi ve mac dinh).
     #[test]
     fn mime_by_suffix_theo_python() {
         let cases = [
@@ -431,14 +433,19 @@ mod tests {
             ("a.png", "image/png"),
             ("a.PnG", "image/png"),
             ("a.webp", "image/webp"),
-            ("a.gif", "application/octet-stream"),
-            ("a", "application/octet-stream"),
-            ("a.", "application/octet-stream"),
-            (".png", "application/octet-stream"),
-            ("a.tar.gz", "application/octet-stream"),
-            ("a.png.bak", "application/octet-stream"),
+            ("a.gif", "image/png"),
+            ("a", "image/png"),
+            ("a.", "image/png"),
+            (".png", "image/png"),
+            ("a.tar.gz", "image/png"),
+            ("a.png.bak", "image/png"),
             (r"C:\anh\b.WEBP", "image/webp"),
         ];
+        assert_ne!(
+            mime_by_suffix(Path::new("a.gif")),
+            "application/octet-stream",
+            "khong con mac dinh octet-stream (ruling vong 1)"
+        );
         for (name, want) in cases {
             assert_eq!(mime_by_suffix(Path::new(name)), want, "{name}");
         }
