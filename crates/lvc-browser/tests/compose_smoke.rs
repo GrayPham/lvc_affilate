@@ -533,6 +533,28 @@ async fn hook_patch_duration_15() {
     // Cai lai (hook da co) -> installed:15, khong boc them lan nua
     install_duration_hook(p, 15).await.unwrap();
     assert_eq!(hook_state(p).await.unwrap(), "installed:15");
+    // M-4 (review Task 7): body /chat/completion KHONG co `chat_ability` -> hook de nguyen
+    // (`patch` chi doi khi `body.includes('chat_ability')`), state van `installed:15`.
+    let status: i64 = js(
+        &fx,
+        "window.fetch('/chat/completion', {method: 'POST', body: '{\"duration\":10}'}).then(r => r.status)",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let log = fx.log().await;
+    let plain = log
+        .lines()
+        .filter(|l| l.starts_with("fetch /chat/completion"))
+        .nth(1)
+        .unwrap_or_else(|| panic!("{log}"));
+    assert_eq!(plain, "fetch /chat/completion body={\"duration\":10}");
+    assert_eq!(
+        hook_state(p).await.unwrap(),
+        "installed:15",
+        "khong co chat_ability -> khong patched"
+    );
+    assert!(!verify_hook_patched(p, 15).await.unwrap());
+    assert_eq!(hook_state(p).await.unwrap(), "installed:15");
     // Cai so khac -> installed:30, sau do khong phai patched:15
     install_duration_hook(p, 30).await.unwrap();
     assert_eq!(hook_state(p).await.unwrap(), "installed:30");

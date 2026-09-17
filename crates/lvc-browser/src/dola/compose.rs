@@ -19,8 +19,9 @@
 //!   ASCII) vi Python dua `has_text=`/`get_by_text` cho Playwright chay trong trinh duyet. He qua da
 //!   chung minh: `MODEL_BTN_SRC` `(モデル|Model)\b` KHONG khop "モデル 2.0高速" trong JS, nen Python
 //!   `_select_model` roi xuong `get_by_text(label, exact=True)` (`model_current`) roi
-//!   `get_by_text("モデル")` — [`select_model`] giu DUNG thu tu do. KHONG bao gio ap `labels::*_RE`
-//!   Rust len chu keo ve de "chon".
+//!   `get_by_text(re.compile(re.escape("モデル")), exact=False)` (`:2148` — locator REGEX = chuoi con
+//!   khong neo tren text, phan tu sau nhat => `finder_text_lax("モデル")`, KHONG phai exact) —
+//!   [`select_model`] giu DUNG thu tu do. KHONG bao gio ap `labels::*_RE` Rust len chu keo ve de "chon".
 //! - **DOC LAI chu** — Python `inner_text()` roi `re`/`in` Python tren chuoi: [`is_mode_match`],
 //!   [`is_duration_match`], kiem "nut ti le da chua `16:9`" (`:2184`), "nut model da chua `2.5`"
 //!   (`:2154`). O day dung Rust (`str::contains`, regex Unicode) tren `innerText` — chinh la dieu
@@ -29,8 +30,11 @@
 //! # Bam chuot
 //! Playwright `locator.click(timeout=N)` cho phan tu visible toi da N roi bam; o day [`click_wait`]
 //! lap `ops::click_js` (visible = rect != 0) toi N. `click_js` KHONG kiem actionability (Task 5
-//! M-1 park) nen [`select_mode`] goi [`dismiss_cookie_banner`] + [`close_open_menus`] TRUOC cu bam dau,
-//! dung cho Python lam (`:1987-1993`, `:2017`).
+//! M-1 park). Truoc cu bam dau cua [`select_mode`] chi co [`dismiss_cookie_banner`] — DUNG NHU Python
+//! `_select_mode_locked` (`:1987-1993`); Python KHONG `_close_open_menus` truoc cu bam dau (chi trong
+//! nhanh reload `:2017` va sau khi chon muc menu `:2042`) — ruling review Task 7 I-1: parity thang, giu
+//! nguyen. [`close_open_menus`] van duoc goi truoc [`type_and_send`] (`:2124`) va truoc/sau cac
+//! menu nhu Python.
 //!
 //! Log qua `tracing` thay `print`; KHONG log noi dung prompt (chi do dai).
 
@@ -997,28 +1001,33 @@ pub async fn select_fast_duration(page: &Page, duration: u16) -> Result<(), Dola
             )));
         }
     };
-    if let DurRead::Matched(current) = read {
-        tracing::info!(current = %current, duration, "Duration selector already matches");
-        return Ok(());
-    }
+    // `Some(nhan)` = da doc/bam (`:1907`), `None` = khong co nut (`:1909` `current = ""`)
+    let current = match read {
+        DurRead::Matched(current) => {
+            tracing::info!(current = %current, duration, "Duration selector already matches");
+            return Ok(());
+        }
+        DurRead::Read(current) => Some(current),
+        DurRead::NoButton => None,
+    };
     close_open_menus(page).await?;
-    match read {
-        DurRead::Read(current) if is_duration_match(&current, duration) => {
-            tracing::info!(current = %current, "Duration selector");
+    match current {
+        Some(cur) if is_duration_match(&cur, duration) => {
+            tracing::info!(current = %cur, "Duration selector");
             Ok(())
         }
-        DurRead::Read(current) => Err(DolaError::DurationUnavailable(duration_mismatch_msg(
-            duration, &current,
+        Some(cur) => Err(DolaError::DurationUnavailable(duration_mismatch_msg(
+            duration, &cur,
         ))),
-        DurRead::NoButton if duration == DEFAULT_DURATION_S => {
+        None if duration == DEFAULT_DURATION_S => {
             tracing::info!(
                 "khong co nut thoi luong, yeu cau 10 s -> giu mac dinh 10 s (ruling §3.7)"
             );
             Ok(())
         }
-        DurRead::NoButton | DurRead::Matched(_) => Err(DolaError::DurationUnavailable(
-            duration_mismatch_msg(duration, ""),
-        )),
+        None => Err(DolaError::DurationUnavailable(duration_mismatch_msg(
+            duration, "",
+        ))),
     }
 }
 
