@@ -2,6 +2,7 @@
 //! Không I/O, không DB, không trình duyệt — test được không tốn lượt Dola.
 
 pub mod bulk;
+pub mod chain;
 pub mod cookie;
 pub mod dola_text;
 pub mod error;
@@ -17,6 +18,10 @@ pub mod session;
 pub mod value;
 
 pub use bulk::{bulk_scenes, split_bulk};
+pub use chain::{
+    ChainPoll, ConvPick, LOGIN_INVALID_CODES, chain_http_status, link_key, parse_chain,
+    pick_new_conv_id, video_ids,
+};
 pub use cookie::{
     Cookie, CookieError, DOLA_URL, has_dola_sessionid, parse_netscape, sessionid_expires,
     validate_dola_cookies,
