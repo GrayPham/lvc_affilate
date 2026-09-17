@@ -23,8 +23,8 @@ pub mod video_url;
 pub use browser_kind::BrowserKind;
 pub use bulk::{bulk_scenes, split_bulk};
 pub use chain::{
-    ChainPoll, ConvPick, LOGIN_INVALID_CODES, chain_http_status, link_key, parse_chain,
-    pick_new_conv_id, video_ids,
+    ChainPoll, ConvPick, LOGIN_INVALID_CODES, VIDEO_ID_RE, chain_http_status, link_key,
+    parse_chain, pick_new_conv_id, video_ids,
 };
 pub use cookie::{
     Cookie, CookieError, DOLA_URL, has_dola_sessionid, parse_netscape, sessionid_expires,
@@ -46,8 +46,8 @@ pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
 pub use scheduling::{fit_duration_to_mode, mode_fallback_chain};
 pub use session::{
-    DOLA_REGION_RESTRICTED, SESSION_PROBE_JS, SessionState, classify_session, has_login_marker,
-    is_region_restricted,
+    DOLA_REGION_RESTRICTED, REVOKED_HINT, SESSION_PROBE_JS, SessionState, classify_session,
+    dola_self_logout, has_login_marker, is_region_restricted,
 };
 pub use value::{LogoMode, Model, Ratio};
 pub use video_url::{

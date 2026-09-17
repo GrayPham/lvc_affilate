@@ -7,12 +7,14 @@
 //! nguoi dung. Ma trong crate nay khong bao gio log gia tri cookie (chi ten) o bat ky muc nao.
 
 pub mod chromium;
+pub mod dola;
 pub mod driver;
 pub mod error;
 pub mod executable;
 pub mod ops;
 pub mod profile;
 
+pub use dola::DolaError;
 pub use driver::{BrowserDriver, LaunchOpts, SessionProbe};
 pub use error::BrowserError;
 pub use executable::{

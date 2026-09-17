@@ -49,8 +49,9 @@ static VIDEO_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)mime_type=video_mp4|\.mp4(\?|$)|/video/").expect("VIDEO_LINK_RE hop le")
 });
 
-/// `video_worker_ui.py:1432` `VIDEO_ID_RE`.
-static VIDEO_ID_RE: LazyLock<Regex> =
+/// `video_worker_ui.py:1432` `VIDEO_ID_RE`. Cong khai (Task 6) de `lvc-browser::dola::labels`
+/// re-export thay vi chep lai.
+pub static VIDEO_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b(v[0-9a-z]{10,})\b").expect("VIDEO_ID_RE hop le"));
 
 /// Ket qua `parse_chain` — cung hinh dang object `POLL_JS` tra ve (`video_worker.py:113`).
@@ -516,6 +517,13 @@ mod tests {
             chain_http_status(&json!({ "status_code": "712012001" })),
             Some(500)
         );
+    }
+
+    #[test]
+    fn video_id_re_cong_khai_khop_python_1432() {
+        // Task 6: `VIDEO_ID_RE` phai cong khai de `lvc-browser::dola::labels` re-export (khong chep lai).
+        assert_eq!(VIDEO_ID_RE.as_str(), r"(?i)\b(v[0-9a-z]{10,})\b");
+        assert!(crate::VIDEO_ID_RE.is_match("v186a3gm000cdal5gdvog65tvg6d5png"));
     }
 
     #[test]

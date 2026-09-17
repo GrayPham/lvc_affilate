@@ -41,6 +41,18 @@ pub fn is_region_restricted(url: &str) -> bool {
     url.contains(DOLA_REGION_RESTRICTED)
 }
 
+/// Task 6: khop Python `session_state.py:27-30` `dola_self_logout` — front-end Dola TU dang xuat
+/// (sau khi server tra loi cho tin nhan, thuong 710022002) -> dieu huong ve `/chat/?from_logout=1`.
+/// Do that 2026-09-17: 4 tai khoan moi, chi go 'hi' -> `from_logout=1` trong 1-2 s.
+#[must_use]
+pub fn dola_self_logout(url: &str) -> bool {
+    url.contains("from_logout=1")
+}
+
+/// Khop Python `session_state.py:33-35` `REVOKED_HINT` nguyen van — goi y cho nguoi dung khi Dola
+/// thu hoi phien (`DolaError::LoggedOut { revoked: true }`).
+pub const REVOKED_HINT: &str = "Dola TỪ CHỐI tin nhắn của tài khoản này (thường mã 710022002 「リクエストが集中しています」 — tài khoản mới/nhiều tài khoản cùng IP bị Dola chấm rủi ro) rồi tự đăng xuất → phiên bị huỷ. KHÔNG phải mất cookie: đăng nhập lại sẽ chết y hệt ở tin đầu. Gán proxy riêng cho tài khoản (tab Tài khoản → Sửa) hoặc để tài khoản nghỉ vài giờ rồi thử lại.";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionState {
@@ -133,6 +145,29 @@ mod tests {
             !has_login_marker(&"x".repeat(41)),
             "nhan > 40 ky tu khong tinh"
         );
+    }
+
+    /// Task 6: `session_state.py:27-30` `dola_self_logout` — front-end Dola tu dang xuat sau khi
+    /// server tu choi tin nhan (710022002) -> URL `/chat/?from_logout=1`.
+    #[test]
+    fn dola_self_logout_khop_from_logout_1() {
+        assert!(dola_self_logout("https://www.dola.com/chat/?from_logout=1"));
+        assert!(dola_self_logout(
+            "https://www.dola.com/chat/?x=2&from_logout=1&y=3"
+        ));
+        assert!(!dola_self_logout("https://www.dola.com/chat"));
+        assert!(!dola_self_logout(
+            "https://www.dola.com/chat/?from_logout=0"
+        ));
+        assert!(!dola_self_logout(""));
+    }
+
+    /// `session_state.py:33-35` `REVOKED_HINT` — giu nguyen van (thong diep cho nguoi dung).
+    #[test]
+    fn revoked_hint_nguyen_van() {
+        assert!(REVOKED_HINT.starts_with("Dola TỪ CHỐI tin nhắn của tài khoản này"));
+        assert!(REVOKED_HINT.contains("710022002"));
+        assert!(REVOKED_HINT.ends_with("hoặc để tài khoản nghỉ vài giờ rồi thử lại."));
     }
 
     #[test]

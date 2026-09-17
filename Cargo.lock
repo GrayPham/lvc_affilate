@@ -986,6 +986,7 @@ dependencies = [
  "chromiumoxide",
  "futures",
  "lvc-core",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
