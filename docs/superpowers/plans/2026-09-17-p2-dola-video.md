@@ -27,6 +27,10 @@
 - `failure_code` đúng 13 giá trị của `lvc_core::FailureCode` + `None` (spec §6.2). Lỗi Python "không mã" (timeout poll, captcha, hết credit) → `None` + message có tiền tố như Python.
 - **Test live tốn credit** (Task 18) — CHỈ chạy khi người dùng đồng ý trong phiên; mọi task khác phải xanh **không cần browser** (smoke `#[ignore]` chạy trên fixture HTML cục bộ, không gọi dola.com).
 - Không đụng `A:\ToolLVC\lvcseedance` (DB, `accounts/`, code). Profile thử nghiệm = **bản copy**.
+- **Headed** cho mọi phiên Dola (headless cho UA `HeadlessChrome/…` — ADR-R012; Python chế độ `profile` cũng ép headed).
+- **Log:** P2 không cài `tracing_subscriber`. Mọi `Debug` của kiểu chứa bí mật (`ProxySpec`, `LaunchOpts`) phải **che** mật khẩu. Doc `lvc-browser/lib.rs` ghi: không bật `chromiumoxide` ở mức `debug`/`trace` (payload `Network.getCookies` lọt log) — P3 cài subscriber phải nối `chromiumoxide=warn` **sau** directive người dùng.
+- **Không dùng** `Page::authenticate` / `enable_request_intercept` của chromiumoxide (nó gửi kèm `Network.setCacheDisabled(true)` — khác hành vi Python). Chặn/ủy quyền request chỉ qua `Fetch.enable` thô + `event_listener::<EventRequestPaused|EventAuthRequired>`.
+- Binary Chromium: **không** để chromiumoxide tự dò Google Chrome. `LaunchOpts.browser: BrowserKind` (từ cột `accounts_meta.browser`) + resolver tường minh; không resolve được → lỗi rõ, không chạy.
 
 ---
 
@@ -70,6 +74,9 @@ crates/lvc-engine/examples/gen_one.rs   # T18 CLI E2E thật
 | R6 | Captcha: chỉ **phát hiện** iframe `bdcaptcha.html` → lỗi `RiskControl` (cooldown 1800 s); không giải slider ở P2 | Giải slider cần OpenCV port (spec §12) — P2.5 | Tài khoản bị captcha nghỉ 30 phút |
 | R7 | Bỏ balance pre-flight, logo removal/H264, auto_retry, real-person, Facebook/Google login ở P2 | NOTES §10.2; nghiệm thu P2 là 1 video | Không có |
 | R8 | Session cache (giữ browser ≤ 900 s idle) có, đơn giản: `HashMap<account, (Session, last_used)>` + tick 30 s | Batch nhiều cảnh cùng tài khoản đỡ 5-8 s/lần mở | Nếu lỗi → tắt cache = mở/đóng mỗi lần |
+| R9 | `trait BrowserDriver` giữ **mức cao** (`submit`/`poll_and_download`), không thêm `evaluate` vào trait; logic Dola sống trong `lvc-browser::dola` và gọi thẳng `&Page` | Engine chỉ cần fake ở mức cao (FakeDriver); đổi driver = viết lại `dola/` dù sao cũng vậy | Nếu sau này có driver thứ 2 thật, `dola/` phải trừu tượng hoá `PageOps` — 1 trait nữa |
+| R10 | Hook 30s/paste ảnh evaluate thẳng vào MAIN world (không `<script>` tag); chấp nhận `window.fetch.toString()` lộ patch | Python làm y hệt (script tag → cũng lộ) và E2E 17/9 qua | Nếu Dola soi `fetch.toString` → bọc bằng `Proxy`/`Function.prototype.toString` patch — 1 task |
+| R11 | Nếu Task 18 bị chặn ở bước gửi (captcha/710022004) dù cookie sống: phương án đã ngân sách = fork chromiumoxide, evaluate qua isolated world (`Page.createIsolatedWorld`) thay `Runtime.enable` | `Runtime.enable` là khác biệt duy nhất phát hiện được từ JS (review P1 §2a) | ~1-2 ngày fork; không làm trước khi có bằng chứng |
 
 ---
 
@@ -186,6 +193,11 @@ pub struct ProxySpec { pub scheme: String /* http|https|socks5 */, pub host: Str
 impl ProxySpec { pub fn server(&self) -> String /* "scheme://host:port" cho --proxy-server */ ; pub fn has_auth(&self) -> bool }
 pub fn parse_proxy(s: &str) -> Result<Option<ProxySpec>, CoreError>; // "" | "direct" → None; "ip:port" | "ip:port:user:pass" | "scheme://user:pass@host:port"
 pub fn effective_proxy(account_proxy: &str, global: &str) -> Result<Option<ProxySpec>, CoreError>; // own > global; "direct" chặn global
+impl fmt::Debug for ProxySpec { /* tự viết: password → "***" */ }
+
+// browser_kind.rs — src/browser/browsers.py normalize_browser
+#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum BrowserKind { Chromium, Chrome, Edge, Opera }
+impl BrowserKind { pub fn parse(s: &str) -> Result<Self, CoreError>; /* ""|"chromium"|"none" → Chromium; "chrome"|"google-chrome" → Chrome; "edge"|"msedge" → Edge; "opera" → Opera; khác → Err */ pub fn as_str(self) -> &'static str; }
 
 // mode.rs — modes.py:206-231, 275-285
 impl Mode {
@@ -195,7 +207,7 @@ pub fn route_30s(mode: Mode, model: Model, duration: u16) -> (Mode, Model); // 3
 pub fn video_timeout(mode: Mode, duration: u16, has_refs: bool, limits: &Limits) -> u64; // base 300; pro-like max(1800); dur≥30 max(1500); refs max(900)
 // limits.rs thêm: video_timeout_s: 300, pro_video_timeout_s: 1800, long_video_timeout_s: 1500, reference_video_timeout_s: 900, pro_max_timeout_s: 3600, pro_activity_window_s: 600, poll_interval_s: 5, reference_upload_timeout_s: 90, agent_question_grace_s: 60, agent_idle_fail_s: 120, confirm_max_replies: 3, link_raw_grace_s: 45, no_conversation_timeout_s: 30
 ```
-- [ ] **Step 1: RED** — proxy: 4 định dạng + `direct` + lỗi (`"abc"` → Err, port không phải số → Err); `effective_proxy("", "1.2.3.4:8080")` → global, `("direct","…")` → None. Mode: `Mode::Fast.allowed_durations(Model::Seedance25) == [10,15,30]`, `Seedance20 → [10,15]`, `ProMax → [10,15]`; `route_30s(Agent, Seedance20, 30) == (Fast, Seedance25)`, `(Fast, Seedance20, 10)` giữ nguyên; `video_timeout(Fast,10,false) == 300`, `(Pro,10,false) == 1800`, `(Fast,30,false) == 1500`, `(Fast,10,true) == 900`, `(Pro,10,true) == 1800`.
+- [ ] **Step 1: RED** — proxy: 4 định dạng + `direct` + lỗi (`"abc"` → Err, port không phải số → Err); `effective_proxy("", "1.2.3.4:8080")` → global, `("direct","…")` → None; `format!("{:?}", spec_co_pass)` không chứa mật khẩu; `BrowserKind::parse` 4 loại + rỗng → Chromium + lỗi. Mode: `Mode::Fast.allowed_durations(Model::Seedance25) == [10,15,30]`, `Seedance20 → [10,15]`, `ProMax → [10,15]`; `route_30s(Agent, Seedance20, 30) == (Fast, Seedance25)`, `(Fast, Seedance20, 10)` giữ nguyên; `video_timeout(Fast,10,false) == 300`, `(Pro,10,false) == 1800`, `(Fast,30,false) == 1500`, `(Fast,10,true) == 900`, `(Pro,10,true) == 1800`.
 - [ ] **Step 2: Cập nhật test cũ** của `allowed_durations` (P0.5 ký `allowed_durations(self)` không có model) — đổi chữ ký, sửa các chỗ gọi (`scene.rs` normalize dùng nó? kiểm `grep allowed_durations`).
 - [ ] **Step 3: GREEN + gate + commit** — `feat(core): proxy spec, allowed_durations theo model, route_30s, video_timeout`.
 
@@ -441,13 +453,50 @@ pub async fn send_chat_message(page: &Page, text: &str) -> Result<(), BrowserErr
 
 ---
 
-### Task 13: Proxy có xác thực qua `Fetch.enable(handleAuthRequests)`
+### Task 13: Launch resolver + proxy có xác thực + vòng đời tiến trình (review P1: I-6, I-7, M-3, M-6, M-11, gaps 1/5/7/8/10/11)
 
-**Files:** Modify `crates/lvc-browser/src/driver.rs` (`LaunchOpts.proxy: Option<ProxySpec>` thay `proxy_server: Option<String>`), `chromium.rs`.
+**Files:** Modify `crates/lvc-browser/src/driver.rs`, `chromium.rs`, `error.rs`; Create `crates/lvc-browser/src/executable.rs`, `crates/lvc-browser/src/job.rs` (cfg windows); `Cargo.toml` thêm `windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading"] }` (target windows).
 
-- `--proxy-server=<spec.server()>`; nếu `has_auth`: sau `new_page` gọi `Fetch.enable{handleAuthRequests:true, patterns:[{urlPattern:"*", requestStage:Request}]}` và spawn task nghe `EventAuthRequired` → `Fetch.continueWithAuth{response: ProvideCredentials, username, password}`; `EventRequestPaused` → `Fetch.continueRequest` ngay (không sửa). Chỉ bật Fetch **khi có auth** (không bật vô cớ — dấu vết).
-- [ ] **Step 1: RED** — unit: `LaunchOpts` với `ProxySpec{auth}` → `config()` có arg `proxy-server=http://h:1`; smoke `#[ignore]`: proxy giả trong test (`tokio` TCP listener trả `407 Proxy-Authentication-Required` rồi `200` khi có header đúng) — implementer đo; nếu quá phức tạp, thay bằng smoke gọi `Fetch.enable` và kiểm không lỗi + ghi report.
-- [ ] **Step 2: Implement; GREEN; gate; commit** — `feat(browser): proxy co user:pass qua Fetch.continueWithAuth`.
+**Interfaces — Produces:**
+```rust
+pub struct LaunchOpts {
+    pub profile_dir: PathBuf,                 // sẽ được ép tuyệt đối (ADR-R012)
+    pub browser: BrowserKind,                 // từ cột accounts_meta.browser
+    pub executable_override: Option<PathBuf>, // env LVC_CHROME / cấu hình
+    pub headless: bool,
+    pub proxy: Option<ProxySpec>,             // thay proxy_server: Option<String>
+    pub window_offscreen: bool,
+    pub launch_timeout: Duration,             // mặc định 20 s
+    pub navigation_timeout: Duration,         // mặc định 60 s (Python goto 60000)
+}
+impl fmt::Debug for LaunchOpts { /* che proxy password */ }
+impl Default for LaunchOpts { … }
+
+// executable.rs
+pub fn resolve_executable(kind: BrowserKind, override_: Option<&Path>) -> Result<PathBuf, BrowserError>;
+// override_ tồn tại → dùng. Chromium: env PLAYWRIGHT_BROWSERS_PATH hoặc %LOCALAPPDATA%\ms-playwright → thư mục `chromium-<rev>` (rev cao nhất; KHÔNG lấy `chromium_headless_shell-*`) → `chrome-win64\chrome.exe`; rồi `<exe_dir>/browsers/…` (bundle sau này). Chrome/Edge: registry `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{chrome,msedge}.exe` rồi đường dẫn quen thuộc trong Program Files. Opera: `%LOCALAPPDATA%\Programs\Opera\opera.exe`. Không thấy → `BrowserError::ExecutableNotFound { kind, tried: Vec<PathBuf> }`.
+pub fn ms_playwright_chromium_dirs(root: &Path) -> Vec<(u32, PathBuf)>; // thuần, test bằng tempdir
+
+// error.rs thêm
+BrowserError::ExecutableNotFound { kind: BrowserKind, tried: Vec<PathBuf> }
+BrowserError::Navigation { url: String, net_error: String }   // errorText của Page.navigate (vd "net::ERR_PROXY_CONNECTION_FAILED")
+BrowserError::Timeout(String)
+BrowserError::Disconnected                                     // handler kết thúc / browser chết
+impl BrowserError { pub fn is_proxy_down(&self) -> bool /* net_error chứa ERR_PROXY_ | ERR_TUNNEL_ | ERR_SOCKS_ */ }
+
+// chromium.rs
+impl ChromiumSession { pub fn is_connected(&self) -> bool /* !handler.is_finished() */ ; pub fn page(&self) -> &Page; }
+impl Drop for ChromiumSession { /* nếu còn browser (chưa close()): tokio::runtime::Handle::try_current() Ok → spawn { browser.close().await; timeout(30 s, wait()) } ; Err → kill (không có runtime) */ }
+// launch(): sau Browser::launch → job::assign_kill_on_close(pid) (Windows: CreateJobObjectW + JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE + AssignProcessToJobObject; lỗi → warn, không fail);
+//           dùng trang đầu `browser.pages().await?[0]` + goto about:blank thay vì new_page (M-3), đóng trang thừa;
+//           có proxy auth → Fetch.enable{handleAuthRequests:true, patterns:[{urlPattern:"*"}]} + task nghe EventAuthRequired → continueWithAuth(ProvideCredentials) ; EventRequestPaused → continueRequest ngay. CHỈ bật khi có auth.
+//           có proxy → thêm `proxy-bypass-list=<-loopback>` (M-11).
+// goto(): tokio::time::timeout(navigation_timeout); Page.navigate trả errorText → Navigation{net_error}.
+// probe_session(): evaluate SESSION_JS bọc timeout 15 s → hết giờ trả state Unknown (Python browser.py:352-356), không Err.
+// close(): wait 30 s.
+```
+- [ ] **Step 1: RED** — unit (không Chrome): `ms_playwright_chromium_dirs` chọn rev cao nhất và bỏ headless_shell (tempdir giả); `resolve_executable(Chromium, Some(path_tồn_tại))` → path; `(Chromium, None)` với `PLAYWRIGHT_BROWSERS_PATH` trỏ tempdir rỗng → `ExecutableNotFound` liệt kê `tried`; `chrome_args` với proxy có `proxy-server=` và `proxy-bypass-list=<-loopback>`; `format!("{:?}", opts)` không chứa mật khẩu; `is_proxy_down("net::ERR_PROXY_CONNECTION_FAILED")`. Smoke `#[ignore]`: `goto_url_khong_ton_tai_bao_navigation` (`http://127.0.0.1:1/` → `Navigation{net_error: "net::ERR_CONNECTION_REFUSED"}`), `drop_session_khong_bo_roi_chrome` (drop rồi chờ 5 s, kiểm `lockfile` mở được), `job_object_giet_con_khi_cha_chet` (spawn tiến trình con `cargo run --example` rồi kill nó, kiểm không còn chrome giữ profile — implementer đo, nếu quá phức tạp thì thay bằng test gọi `assign_kill_on_close(pid hiện tại)` không lỗi và ghi report). Proxy auth: proxy giả trong test (`tokio` TCP: trả `407` không có `Proxy-Authorization`, `200` khi có) — nếu quá 1 giờ, thay bằng smoke gọi `Fetch.enable` không lỗi + ghi report.
+- [ ] **Step 2: Implement; cập nhật 2 example + smoke cũ theo `LaunchOpts` mới; GREEN; gate; commit** — `feat(browser): resolver binary theo BrowserKind, proxy auth qua Fetch, Job Object + Drop an toan`.
 
 ---
 
@@ -492,6 +541,19 @@ Chép đúng spec §5.1 (`AtomicUsize` + CAS + `Notify` + hai `watch::Receiver`)
 **Files:** Create `crates/lvc-engine/src/pool.rs`; Modify `crates/lvc-store/src/accounts.rs` nếu thiếu hàm (thêm `list_schedulable`, `set_login_ok`, `set_cooldown_until`, `set_rate_limited_until(reason)`, `set_quota_blocked_until(reason)`, `touch_last_used`, `clear_expired_limits(now)`) với test store tương ứng.
 
 ```rust
+// lvc-engine/src/error.rs (T15 tạo, T16/T17 dùng)
+#[derive(Debug, thiserror::Error)]
+pub enum EngineError {
+    #[error(transparent)] Dola(#[from] DolaError),
+    #[error(transparent)] Browser(#[from] BrowserError),
+    #[error(transparent)] Store(#[from] lvc_store::StoreError),
+    #[error("429: all accounts limited for {mode}")] AllAccountsLimited { mode: Mode },
+    #[error("ACCOUNT_UNAVAILABLE: {0}")] PreferredUnavailable(String),
+    #[error("PROFILE_BUSY: no account with a free browser profile")] NoFreeProfile,
+    #[error("PROXY_DOWN: {account}: {why}")] ProxyDown { account: String, why: String },
+}
+impl EngineError { pub fn failure_code(&self) -> Option<FailureCode>; /* Dola→e.failure_code(); Browser(ProfileBusy)→ProfileBusy; AllAccountsLimited→Rate429; PreferredUnavailable→AccountUnavailable; NoFreeProfile→ProfileBusy; ProxyDown→ProxyDown; khác None */ }
+
 pub struct AccountPool { db: Db, locks: DashMap<String, Arc<tokio::sync::Mutex<()>>>, recent_picks: Mutex<HashMap<String, Instant>>, limits: Limits, global_proxy: String }
 pub struct Lease { pub name: String, pub proxy: Option<ProxySpec>, _guard: OwnedMutexGuard<()> }
 impl AccountPool {
@@ -517,7 +579,7 @@ impl AccountPool {
 **Files:** Create `crates/lvc-engine/src/generate.rs`, `src/session_cache.rs`.
 
 ```rust
-pub struct EngineConfig { pub accounts_dir: PathBuf, pub downloads_dir: PathBuf, pub chrome_executable: Option<PathBuf>, pub headless: bool, pub global_proxy: String, pub warm_idle: Duration /* 900 s */, pub busy_wait_max: Duration /* 600 s */ }
+pub struct EngineConfig { pub accounts_dir: PathBuf, pub downloads_dir: PathBuf, pub executable_override: Option<PathBuf>, pub global_proxy: String, pub warm_idle: Duration /* 900 s */, pub busy_wait_max: Duration /* 600 s */, pub mode_fallback: bool /* true */ }
 pub struct Engine<D: BrowserDriver> { driver: Arc<D>, pool: Arc<AccountPool>, limiter: Arc<DynamicLimiter>, cache: SessionCache<D::Session>, db: Db, limits: Limits, cfg: EngineConfig }
 pub struct GenerateOutcome { pub artifact: VideoArtifact, pub account: String, pub mode_used: Mode }
 impl<D: BrowserDriver> Engine<D> {
@@ -528,11 +590,11 @@ Luồng (`browser_pool.py:1090-1287` + `server._run_task` 596-719):
 1. `let _slot = limiter.acquire().await` (FIFO đủ dùng: `Notify` + thứ tự đến; ghi chú không tuyệt đối FIFO — ruling).
 2. Vòng theo `mode_fallback_chain(scene.mode, &limits)` (chỉ khi `mode_fallback` bật; mặc định bật như Python `MODE_FALLBACK=1`); `duration = fit_duration_to_mode(...)`.
 3. Vòng tài khoản: `candidates_for(mode, prefer)`; rỗng → `AllAccountsLimited` (→ `FailureCode::Rate429` ở cuối chuỗi mode). Với mỗi ứng viên: `try_lease` (prefer → `lease_wait`); bận → next.
-4. `session = cache.take_or_launch(name, LaunchOpts{profile_dir: accounts_dir/name (tuyệt đối), proxy, headless, chrome_executable})`; `ProfileBusy` → `mark_cooldown(300)` + next; lỗi launch khác → next.
+4. `session = cache.take_or_launch(name, LaunchOpts{profile_dir: accounts_dir/name (tuyệt đối), browser: BrowserKind::parse(row.browser), executable_override: cfg.executable_override, proxy, headless: false, ..})`; `ProfileBusy` → `mark_cooldown(300)` + next; `ExecutableNotFound` → trả lỗi ngay (cấu hình sai, không xoay); `Navigation`/`Browser` với `is_proxy_down()` → `FailureCode::ProxyDown` cho tài khoản đó + next; lỗi launch khác → next.
 5. `store.set_status(task, Processing, account)`; `submit` → `Err(e)`: `e.rotates_account()` → đánh dấu (LoggedOut→mark_logged_out; RiskControl→cooldown 1800; AccountLimited→mark_daily_limit; Credit→mark_quota_blocked) + đóng session + next; khác → trả lỗi (không xoay, giống Python generic).
 6. `store.set_conversation(task, conv)`; `poll_and_download(...)`; `Ok` → `claim(name, mode)` + `cache.put(session)` + trả; `Err(Timeout)` → `claim` + trả lỗi; `Err(rotates)` → như bước 5; khác → trả lỗi.
 7. Ánh xạ cuối: `EngineError::Dola(e)` → `e.failure_code()`; `AllAccountsLimited` → `Some(Rate429)`; `PreferredUnavailable` → `Some(AccountUnavailable)`; `ProfileBusy` hết ứng viên → `Some(ProfileBusy)`. `store.set_status(Failed, code, message)`.
-`SessionCache`: `HashMap<String, (Session, Instant)>`; `take_or_launch`; `put`; `spawn_reaper(driver)` đóng session idle > `warm_idle` mỗi 30 s; `close_all`.
+`SessionCache`: `HashMap<String, (Session, Instant)>`; `take_or_launch`; `put`; `spawn_reaper(driver)` đóng session idle > `warm_idle` mỗi 30 s và session `!is_connected()`; `close_all()` gọi khi app tắt (P3 Tauri `on_exit`) — Job Object (T13) là lưới cuối nếu `process::exit`.
 - [ ] **Step 1: RED** — với `FakeDriver` + `Db::open_memory` + 2 tài khoản: `thanh_cong_claim_usage`, `logged_out_xoay_sang_tai_khoan_2`, `ca_2_het_han_muc_bao_429`, `prompt_violation_khong_xoay`, `profile_busy_cooldown_300`, `timeout_van_claim`, `prefer_account_ban_cho_roi_chay`, `fallback_mode_agent_sang_pro_khi_het` , `cache_giu_session_va_reaper_dong_sau_idle` (warm_idle 100 ms).
 - [ ] **Step 2: Implement; GREEN; gate; commit** — `feat(engine): generate_video — dieu phoi, xoay tai khoan, session cache`.
 
