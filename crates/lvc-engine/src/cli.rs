@@ -565,10 +565,14 @@ mod tests {
         assert_eq!(summary.failure_code, None);
         assert_eq!(summary.error, None);
         assert!(summary.task_id.starts_with("video_"));
-        // FakeDriver khong goi hook stage -> khong do duoc tung giai doan
-        assert_eq!(summary.ms_submit, None);
-        assert_eq!(summary.ms_poll, None);
-        assert_eq!(summary.ms_download, None);
+        // P3 Task 4: FakeDriver phat stage `generating`/`downloading` (nhu driver that) -> do duoc
+        // 3 giai doan; engine chuyen tiep stage cho hooks cua caller (TimingHooks).
+        let (s, p, d) = (
+            summary.ms_submit.expect("ms_submit"),
+            summary.ms_poll.expect("ms_poll"),
+            summary.ms_download.expect("ms_download"),
+        );
+        assert!(s + p + d < 10_000, "fake: tong < 10 s ({s}+{p}+{d})");
         let json = summary.to_json();
         assert!(json.contains("\"task_id\""), "{json}");
         assert!(!json.contains("BIMAT"), "khong in prompt/chu ky: {json}");

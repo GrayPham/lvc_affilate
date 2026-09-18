@@ -20,6 +20,10 @@
 //! | `attempt` — `submit` → `set_account` + `set_conversation` | `on_conversation_id` `:612-619` | cung lan gui (review I1) |
 //! | `attempt` — `poll_and_download` Ok → `claim` | `_claim` `:1186-1189` | roi `set_result` + `set_status(Completed)` (`_finish_task` phan luu; hau ky logo P3) |
 //! | `after_dola_error` | `except` `:1192-1261` + `:2507-2511` | bang trong doc ham |
+//! | P3 Task 4 — `EngineHooks` | `task_stage.set_stage` + `store.is_cancelled` (server.py:608/:614) | adapter `PollHooks` + `SubmitHooks`: stage → `EngineEvent::TaskStage` + cot `tasks.stage`; `should_cancel` = token (R4) |
+//! | P3 Task 4 — diem kiem huy | IDEA-016 `:608` (sau slot), `:614` (sau conv id) | sau slot (`run`), khi doi tai khoan ban (`run_mode`), sau lease/truoc launch (`attempt`), truoc page/prompt (submit hooks), moi nhip poll + truoc download (poll hooks) → `DolaError::Cancelled` |
+//! | P3 Task 4 — huy sau submit | `:614-616` giu `conversation_id`/`account` de Tiep tuc | dong task `failed/cancelled` GIU `account` + `conversation_id` (da ghi sau submit), KHONG claim, phien tra cache (`after_dola_error` nhanh `_`) |
+//! | P3 Task 4 — `TaskDone`/`TaskFailed` | `_finish_task` / `except` `:674-712` | phat SAU khi DB da ghi trang thai cuoi |
 //!
 //! **Khong log prompt** (chi so ky tu). **Khong port**: `revoked_pause_reason` (cau dao `REVOKED_STREAK`,
 //! P3), `CREDIT_QUOTE_RETRIES` (`:1163-1180` gui lai khi Dola bao gia sai), `on_balance`, resume chat
@@ -30,17 +34,23 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use lvc_browser::dola::{ConversationId, PollHooks, PollOpts, SubmitRequest, VideoArtifact};
+use lvc_browser::dola::{
+    ConversationId, PollHooks, PollOpts, SubmitHooks, SubmitRequest, VideoArtifact,
+};
 use lvc_browser::{BrowserDriver, BrowserError, DolaError, LaunchOpts};
 use lvc_core::{
     BrowserKind, FailureCode, Limits, Mode, Scene, TaskStatus, fit_duration_to_mode,
     mode_fallback_chain, video_timeout,
 };
 use lvc_store::{AccountRow, Db, TaskRepo};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::EngineError;
+use crate::cancel::CancelRegistry;
+use crate::events::{EngineEvent, EngineEvents};
 use crate::limiter::{DynamicLimiter, LimiterHandle};
 use crate::pool::{AccountPool, COOLDOWN_PROFILE_BUSY, COOLDOWN_RISK_CONTROL, Lease};
 use crate::session_cache::SessionCache;
@@ -55,6 +65,11 @@ pub const BUSY_POLL: Duration = Duration::from_millis(500);
 pub const ERROR_MAX_CHARS: usize = 500;
 /// `browser_pool.py:1281` `str(last_err)[:200]`.
 const PREFER_REASON_MAX_CHARS: usize = 200;
+/// P3 Task 4: stage do ENGINE phat truoc khi mo/tai dung phien (Python `opening` server.py:625 —
+/// plan P3 goi la `launching`); `detail` = tai khoan.
+pub const STAGE_LAUNCHING: &str = "launching";
+/// P3 Task 4: stage cuoi khi video xong (`task_stage.py:12` `done`).
+pub const STAGE_DONE: &str = "done";
 
 /// Unix giay hien tai (`time.time()`), noi DUY NHAT engine doc dong ho (ruling Task 17) — moi ham
 /// cua [`AccountPool`] nhan gia tri nay.
@@ -127,6 +142,84 @@ pub struct Engine<D: BrowserDriver + 'static> {
     handle: LimiterHandle,
     /// Reaper cua [`SessionCache`]; `shutdown`/`Drop` abort.
     reaper: Mutex<Option<JoinHandle<()>>>,
+    /// P3 Task 4 (R5): kenh su kien cho UI.
+    events: EngineEvents,
+    /// P3 Task 4 (R4): token huy theo `task_id`.
+    cancels: CancelRegistry,
+}
+
+/// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
+/// [`SubmitHooks`]: stage → `EngineEvent::TaskStage` (+ cot `tasks.stage` qua kenh `stage_tx`, ghi
+/// tuan tu boi task nen — hook la ham dong bo) + chuyen tiep cho hooks cua caller; `should_cancel`
+/// = token da huy HOAC hooks cua caller bao huy.
+struct EngineHooks<'a> {
+    task_id: &'a str,
+    token: CancellationToken,
+    events: &'a EngineEvents,
+    started: Instant,
+    inner: &'a dyn PollHooks,
+    /// Stage → task nen ghi `TaskRepo::set_stage` theo THU TU (tokio LIFO slot co the dao thu tu
+    /// hai `spawn` lien tiep — nen khong `spawn` tung lan).
+    stage_tx: mpsc::UnboundedSender<String>,
+}
+
+impl EngineHooks<'_> {
+    fn elapsed_ms(&self) -> u64 {
+        u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    /// Phat `TaskStage` + xep hang ghi cot `stage` (KHONG goi `inner` — caller chi nhan stage tu
+    /// driver, xem [`PollHooks::on_stage`] duoi).
+    fn stage(&self, stage: &str, detail: Option<&str>) {
+        self.events.emit(EngineEvent::TaskStage {
+            task_id: self.task_id.to_string(),
+            stage: stage.to_string(),
+            detail: detail.map(str::to_string),
+            elapsed_ms: self.elapsed_ms(),
+        });
+        // receiver drop (writer da dung) -> bo qua
+        let _ = self.stage_tx.send(stage.to_string());
+    }
+
+    /// R4: token cua registry HOAC hooks cua caller (test/CLI co the tu bao huy).
+    fn cancelled(&self) -> bool {
+        self.token.is_cancelled() || self.inner.should_cancel()
+    }
+
+    /// Diem kiem huy cua engine: `Err(Dola(Cancelled))` khi da huy (`at` chi de log).
+    fn check(&self, at: &str) -> Result<(), EngineError> {
+        if self.cancelled() {
+            info!(task_id = self.task_id, at, "nguoi dung huy");
+            return Err(EngineError::Dola(DolaError::Cancelled));
+        }
+        Ok(())
+    }
+}
+
+impl PollHooks for EngineHooks<'_> {
+    fn on_poll(&self, elapsed: Duration) {
+        self.inner.on_poll(elapsed);
+    }
+    fn on_stage(&self, stage: &str) {
+        self.stage(stage, None);
+        self.inner.on_stage(stage);
+    }
+    fn on_agent_reply(&self, text: &str) {
+        self.inner.on_agent_reply(text);
+    }
+    fn should_cancel(&self) -> bool {
+        self.cancelled()
+    }
+}
+
+impl SubmitHooks for EngineHooks<'_> {
+    fn on_stage(&self, stage: &str) {
+        self.stage(stage, None);
+        self.inner.on_stage(stage);
+    }
+    fn should_cancel(&self) -> bool {
+        self.cancelled()
+    }
 }
 
 /// Ket qua mot lan thu tren MOT tai khoan (than vong `for a in candidates` `:1128-1261`).
@@ -187,9 +280,30 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             cfg,
             handle: handle.clone(),
             reaper: Mutex::new(Some(reaper)),
+            events: EngineEvents::new(),
+            cancels: CancelRegistry::new(),
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))
+    }
+
+    /// P3 Task 4 (R5): kenh su kien — Tauri bridge `subscribe()`.
+    #[must_use]
+    pub fn events(&self) -> &EngineEvents {
+        &self.events
+    }
+
+    /// P3 Task 4 (R4): registry token huy (Task 7 `register`/`cancel_many` theo run).
+    #[must_use]
+    pub fn cancels(&self) -> &CancelRegistry {
+        &self.cancels
+    }
+
+    /// P3 Task 4 (R4): huy task dang chay — `true` khi `task_id` co token (dang chay hoac da
+    /// `register`); engine dung tai diem kiem ke tiep, dong task `failed/cancelled` (giu
+    /// `conversation_id` neu da gui). `false` = khong biet task (chua chay / da xong).
+    pub fn cancel(&self, task_id: &str) -> bool {
+        self.cancels.cancel(task_id)
     }
 
     #[must_use]
@@ -243,14 +357,20 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     }
 
     /// Tao MOT video cho `task_id` theo `scene` (brief Task 17). `prefer` (ngu canh batch, P3)
-    /// thang `Scene::account`; rong = tu chon. `hooks` duoc chuyen thang cho
-    /// `poll_and_download` (khong co cot `stage` trong `tasks` → engine khong ghi them).
+    /// thang `Scene::account`; rong = tu chon. `hooks` cua caller duoc boc trong [`EngineHooks`]
+    /// (P3 Task 4): moi stage tu driver → `EngineEvent::TaskStage` + cot `tasks.stage` + chuyen
+    /// tiep cho `hooks`; huy qua [`Engine::cancel`] (token dang ky theo `task_id`, go khi ket thuc)
+    /// hoac `hooks.should_cancel()`.
     ///
     /// Moi loi deu duoc ghi vao dong task (`Failed` + `failure_code` + `error[:500]`,
-    /// `server.py:674-712`) TRUOC khi tra ve, de caller co ca `Result` lan dong DB nhat quan.
+    /// `server.py:674-712`) TRUOC khi tra ve, de caller co ca `Result` lan dong DB nhat quan; SAU do
+    /// phat `TaskFailed { code, message }` (huy: `code = "cancelled"`, dong task GIU
+    /// `account`/`conversation_id` neu da gui — Python `:614-616`). Thanh cong: stage `done` +
+    /// `TaskDone`.
     ///
     /// # Errors
-    /// Xem [`EngineError`]; `failure_code()` cua loi tra ve = cot `failure_code` da ghi.
+    /// Xem [`EngineError`]; `failure_code()` cua loi tra ve = cot `failure_code` da ghi. Huy =
+    /// `EngineError::Dola(DolaError::Cancelled)` (`FailureCode::Cancelled`).
     pub async fn generate_video(
         &self,
         task_id: &str,
@@ -258,6 +378,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         prefer: Option<&str>,
         hooks: &dyn PollHooks,
     ) -> Result<GenerateOutcome, EngineError> {
+        // R4: dang ky token TRUOC moi viec khac (cua so "cancel bi lo" nho nhat); guard go khi xong.
+        let (token, _guard) = self.cancels.register_guarded(task_id);
         // server.py:661 `prefer_account=account_pref or None` — tham so thang Scene.account.
         let prefer = prefer
             .and_then(non_empty)
@@ -267,15 +389,34 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         if self.tasks.get(task_id).await?.is_none() {
             return Err(EngineError::TaskNotFound(task_id.to_string()));
         }
-        let res = self.run(task_id, scene, prefer, hooks).await;
+        // Ghi cot `stage` tuan tu o task nen (hook dong bo khong await duoc); doi no xong truoc
+        // khi tra ve de dong DB nhat quan voi Result.
+        let (stage_tx, stage_rx) = mpsc::unbounded_channel::<String>();
+        let writer = tokio::spawn(stage_writer(
+            self.tasks.clone(),
+            task_id.to_string(),
+            stage_rx,
+        ));
+        let eh = EngineHooks {
+            task_id,
+            token,
+            events: &self.events,
+            started: Instant::now(),
+            inner: hooks,
+            stage_tx,
+        };
+        let res = self.run(task_id, scene, prefer, &eh).await;
         match &res {
-            Ok(out) => info!(
-                task_id,
-                account = %out.account,
-                mode = out.mode_used.as_str(),
-                conversation_id = %out.artifact.conversation_id,
-                "video xong"
-            ),
+            Ok(out) => {
+                info!(
+                    task_id,
+                    account = %out.account,
+                    mode = out.mode_used.as_str(),
+                    conversation_id = %out.artifact.conversation_id,
+                    "video xong"
+                );
+                eh.stage(STAGE_DONE, None);
+            }
             Err(e) => {
                 let code = e.failure_code();
                 let msg = clip(&e.to_string(), ERROR_MAX_CHARS);
@@ -289,6 +430,26 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 }
             }
         }
+        // dong kenh stage -> writer ghi not roi thoat; TaskDone/TaskFailed phat SAU khi DB xong.
+        drop(eh);
+        if let Err(e) = writer.await {
+            warn!(task_id, error = %e, "task ghi stage ket thuc bat thuong");
+        }
+        match &res {
+            Ok(out) => self.events.emit(EngineEvent::TaskDone {
+                task_id: task_id.to_string(),
+                account: out.account.clone(),
+                conversation_id: out.artifact.conversation_id.0.clone(),
+                local_path: out.artifact.local_path.display().to_string(),
+                bytes: out.artifact.bytes,
+                watermarked: out.artifact.watermarked,
+            }),
+            Err(e) => self.events.emit(EngineEvent::TaskFailed {
+                task_id: task_id.to_string(),
+                code: e.failure_code().map(|c| c.as_str().to_string()),
+                message: clip(&e.to_string(), ERROR_MAX_CHARS),
+            }),
+        }
         res
     }
 
@@ -298,7 +459,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         task_id: &str,
         scene: &Scene,
         prefer: Option<&str>,
-        hooks: &dyn PollHooks,
+        hooks: &EngineHooks<'_>,
     ) -> Result<GenerateOutcome, EngineError> {
         info!(
             task_id,
@@ -319,6 +480,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         };
         // browser_pool.py:1105 `async with self.limiter.slot(...)` — giu suot job.
         let _slot = self.limiter.acquire().await;
+        // server.py:608 (IDEA-016): huy trong luc cho slot -> khong mo Chrome, khong mat luot (R4 #1).
+        hooks.check("sau slot")?;
         // server.py:680 (v0.55z): het luot che do nay → doi sang che do con luot.
         let chain = if self.cfg.mode_fallback {
             mode_fallback_chain(scene.mode, &self.limits)
@@ -375,7 +538,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         duration: u16,
         prefer: Option<&str>,
         start: Option<&str>,
-        hooks: &dyn PollHooks,
+        hooks: &EngineHooks<'_>,
     ) -> Result<GenerateOutcome, EngineError> {
         // browser_pool.py:1124 busy_deadline
         let busy_deadline = Instant::now() + self.cfg.busy_wait_max;
@@ -422,6 +585,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             // browser_pool.py:1262-1267 (ADR-016): moi tai khoan con luot deu ban → doi roi thu lai
             if busy_skipped && prefer.is_none() && Instant::now() < busy_deadline {
                 tokio::time::sleep(BUSY_POLL).await;
+                // R4: bam Dung trong luc doi tai khoan ban (toi da busy_wait_max = 10 phut) -> dung ngay.
+                hooks.check("doi tai khoan ban")?;
                 continue;
             }
             // browser_pool.py:1268-1269
@@ -558,9 +723,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         duration: u16,
         row: &AccountRow,
         lease: &Lease,
-        hooks: &dyn PollHooks,
+        hooks: &EngineHooks<'_>,
     ) -> Result<Attempt, EngineError> {
         let name = row.name.as_str();
+        // R4 #2: sau lease, TRUOC launch/tai dung phien (lease tra khi return).
+        hooks.check("truoc launch")?;
+        hooks.stage(STAGE_LAUNCHING, Some(name)); // server.py:625 `opening`
         let session = match self.open_session(row, lease).await? {
             Opened::Session(s) => s,
             Opened::Rotate(e) => return Ok(Attempt::Rotate(e)),
@@ -587,7 +755,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             // server.py:628 download_reference_images — o day coi la duong dan cuc bo (xem doc module).
             reference_images: scene.reference_images.iter().map(PathBuf::from).collect(),
         };
-        let conv = match self.driver.submit(&session, &req, &self.limits).await {
+        // R4 #3 (truoc page / truoc prompt) + stage page..generating: qua `hooks` (SubmitHooks).
+        let conv = match self
+            .driver
+            .submit(&session, &req, &self.limits, hooks)
+            .await
+        {
             Ok(c) => c,
             Err(e) => return self.after_dola_error(name, mode, e, session).await,
         };
@@ -626,8 +799,9 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         conv: &ConversationId,
         popts: &PollOpts,
         session: D::Session,
-        hooks: &dyn PollHooks,
+        hooks: &EngineHooks<'_>,
     ) -> Result<Attempt, EngineError> {
+        // R4 #4/#5 (moi nhip poll, truoc download): qua `hooks` (PollHooks::should_cancel).
         let polled = self
             .driver
             .poll_and_download(
@@ -674,6 +848,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// | `Browser(ProfileBusy)` `:1245-1261` | cooldown 300 s | dong | xoay |
     /// | `Browser(proxy chet)` (`proxy_precheck` :1146) | — | dong | xoay (`ProxyDown`) |
     /// | `Timeout` `:1230-1237` | `claim` (Dola van chay, khong gui lai) | giu | loi |
+    /// | `Cancelled` (P3 R4, `:614-616`) | — (KHONG claim, KHONG danh dau) | giu (tra cache) | loi (khong xoay, khong doi mode) |
     /// | khac (`:1240-1256` raise) | — | giu neu con ket noi | loi |
     async fn after_dola_error(
         &self,
@@ -766,6 +941,17 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     }
 }
 
+/// P3 Task 4: task nen ghi cot `tasks.stage` theo thu tu nhan (Python `task_stage.set_stage` chi
+/// giu trong bo nho; P3 luu DB de UI mo lai van thay buoc cuoi). Loi ghi chi `warn` (khong anh
+/// huong luong tao video).
+async fn stage_writer(tasks: TaskRepo, task_id: String, mut rx: mpsc::UnboundedReceiver<String>) {
+    while let Some(stage) = rx.recv().await {
+        if let Err(e) = tasks.set_stage(&task_id, &stage).await {
+            warn!(task_id, stage, error = %e, "khong ghi duoc cot stage");
+        }
+    }
+}
+
 impl<D: BrowserDriver + 'static> Drop for Engine<D> {
     /// Dung reaper khi engine bi drop ma khong `shutdown` (phien am se do Job Object/`Drop` cua
     /// driver xu ly — khong `close` duoc trong `Drop` dong bo).
@@ -778,17 +964,20 @@ impl<D: BrowserDriver + 'static> Drop for Engine<D> {
 mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
 
-    use lvc_browser::dola::{ConversationId, NoopHooks, VideoArtifact, poll::NOTE_RAW};
+    use lvc_browser::dola::{ConversationId, NoopHooks, PollHooks, VideoArtifact, poll::NOTE_RAW};
     use lvc_browser::{BrowserError, DolaError, FakeCall, FakeDriver, FakeStep};
     use lvc_core::{
         BrowserKind, FailureCode, Limits, Mode, RawScene, Scene, TaskStatus, tokyo_day,
     };
     use lvc_store::{AccountRepo, Db, TaskRepo};
+    use tokio::sync::broadcast;
 
     use super::*;
     use crate::EngineError;
+    use crate::events::{EngineEvent, next_event};
     use crate::pool::{COOLDOWN_PROFILE_BUSY, COOLDOWN_RISK_CONTROL};
 
     struct Fx {
@@ -936,6 +1125,394 @@ mod tests {
 
     fn assert_near(got: f64, want: f64, tol: f64) {
         assert!((got - want).abs() <= tol, "got {got}, want {want} ± {tol}");
+    }
+
+    // ---- P3 Task 4: huy + su kien ----
+
+    /// Rut het su kien dang co trong receiver (khong cho).
+    fn drain(rx: &mut broadcast::Receiver<EngineEvent>) -> Vec<EngineEvent> {
+        let mut out = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            out.push(ev);
+        }
+        out
+    }
+
+    fn stages_of(events: &[EngineEvent]) -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                EngineEvent::TaskStage { stage, .. } => Some(stage.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Hooks cua caller: ghi stage nhin thay; `cancel_at` = thay stage do thi `should_cancel` = true
+    /// (mo phong nguoi dung bam Dung dung luc do — engine gop `token || inner.should_cancel()`).
+    #[derive(Default)]
+    struct StageHooks {
+        seen: std::sync::Mutex<Vec<String>>,
+        cancel: AtomicBool,
+        cancel_at: Option<&'static str>,
+    }
+
+    impl StageHooks {
+        fn seen(&self) -> Vec<String> {
+            self.seen.lock().unwrap().clone()
+        }
+    }
+
+    impl PollHooks for StageHooks {
+        fn on_stage(&self, stage: &str) {
+            self.seen.lock().unwrap().push(stage.to_string());
+            if self.cancel_at == Some(stage) {
+                self.cancel.store(true, Ordering::SeqCst);
+            }
+        }
+        fn should_cancel(&self) -> bool {
+            self.cancel.load(Ordering::SeqCst)
+        }
+    }
+
+    fn assert_cancelled(e: &EngineError) {
+        assert!(
+            matches!(e, EngineError::Dola(DolaError::Cancelled)),
+            "{e:?}"
+        );
+        assert_eq!(e.failure_code(), Some(FailureCode::Cancelled));
+        assert_eq!(e.to_string(), "cancelled");
+    }
+
+    fn assert_row_cancelled(row: &lvc_store::TaskRow) {
+        assert_eq!(row.status, TaskStatus::Failed);
+        assert_eq!(row.failure_code, Some(FailureCode::Cancelled));
+        assert_eq!(row.error.as_deref(), Some("cancelled"));
+    }
+
+    /// R4 diem 1 (server.py:608 IDEA-016 "huy trong luc cho -> khong mo Chrome, khong mat luot"):
+    /// token da huy TRUOC khi chay -> `Cancelled` sau slot, driver KHONG duoc goi, dong task
+    /// `failed/cancelled` (khong account/conv), registry khong con token (RAII), `TaskFailed`
+    /// `code = "cancelled"`.
+    #[tokio::test]
+    async fn huy_truoc_launch_khong_goi_driver() {
+        let f = fx(&["a"], happy("a", "111")).await;
+        f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
+        // register la get-or-insert: DAG executor (T7) dang ky truoc, huy truoc khi task chay
+        let tok = f.engine.cancels().register("t1");
+        assert!(!tok.is_cancelled());
+        assert!(f.engine.cancel("t1"), "co token -> true");
+        assert!(tok.is_cancelled());
+        assert!(f.engine.cancels().is_cancelled("t1"));
+
+        let e = f.run("t1", &scene(), None).await.unwrap_err();
+        assert_cancelled(&e);
+        assert!(
+            f.calls().is_empty(),
+            "driver khong duoc goi: {:?}",
+            f.calls()
+        );
+        let row = f.row("t1").await;
+        assert_row_cancelled(&row);
+        assert!(row.account.is_none());
+        assert!(row.conversation_id.is_none());
+        assert_eq!(f.used("a", Mode::Fast).await, 0);
+        assert!(f.engine.cache().is_empty().await);
+        // RAII: token da bi go khoi registry -> huy lai = false
+        assert!(f.engine.cancels().is_empty());
+        assert!(!f.engine.cancel("t1"));
+        assert!(!f.engine.cancels().is_cancelled("t1"));
+        let evs = drain(&mut rx);
+        assert!(stages_of(&evs).is_empty(), "{evs:?}");
+        assert_eq!(
+            evs.last(),
+            Some(&EngineEvent::TaskFailed {
+                task_id: "t1".into(),
+                code: Some("cancelled".into()),
+                message: "cancelled".into(),
+            })
+        );
+    }
+
+    /// R4 diem 4 (moi nhip poll) + "huy sau submit -> GIU `conversation_id` + `account`, khong claim,
+    /// phien tra cache" (Python `on_conversation_id` server.py:614-616 giu chat id de Tiep tuc).
+    #[tokio::test]
+    async fn huy_giua_poll_giu_conversation_khong_claim_phien_con_cache() {
+        let f = fx(
+            &["a", "b"],
+            vec![
+                FakeStep::Launch(Ok(())),
+                FakeStep::Submit(Ok(conv("222"))),
+                FakeStep::PollUntilCancelled,
+            ],
+        )
+        .await;
+        f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
+        let hooks = StageHooks::default();
+        let sc = scene();
+        let (res, cancelled) =
+            tokio::join!(f.engine.generate_video("t1", &sc, None, &hooks), async {
+                // doi toi khi poll bat dau (stage `generating` tu FakeDriver::poll) roi bam Dung
+                let t0 = Instant::now();
+                while !hooks.seen().iter().any(|s| s == "generating") {
+                    assert!(t0.elapsed() < Duration::from_secs(5), "poll khong bat dau");
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                // 2 lan `generating` (submit :2603 + poll :1494) -> chac chan dang trong vong poll
+                while hooks.seen().iter().filter(|s| *s == "generating").count() < 2 {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                f.engine.cancel("t1")
+            });
+        assert!(cancelled, "task dang chay -> cancel = true");
+        let e = res.unwrap_err();
+        assert_cancelled(&e);
+        assert_eq!(
+            f.calls(),
+            vec![f.launch("a"), submit("a", Mode::Fast, 10), poll("a", "222")],
+            "khong Close, khong xoay sang b"
+        );
+        let row = f.row("t1").await;
+        assert_row_cancelled(&row);
+        assert_eq!(row.account.as_deref(), Some("a"), "giu account cua lan gui");
+        assert_eq!(
+            row.conversation_id.as_deref(),
+            Some("222"),
+            "giu conv de Resume"
+        );
+        assert_eq!(f.used("a", Mode::Fast).await, 0, "khong claim");
+        assert_eq!(
+            f.engine.cache().names().await,
+            vec!["a".to_string()],
+            "phien tra cache"
+        );
+        let a = f.account("a").await;
+        assert!(
+            a.login_ok && a.cooldown_until.abs() < f64::EPSILON,
+            "khong danh dau tai khoan"
+        );
+        assert!(f.engine.cancels().is_empty(), "RAII go token");
+        let evs = drain(&mut rx);
+        assert_eq!(
+            stages_of(&evs),
+            vec![
+                "launching",
+                "page",
+                "mode",
+                "prompt",
+                "sending",
+                "generating",
+                "generating"
+            ]
+        );
+        assert_eq!(
+            evs.last(),
+            Some(&EngineEvent::TaskFailed {
+                task_id: "t1".into(),
+                code: Some("cancelled".into()),
+                message: "cancelled".into(),
+            })
+        );
+        // cot stage trong DB = stage cuoi da phat (ghi qua TaskRepo::set_stage)
+        assert_eq!(row.stage, "generating");
+    }
+
+    /// R4 diem 3 (truoc submit): hooks cua caller bao huy khi thay `mode` -> `FakeDriver` tra
+    /// `Cancelled` truoc `prompt` -> KHONG poll, KHONG account/conv (chua gui, khong ton credit),
+    /// phien van tra cache.
+    #[tokio::test]
+    async fn huy_truoc_prompt_khong_poll() {
+        let f = fx(&["a"], happy("a", "333")).await;
+        f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
+        let hooks = StageHooks {
+            cancel_at: Some("mode"),
+            ..StageHooks::default()
+        };
+        let e = f
+            .engine
+            .generate_video("t1", &scene(), None, &hooks)
+            .await
+            .unwrap_err();
+        assert_cancelled(&e);
+        assert_eq!(
+            f.calls(),
+            vec![f.launch("a"), submit("a", Mode::Fast, 10)],
+            "khong poll"
+        );
+        let row = f.row("t1").await;
+        assert_row_cancelled(&row);
+        assert!(row.account.is_none());
+        assert!(row.conversation_id.is_none());
+        assert_eq!(f.used("a", Mode::Fast).await, 0);
+        assert_eq!(f.engine.cache().names().await, vec!["a".to_string()]);
+        assert_eq!(hooks.seen(), vec!["page", "mode"]);
+        assert_eq!(
+            stages_of(&drain(&mut rx)),
+            vec!["launching", "page", "mode"]
+        );
+    }
+
+    /// R4 diem 2 (sau lease): moi tai khoan deu ban -> engine doi 0.5 s/nhip toi `busy_wait_max`;
+    /// bam Dung trong luc doi -> `Cancelled` ngay (khong cho het 5 s), khong mo trinh duyet.
+    #[tokio::test]
+    async fn huy_trong_luc_doi_tai_khoan_ban() {
+        let f = fx_with(&["a", "b"], happy("a", "14"), Limits::default(), |cfg| {
+            cfg.busy_wait_max = Duration::from_secs(5);
+        })
+        .await;
+        f.task("t1", &scene()).await;
+        let _la = f.engine.pool().try_lease("a", "").unwrap();
+        let _lb = f.engine.pool().try_lease("b", "").unwrap();
+        let t0 = Instant::now();
+        let sc = scene();
+        let (res, cancelled) = tokio::join!(f.run("t1", &sc, None), async {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            f.engine.cancel("t1")
+        });
+        assert!(cancelled);
+        assert_cancelled(&res.unwrap_err());
+        assert!(t0.elapsed() < Duration::from_secs(3), "{:?}", t0.elapsed());
+        assert!(f.calls().is_empty());
+        assert_row_cancelled(&f.row("t1").await);
+    }
+
+    /// Duong hanh phuc phat DU chuoi stage theo thu tu + `TaskDone` cuoi cung; `elapsed_ms` khong
+    /// giam; cot `stage` DB = `done`; hooks cua caller van nhan stage (forward).
+    #[tokio::test]
+    async fn hanh_phuc_phat_chuoi_stage_va_task_done() {
+        let f = fx(&["a"], happy("a", "444")).await;
+        f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
+        let hooks = StageHooks::default();
+        let out = f
+            .engine
+            .generate_video("t1", &scene(), None, &hooks)
+            .await
+            .unwrap();
+        let evs = drain(&mut rx);
+        assert_eq!(
+            stages_of(&evs),
+            vec![
+                "launching",
+                "page",
+                "mode",
+                "prompt",
+                "sending",
+                "generating",
+                "generating",
+                "downloading",
+                "done"
+            ]
+        );
+        // moi TaskStage mang task_id + elapsed_ms khong giam; `launching` mang detail = tai khoan
+        let mut last = 0u64;
+        for ev in &evs {
+            if let EngineEvent::TaskStage {
+                task_id,
+                stage,
+                detail,
+                elapsed_ms,
+            } = ev
+            {
+                assert_eq!(task_id, "t1");
+                assert!(*elapsed_ms >= last, "{stage}: {elapsed_ms} < {last}");
+                last = *elapsed_ms;
+                if stage == "launching" {
+                    assert_eq!(detail.as_deref(), Some("a"));
+                }
+            }
+        }
+        assert_eq!(
+            evs.last(),
+            Some(&EngineEvent::TaskDone {
+                task_id: "t1".into(),
+                account: "a".into(),
+                conversation_id: "444".into(),
+                local_path: out.artifact.local_path.display().to_string(),
+                bytes: 10,
+                watermarked: false,
+            })
+        );
+        assert_eq!(evs.len(), 10, "9 stage + 1 TaskDone: {evs:?}");
+        // hooks cua caller: chi stage tu driver (khong `launching`/`done` cua engine)
+        assert_eq!(
+            hooks.seen(),
+            vec![
+                "page",
+                "mode",
+                "prompt",
+                "sending",
+                "generating",
+                "generating",
+                "downloading"
+            ]
+        );
+        assert_eq!(f.row("t1").await.stage, "done");
+        assert!(f.engine.cancels().is_empty());
+    }
+
+    /// Loi thuong (khong huy) cung phat `TaskFailed` voi ma tuong ung SAU khi ghi DB.
+    #[tokio::test]
+    async fn loi_thuong_phat_task_failed_co_ma() {
+        let f = fx(
+            &["a"],
+            vec![
+                FakeStep::Launch(Ok(())),
+                FakeStep::Submit(Ok(conv("555"))),
+                FakeStep::Poll(Err(DolaError::PromptViolation("chinh sach".into()))),
+            ],
+        )
+        .await;
+        f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
+        f.run("t1", &scene(), None).await.unwrap_err();
+        let evs = drain(&mut rx);
+        assert_eq!(
+            evs.last(),
+            Some(&EngineEvent::TaskFailed {
+                task_id: "t1".into(),
+                code: Some("PROMPT_VIOLATION".into()),
+                message: "PROMPT_VIOLATION: chinh sach".into(),
+            })
+        );
+        assert_eq!(f.row("t1").await.status, TaskStatus::Failed);
+    }
+
+    /// Khong ai subscribe -> `emit` bo qua `SendError`, khong loi; subscribe SAU khi chay -> khong
+    /// thay gi (broadcast khong giu lich su cho receiver moi).
+    #[tokio::test]
+    async fn khong_subscriber_van_chay_binh_thuong() {
+        let f = fx(&["a"], happy("a", "666")).await;
+        f.task("t1", &scene()).await;
+        assert_eq!(f.engine.events().receiver_count(), 0);
+        f.run("t1", &scene(), None).await.unwrap();
+        let mut rx = f.engine.events().subscribe();
+        assert!(matches!(
+            rx.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+    }
+
+    /// Bridge (Task 8): `next_event` tren receiver cua engine; sau khi engine drop (sender dong) ->
+    /// `None`.
+    #[tokio::test]
+    async fn next_event_tra_none_khi_engine_drop() {
+        let f = fx(&["a"], happy("a", "777")).await;
+        f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
+        f.run("t1", &scene(), None).await.unwrap();
+        let first = next_event(&mut rx).await.expect("co su kien");
+        assert!(matches!(first, EngineEvent::TaskStage { ref stage, .. } if stage == "launching"));
+        drop(f);
+        // rut het roi phai la None (Closed)
+        let mut n = 1;
+        while next_event(&mut rx).await.is_some() {
+            n += 1;
+        }
+        assert_eq!(n, 10);
     }
 
     // ---- brief: 9 test ----
@@ -1927,5 +2504,8 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Engine<FakeDriver>>();
         assert_send_sync::<GenerateOutcome>();
+        assert_send_sync::<crate::cancel::CancelRegistry>();
+        assert_send_sync::<crate::events::EngineEvents>();
+        assert_send_sync::<EngineEvent>();
     }
 }

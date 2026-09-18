@@ -12,7 +12,10 @@ lvc-browser.workspace = true
 # limiter.rs (Task 15): watch + Notify. pool.rs (Task 16) can them "time" cho cooldown/rate_limited —
 # da co san qua workspace tokio (rt-multi-thread, macros, fs, time).
 tokio = { workspace = true, features = ["sync"] }
-# pool.rs (Task 16): DashMap<AccountId, Arc<tokio::Mutex<()>>> (spec §5.2).
+# cancel.rs (P3 Task 4, R4): `CancellationToken` (cay token cha/con) cho huy `generate_video`.
+tokio-util = { version = "0.7", features = ["rt"] }
+# pool.rs (Task 16): DashMap<AccountId, Arc<tokio::Mutex<()>>> (spec §5.2);
+# cancel.rs (P3 Task 4): DashMap<task_id, CancellationToken>.
 dashmap = "6"
 tracing.workspace = true
 thiserror.workspace = true

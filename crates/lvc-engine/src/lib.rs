@@ -6,15 +6,22 @@
 //! trinh duyet → gui → cho video → ghi DB) va [`session_cache::SessionCache`] (phien am theo tai
 //! khoan + reaper).
 //! Task 18: [`cli`] — bo dieu khien 1 video (`examples/gen_one.rs` la `main` mong).
+//!
+//! P3 Task 4: [`cancel::CancelRegistry`] (huy bang `CancellationToken`, R4) va
+//! [`events::EngineEvents`] (`EngineEvent` qua broadcast, R5) — `Engine::cancel`, `Engine::events`.
 
+pub mod cancel;
 pub mod cli;
 pub mod error;
+pub mod events;
 pub mod generate;
 pub mod limiter;
 pub mod pool;
 pub mod session_cache;
 
+pub use cancel::{CancelGuard, CancelRegistry};
 pub use error::EngineError;
+pub use events::{EVENT_CAPACITY, EngineEvent, EngineEvents, next_event};
 pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};
 pub use limiter::{DynamicLimiter, LimiterHandle, Permit};
 pub use pool::{AccountPool, Lease};
