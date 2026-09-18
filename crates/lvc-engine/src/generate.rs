@@ -508,6 +508,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 }
             }
         }
+        // I1 (fix-round 1, final-review): `finished_at` ghi tren CA HAI nhanh (thanh cong/loi, ke
+        // ca huy) — best-effort giong `resume::resume`, de Tasks page hien duoc thoi gian da tao
+        // (`TaskTable::elapsedMsOf` can ca `startedAt` lan `finishedAt`).
+        if let Err(se) = self.tasks.set_finished(task_id, now_unix()).await {
+            warn!(task_id, error = %se, "khong ghi duoc finished_at");
+        }
         // dong kenh stage -> writer ghi not roi thoat; TaskDone/TaskFailed phat SAU khi DB xong.
         drop(eh);
         if let Err(e) = writer.await {
@@ -842,6 +848,19 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         self.tasks
             .set_status(task_id, TaskStatus::Processing, None, None)
             .await?;
+        // I1 (fix-round 1, final-review): ghi `started_at` LAN DAU TIEN job thuc su bat dau (da co
+        // slot + lease, phien trinh duyet vua mo that su) — mirror `resume.rs::resume_run`. Doc lai
+        // dong de biet co phai lan dau: xoay sang tai khoan khac (rotate) sau mot lan attempt that
+        // bai KHONG duoc ghi de `started_at` cu (nguoi dung muon thay thoi gian tinh tu lan bat dau
+        // DAU TIEN, khong phai lan attempt cuoi cung thanh cong).
+        if self
+            .tasks
+            .get(task_id)
+            .await?
+            .is_some_and(|r| r.started_at.is_none())
+        {
+            self.tasks.set_started(task_id, now_unix()).await?;
+        }
         info!(
             task_id,
             account = name,
@@ -1809,6 +1828,14 @@ pub(crate) mod tests {
                     .to_string()
                     .as_str()
             )
+        );
+        // I1 (fix-round 1, final-review): started_at/finished_at phai duoc ghi tren duong thanh
+        // cong (truoc ban sua nay ca hai luon NULL — TaskTable::elapsedMsOf khong bao gio hien).
+        let started = row.started_at.expect("started_at phai co");
+        let finished = row.finished_at.expect("finished_at phai co");
+        assert!(
+            started <= finished,
+            "started {started} phai <= finished {finished}"
         );
     }
 

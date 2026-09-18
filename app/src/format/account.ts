@@ -257,10 +257,11 @@ export function formatRemaining(row: RemainingRow, now: number): string {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Exported de test pin duoc (xem `tests/format_account.test.ts` — "pin ma loi"): danh sach 12 gia
+ * Exported de test pin duoc (xem `tests/format_account.test.ts` — "pin ma loi"): danh sach 13 gia
  * tri phai khop CHINH XAC `AccountError::code()` (`crates/lvc-engine/src/accounts.rs`), khong hon
  * khong kem, de mot bien the loi MOI (hoac mot ma bi go sai) fail build thay vi am tham thieu
- * nhan tieng Viet (review task-14-review.md, Minor #1).
+ * nhan tieng Viet (review task-14-review.md, Minor #1; NOT_A_PROFILE them boi fix-round 1
+ * final-review I5).
  */
 export const ACCOUNT_ERROR_VI: Record<string, string> = {
   ACCOUNT_EXISTS: "Tài khoản đã tồn tại.",
@@ -271,6 +272,10 @@ export const ACCOUNT_ERROR_VI: Record<string, string> = {
   INVALID_PROXY: PROXY_INVALID_MSG,
   PROFILE_BUSY: "Tài khoản đang được dùng bởi một tác vụ khác, thử lại sau.",
   ACCOUNT_BUSY: "Tài khoản đang có tác vụ đang chạy, không thể xoá lúc này.",
+  // I5 (fix-round 1, final-review): thu muc khong giong profile Chromium — thuong do accountsDir
+  // (Cài đặt) bi tro nham sang thu muc khac. Dong DB van con, xoa lai duoc sau khi sua accountsDir.
+  NOT_A_PROFILE:
+    "Thư mục tài khoản không giống hồ sơ Chromium — kiểm tra lại cài đặt \"Thư mục tài khoản\" rồi thử lại.",
   BROWSER: "Lỗi trình duyệt khi thao tác tài khoản.",
   STORE: "Lỗi lưu dữ liệu.",
   IO: "Lỗi đọc/ghi dữ liệu.",

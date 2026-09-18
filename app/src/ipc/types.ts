@@ -325,6 +325,9 @@ export type AppSettings = z.infer<typeof AppSettingsSchema>;
 export const RequeueReportSchema = z.object({
   requeued: z.array(z.string()),
   resumable: z.array(z.string()),
+  // Fix-round 1 (final-review C1): run_id con "running" luc khoi dong lai -> da chuyen "failed"
+  // (RunRepo::fail_running, crates/lvc-store/src/workflows.rs).
+  runsFailed: z.array(z.string()),
 });
 export type RequeueReport = z.infer<typeof RequeueReportSchema>;
 

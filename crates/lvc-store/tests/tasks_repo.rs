@@ -445,3 +445,76 @@ async fn orphans_with_conversation_chi_lay_processing_co_conv() {
     let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
     assert_eq!(ids, vec!["proc_conv"]);
 }
+
+/// Fix-round 1 (final-review C1 + I6): `fail_orphans` thay `requeue_orphans` trong duong khoi dong
+/// lai cua P3 (khong co bo tieu thu `queued`) — MOI dong `processing` deu thanh `Failed`+`RESTART`,
+/// nhung GIU NGUYEN `conversation_id`/`account` (khac `requeue_orphans` NULL hoa `account`).
+#[tokio::test]
+async fn fail_orphans_dua_ca_hai_nhanh_ve_failed_restart_giu_conv_va_account() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+
+    // (a) processing KHONG conversation_id -> Failed/RESTART, khong resumable.
+    repo.create("no_conv", &scene("x"), None).await.unwrap();
+    repo.set_status("no_conv", TaskStatus::Processing, None, None)
+        .await
+        .unwrap();
+
+    // (b) processing CO conversation_id + account -> Failed/RESTART NHUNG giu ca hai de "Tiep tuc".
+    repo.create("has_conv", &scene("x"), None).await.unwrap();
+    repo.set_status("has_conv", TaskStatus::Processing, None, None)
+        .await
+        .unwrap();
+    repo.set_account("has_conv", "acc_giu_nguyen")
+        .await
+        .unwrap();
+    repo.set_conversation("has_conv", "conv123").await.unwrap();
+
+    // (c) queued/completed -> khong bi dung toi.
+    repo.create("still_queued", &scene("x"), None)
+        .await
+        .unwrap();
+    repo.create("done", &scene("x"), None).await.unwrap();
+    repo.set_status("done", TaskStatus::Completed, None, None)
+        .await
+        .unwrap();
+
+    let mut got = repo.fail_orphans(9000.0).await.unwrap();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            ("has_conv".to_string(), true),
+            ("no_conv".to_string(), false),
+        ]
+    );
+
+    let a = repo.get("no_conv").await.unwrap().unwrap();
+    assert_eq!(a.status, TaskStatus::Failed);
+    assert_eq!(a.failure_code, Some(FailureCode::Restart));
+    assert_eq!(a.account, None, "chua tung gan tai khoan");
+    assert!((a.finished_at.unwrap() - 9000.0).abs() < f64::EPSILON);
+
+    let b = repo.get("has_conv").await.unwrap().unwrap();
+    assert_eq!(b.status, TaskStatus::Failed);
+    assert_eq!(b.failure_code, Some(FailureCode::Restart));
+    assert_eq!(
+        b.account.as_deref(),
+        Some("acc_giu_nguyen"),
+        "fail_orphans KHONG duoc NULL hoa account (khac requeue_orphans)"
+    );
+    assert_eq!(b.conversation_id.as_deref(), Some("conv123"));
+    assert!((b.finished_at.unwrap() - 9000.0).abs() < f64::EPSILON);
+    assert_ne!(
+        a.error, b.error,
+        "thong diep loi phai khac nhau giua co/khong conversation_id"
+    );
+
+    let queued = repo.get("still_queued").await.unwrap().unwrap();
+    assert_eq!(queued.status, TaskStatus::Queued);
+    let done = repo.get("done").await.unwrap().unwrap();
+    assert_eq!(done.status, TaskStatus::Completed);
+
+    // Goi lai lan 2 -> khong con dong processing nao nua.
+    assert_eq!(repo.fail_orphans(9001.0).await.unwrap(), Vec::new());
+}

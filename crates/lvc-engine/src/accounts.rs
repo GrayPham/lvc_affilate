@@ -118,6 +118,17 @@ pub enum AccountError {
     ProfileBusy(String),
     #[error("tai khoan '{0}' dang duoc su dung (co tac vu dang chay)")]
     AccountBusy(String),
+    /// I5 (fix-round 1, final-review): thu muc `accounts_dir.join(name)` KHONG rong VA khong
+    /// "trong nhu" mot profile Chromium (khong co `Default/` hay `Local State`) — bao ve mot
+    /// `accountsDir` bi chon nham (vd tro thang vao goc thu muc source code) khoi bi
+    /// `remove_dir_all` xoa sach chi vi ten thu muc con trung ngau nhien voi mot dong DB
+    /// `accounts_meta`. Dong DB VAN CON (khong xoa) de nguoi dung sua lai cai dat `accountsDir`
+    /// roi thu lai — xem [`Engine::delete`].
+    #[error(
+        "thu muc '{0}' khong giong profile Chromium va khong rong — kiem tra lai cai dat \
+         'Thư mục tài khoản' (accountsDir), du lieu tai khoan trong DB van con nguyen"
+    )]
+    NotAProfile(String),
     #[error(transparent)]
     Browser(#[from] BrowserError),
     #[error(transparent)]
@@ -145,6 +156,7 @@ impl AccountError {
             Self::InvalidProxy(_) => "INVALID_PROXY",
             Self::ProfileBusy(_) | Self::Browser(BrowserError::ProfileBusy(_)) => "PROFILE_BUSY",
             Self::AccountBusy(_) => "ACCOUNT_BUSY",
+            Self::NotAProfile(_) => "NOT_A_PROFILE",
             Self::Browser(_) => "BROWSER",
             Self::Store(_) => "STORE",
             Self::Io(_) => "IO",
@@ -327,6 +339,40 @@ async fn remove_dir_all_retry(dir: &Path) -> std::io::Result<()> {
             Err(e) => return Err(e),
         }
     }
+}
+
+/// I5 (fix-round 1, final-review finding I5): lop phong thu CUOI CUNG truoc `remove_dir_all` trong
+/// [`Engine::delete`] — mot `accountsDir` bi chon nham (vd goc thu muc source code) khong duoc
+/// bien MOI thu muc con thanh "tai khoan" xoa duoc chi vi trung ten voi mot dong `accounts_meta`
+/// (xem [`AccountPool::rows_with_dirs`](crate::pool::AccountPool::rows_with_dirs), tu dong
+/// `upsert` moi thu muc con — port Python `_ensure_meta`).
+///
+/// `true` (AN TOAN de `remove_dir_all`) khi thu muc:
+/// - KHONG ton tai (khong con gi de mat — nhanh nay hiem gap trong thuc te vi `Engine::delete` da
+///   tu kiem `dir.exists()` truoc khi goi ham nay, giu lai cho goi truc tiep/test);
+/// - RONG (khong co entry nao — khong co gi de mat); HOAC
+/// - co mot entry ten `Default` (thu muc Chromium tao ngay lan dau mo, chua ho so nguoi dung mac
+///   dinh) hoac `Local State` (file JSON cau hinh cap profile Chromium luon tao) — hai dau hieu
+///   ON DINH nhat cua MOT profile Chromium that su, xem `chromium.rs::config_ep_user_data_dir_tuyet_doi`.
+///
+/// Doc thu muc THAT (khong chi doan qua ten) vi day la lop phong thu cuoi cung — muc tieu la
+/// KHONG BAO GIO xoa nham mot thu muc nguoi dung lo tro `accountsDir` vao.
+fn looks_like_chromium_profile(dir: &Path) -> std::io::Result<bool> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+        Err(e) => return Err(e),
+    };
+    let mut any_entry = false;
+    for entry in entries {
+        let entry = entry?;
+        any_entry = true;
+        let name = entry.file_name();
+        if name == "Default" || name == "Local State" {
+            return Ok(true);
+        }
+    }
+    Ok(!any_entry)
 }
 
 impl<D: BrowserDriver + 'static> Engine<D> {
@@ -689,10 +735,21 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// mat truoc khi biet xoa thu muc co thanh cong hay khong): nguoi dung thu lai `delete` se sach,
     /// row/dir khong bao gio lech nhau.
     ///
+    /// I5 (fix-round 1, final-review): TRUOC `remove_dir_all_retry`, kiem them
+    /// [`looks_like_chromium_profile`] — mot `accountsDir` bi chon nham (vd nguoi dung tro
+    /// Settings vao goc thu muc source code thay vi `.../lvcseedance/accounts`) se khien
+    /// [`crate::pool::AccountPool::rows_with_dirs`] tu dong `upsert` MOI thu muc con thanh mot dong
+    /// `accounts_meta` (port Python `_ensure_meta`); bam "Xoá" tren mot dong nhu vay TRUOC ban sua
+    /// nay se `remove_dir_all` NGUYEN thu muc do (vd `src/`, `.git/`...) sau hai lan xac nhan cua
+    /// UI. Gio chi xoa khi thu muc RONG hoac trong nhu profile Chromium that; nguoc lai tra
+    /// [`AccountError::NotAProfile`] va GIU nguyen dong DB (nguoi dung sua `accountsDir` roi thu
+    /// lai).
+    ///
     /// # Errors
     /// [`AccountError::InvalidName`] khi `name` khong hop le (C1); [`AccountError::AccountBusy`]/
-    /// [`AccountError::ProfileBusy`] nhu tren; `Store`/`Engine` khi xoa dong hoac dem lai so tai
-    /// khoan loi.
+    /// [`AccountError::ProfileBusy`] nhu tren; [`AccountError::NotAProfile`] (I5) khi thu muc
+    /// khong rong va khong giong profile Chromium; `Store`/`Engine` khi xoa dong hoac dem lai so
+    /// tai khoan loi.
     pub async fn delete(&self, name: &str) -> Result<bool, AccountError> {
         let name = validate_name(name)?;
         let Some(lease) = self.pool().try_lease(name, "") else {
@@ -705,6 +762,15 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         let dir = self.cfg.accounts_dir.join(name);
         let dir_existed = dir.exists();
         if dir_existed {
+            // I5 (fix-round 1, final-review): CHI `remove_dir_all` khi thu muc RONG hoac "trong
+            // nhu" mot profile Chromium — xem doc [`AccountError::NotAProfile`]. Dong DB CHUA bi
+            // dung toi o nhanh nay (kiem TRUOC ca `remove_dir_all_retry`).
+            let looks_ok = looks_like_chromium_profile(&dir).map_err(|e| {
+                AccountError::ProfileBusy(format!("khong doc duoc thu muc profile '{name}': {e}"))
+            })?;
+            if !looks_ok {
+                return Err(AccountError::NotAProfile(dir.display().to_string()));
+            }
             remove_dir_all_retry(&dir).await.map_err(|e| {
                 AccountError::ProfileBusy(format!("khong xoa duoc thu muc profile '{name}': {e}"))
             })?;
@@ -1405,7 +1471,16 @@ mod tests {
         use std::os::windows::fs::OpenOptionsExt;
 
         let f = fx(&["a"], vec![]).await;
-        let locked_path = f.accounts_dir().join("a").join("locked.txt");
+        // I5 (fix-round 1, final-review): tu ban sua nay `delete` chi `remove_dir_all` khi thu muc
+        // "trong nhu" mot profile Chromium — dat file bi khoa BEN TRONG `Default/` (khong phai
+        // ngang hang) de dau hieu profile (`Default/` ton tai) SONG SOT qua lan `remove_dir_all`
+        // that bai dau tien: no khong xoa duoc `locked.txt` nen khong xoa duoc ca `Default/` (con
+        // con), khac voi dat file khoa ngang hang — luc do `remove_dir_all` co the da xoa xong
+        // `Default/` (rong, xoa truoc) TRUOC khi dinh vao `locked.txt` rieng, khien lan goi lai
+        // sau khong con thay dau hieu profile nao nua.
+        let default_dir = f.accounts_dir().join("a").join("Default");
+        std::fs::create_dir_all(&default_dir).unwrap();
+        let locked_path = default_dir.join("locked.txt");
         std::fs::write(&locked_path, b"x").unwrap();
         let held = std::fs::OpenOptions::new()
             .read(true)
@@ -1426,6 +1501,89 @@ mod tests {
             f.engine.delete("a").await.unwrap(),
             "tha khoa xong thi xoa lai duoc, sach"
         );
+    }
+
+    // ---- I5 (fix-round 1, final-review): looks_like_chromium_profile + delete NotAProfile ----
+
+    #[test]
+    fn looks_like_chromium_profile_thu_muc_khong_ton_tai_la_an_toan() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(looks_like_chromium_profile(&dir.path().join("khong-ton-tai")).unwrap());
+    }
+
+    #[test]
+    fn looks_like_chromium_profile_thu_muc_rong_la_an_toan() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(looks_like_chromium_profile(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn looks_like_chromium_profile_co_default_la_profile_that() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Default")).unwrap();
+        assert!(looks_like_chromium_profile(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn looks_like_chromium_profile_co_local_state_la_profile_that() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Local State"), b"{}").unwrap();
+        assert!(looks_like_chromium_profile(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn looks_like_chromium_profile_thu_muc_source_code_khong_phai_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src").join("main.rs"), b"fn main() {}").unwrap();
+        std::fs::write(dir.path().join("Cargo.toml"), b"[package]").unwrap();
+        assert!(!looks_like_chromium_profile(dir.path()).unwrap());
+    }
+
+    /// I5: thu muc `accountsDir/<name>` KHONG rong VA khong giong profile Chromium (vd mot
+    /// `accountsDir` bi chon nham tro thang vao goc source code, o day mo phong bang mot thu muc co
+    /// `src/main.rs`) -> `NOT_A_PROFILE`, KHONG dung toi `remove_dir_all`, dong DB VAN CON (khac
+    /// `ACCOUNT_BUSY`/`PROFILE_BUSY` — day la loi CAU HINH, khong phai loi tam thoi).
+    #[tokio::test]
+    async fn delete_thu_muc_khong_giong_profile_bao_not_a_profile_giu_ca_dong_va_thu_muc() {
+        let f = fx(&["a"], vec![]).await;
+        let dir = f.accounts_dir().join("a");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src").join("main.rs"), b"fn main() {}").unwrap();
+
+        let err = f.engine.delete("a").await.unwrap_err();
+        assert_eq!(err.code(), "NOT_A_PROFILE");
+        assert!(
+            err.to_string().contains(&dir.display().to_string()),
+            "{err}"
+        );
+        assert!(
+            f.accounts.get("a").await.unwrap().is_some(),
+            "dong DB phai con nguyen de nguoi dung sua accountsDir roi thu lai"
+        );
+        assert!(dir.is_dir(), "thu muc KHONG duoc dung toi");
+        assert!(dir.join("src").join("main.rs").is_file());
+    }
+
+    /// I5: thu muc RONG (kich ban mac dinh moi tai khoan — `fx` chi `create_dir_all`, khong tao gi
+    /// ben trong) van xoa duoc binh thuong — khong hoi quy hanh vi cu.
+    #[tokio::test]
+    async fn delete_thu_muc_rong_van_xoa_binh_thuong() {
+        let f = fx(&["a"], vec![]).await;
+        assert!(f.accounts_dir().join("a").exists());
+        assert!(f.engine.delete("a").await.unwrap());
+        assert!(!f.accounts_dir().join("a").exists());
+    }
+
+    /// I5: thu muc co `Default/` (dau hieu profile Chromium that) van xoa duoc du khong rong.
+    #[tokio::test]
+    async fn delete_thu_muc_co_default_van_xoa_duoc() {
+        let f = fx(&["a"], vec![]).await;
+        std::fs::create_dir_all(f.accounts_dir().join("a").join("Default")).unwrap();
+
+        assert!(f.engine.delete("a").await.unwrap());
+        assert!(!f.accounts_dir().join("a").exists());
+        assert!(f.accounts.get("a").await.unwrap().is_none());
     }
 
     // ---- import_legacy (R12) ----

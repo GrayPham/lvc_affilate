@@ -392,6 +392,9 @@ fn fixtures_khop_ban_da_commit() {
         &serde_json::to_value(RequeueReport {
             requeued: vec!["task_3".to_string()],
             resumable: vec!["task_4".to_string()],
+            // Fix-round 1 (final-review C1): truong moi — run con `running` luc khoi dong lai bi
+            // dong thanh `failed`.
+            runs_failed: vec!["run_5".to_string()],
         })
         .unwrap(),
     );

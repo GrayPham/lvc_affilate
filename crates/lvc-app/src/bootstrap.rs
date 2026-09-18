@@ -13,7 +13,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use lvc_browser::BrowserDriver;
 #[cfg(not(feature = "fake-driver"))]
 use lvc_browser::chromium::ChromiumDriver;
@@ -151,6 +151,7 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
     info!(
         requeued = requeue.requeued.len(),
         resumable = requeue.resumable.len(),
+        runs_failed = requeue.runs_failed.len(),
         "requeue_on_start hoan tat"
     );
 
@@ -160,6 +161,7 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
         db,
         settings: RwLock::new(settings),
         runs: Arc::new(DashMap::new()),
+        resuming: Arc::new(DashSet::new()),
     });
     Ok(())
 }
@@ -167,7 +169,7 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
 #[cfg(test)]
 mod tests {
     use lvc_browser::FakeDriver;
-    use lvc_core::{RawScene, Scene, TaskStatus};
+    use lvc_core::{FailureCode, RawScene, Scene, TaskStatus};
     use lvc_store::TaskRepo;
 
     use super::*;
@@ -248,11 +250,12 @@ mod tests {
         assert!(boot.warnings[0].contains("threads"), "{:?}", boot.warnings);
     }
 
-    /// I1 (fix-round review task-8): `build_engine` phai tu `requeue_on_start` that su khi DB da co
-    /// task orphan tu truoc — khong chi `lvc-engine` tu no. Seed 2 task `processing`: `a` KHONG
-    /// `conversation_id` (phai requeue ve `queued` ngay) va `b` CO `conversation_id` (chi liet ke
-    /// resumable, KHONG bi dong) truoc khi goi `build_engine` lan hai — mo phong app bi tat/crash
-    /// giua chung roi khoi dong lai.
+    /// Fix-round 1 (final-review C1 + I6): `build_engine` phai tu `requeue_on_start` that su khi DB
+    /// da co task orphan tu truoc — khong chi `lvc-engine` tu no. Seed 2 task `processing`: `a`
+    /// KHONG `conversation_id`, `b` CO `conversation_id` — ca hai gio deu thanh `Failed`/`RESTART`
+    /// (P3 khong co bo tieu thu `queued`), chi khac o cho `b` GIU `conversation_id`/`account` de co
+    /// the "Tiep tuc" — truoc khi goi `build_engine` lan hai, mo phong app bi tat/crash giua chung
+    /// roi khoi dong lai.
     #[tokio::test]
     async fn build_engine_requeue_orphan_co_va_khong_conv() {
         let dir = tempfile::tempdir().unwrap();
@@ -272,6 +275,7 @@ mod tests {
             .set_status("b", TaskStatus::Processing, None, None)
             .await
             .unwrap();
+        tasks.set_account("b", "acc1").await.unwrap();
         tasks.set_conversation("b", "42").await.unwrap();
 
         drop(boot_setup);
@@ -281,12 +285,27 @@ mod tests {
 
         assert_eq!(boot.requeue.requeued, vec!["a".to_string()]);
         assert_eq!(boot.requeue.resumable, vec!["b".to_string()]);
+        assert!(
+            boot.requeue.runs_failed.is_empty(),
+            "khong co run nao duoc tao trong test nay"
+        );
 
         let row_a = TaskRepo::new(&boot.db).get("a").await.unwrap().unwrap();
         assert_eq!(
             row_a.status,
-            TaskStatus::Queued,
-            "a phai ve queued sau requeue"
+            TaskStatus::Failed,
+            "P3 khong co bo tieu thu queued -> a cung thanh Failed/RESTART"
         );
+        assert_eq!(row_a.failure_code, Some(FailureCode::Restart));
+
+        let row_b = TaskRepo::new(&boot.db).get("b").await.unwrap().unwrap();
+        assert_eq!(row_b.status, TaskStatus::Failed);
+        assert_eq!(row_b.failure_code, Some(FailureCode::Restart));
+        assert_eq!(
+            row_b.conversation_id.as_deref(),
+            Some("42"),
+            "giu de Tiep tuc"
+        );
+        assert_eq!(row_b.account.as_deref(), Some("acc1"), "giu tai khoan");
     }
 }

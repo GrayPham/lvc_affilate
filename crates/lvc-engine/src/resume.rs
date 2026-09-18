@@ -9,11 +9,16 @@
 //! va KHONG BAO GIO `claim` (BUG-003 "resume KHONG tang usage") — ke ca khi `Timeout`, khac
 //! `generate_video` (`after_dola_error` claim luc Timeout vi coi nhu Dola van dang chay).
 //!
-//! [`Engine::requeue_on_start`] port `server.resume_incomplete_tasks` (`:897-915`) buoc 1+2: task
-//! `processing` KHONG `conversation_id` -> `queued` ngay ([`lvc_store::TaskRepo::requeue_orphans`]);
-//! task `processing` CO `conversation_id` -> CHI tra ve danh sach id
-//! ([`lvc_store::TaskRepo::orphans_with_conversation`]) — ham nay KHONG tu goi [`Engine::resume`],
-//! Task 7 (DAG executor) / Task 9 (Tauri command) quyet dinh chay khi nao va theo thu tu nao.
+//! [`Engine::requeue_on_start`] (fix-round 1, final-review C1 + I6 — thay ban dau port
+//! `server.resume_incomplete_tasks` `:897-915` buoc 1+2): P3 KHONG co bo tieu thu doc lai `queued`
+//! nen CA HAI nhanh orphan (`processing` co/khong `conversation_id`) deu dua ve
+//! `Failed`+`FailureCode::Restart` qua [`lvc_store::TaskRepo::fail_orphans`] (GIU NGUYEN
+//! `conversation_id`/`account`), dong thoi dong moi `runs` con `running` qua
+//! [`lvc_store::RunRepo::fail_running`] — ham nay KHONG tu goi [`Engine::resume`], Task 7 (DAG
+//! executor) / Task 9 (Tauri command) quyet dinh chay khi nao va theo thu tu nao.
+//! [`lvc_store::TaskRepo::requeue_orphans`]/[`lvc_store::TaskRepo::orphans_with_conversation`] van
+//! giu nguyen trong `lvc-store` cho bo lap lich P4 (khi co consumer thuc su cho `queued`) nhung
+//! KHONG con duoc goi tu day.
 //!
 //! | Rust | Python | Ghi chu |
 //! |---|---|---|
@@ -91,14 +96,25 @@ async fn probe_settle(eh: &EngineHooks<'_>, dur: Duration) -> Result<(), EngineE
 
 /// Ket qua [`Engine::requeue_on_start`] (Task 9 Tauri command tra ve JSON cho UI). `Serialize`
 /// `camelCase` (khop quy uoc cac kieu huong Tauri khac cua workspace, vd `lvc_core::graph::plan`).
+///
+/// Fix-round 1 (final-review C1 + I6): P3 KHONG co bo tieu thu doc lai `queued` nen CA HAI truong
+/// `task_id` duoi day gio la dong da bi dua ve `Failed` + `FailureCode::Restart`
+/// ([`lvc_store::TaskRepo::fail_orphans`]) — ten truong GIU NGUYEN (`requeued`/`resumable`, tranh
+/// doi schema TS/fixture khong can thiet) nhung Y NGHIA da doi, xem doc tung truong.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequeueReport {
-    /// `task_id` da dua ve `queued` (khong co `conversation_id` — chua gui gi, requeue an toan).
+    /// `task_id` KHONG co `conversation_id` -> `Failed`/`RESTART`, KHONG the "Tiep tuc" (chua tung
+    /// gui gi len Dola) — nguoi dung phai chay lai workflow.
     pub requeued: Vec<String>,
-    /// `task_id` co `conversation_id` — UNG VIEN cho [`Engine::resume`]; ham nay KHONG tu chay
-    /// chung, chi liet ke (Task 7/9 quyet dinh thu tu/thoi diem).
+    /// `task_id` CO `conversation_id` -> `Failed`/`RESTART` NHUNG co the "Tiep tuc"
+    /// ([`Engine::resume`] qua lenh IPC `task_resume` — `conversation_id`/`account` da duoc GIU
+    /// NGUYEN, xem [`lvc_store::TaskRepo::fail_orphans`]).
     pub resumable: Vec<String>,
+    /// Fix-round 1 (C1): `run_id` con `running` luc khoi dong lai -> da chuyen `failed`
+    /// ([`lvc_store::RunRepo::fail_running`]) de man Tac vu khong con "run ma mai mai" khi task
+    /// cua no da bi dong o tren.
+    pub runs_failed: Vec<String>,
 }
 
 /// server.py:1108-1123-style validate THUAN (khong I/O) tren mot [`TaskRow`]: `conversation_id` +
@@ -138,23 +154,36 @@ fn resume_fields(
 }
 
 impl<D: BrowserDriver + 'static> Engine<D> {
-    /// `server.resume_incomplete_tasks` (`:897-915`) buoc 1+2 — xem doc module. Chi doc/ghi
-    /// `requeue_orphans`, KHONG tu goi [`Engine::resume`] (Task 7/9 quyet dinh).
+    /// Fix-round 1 (final-review C1 + I6): thay `server.resume_incomplete_tasks` (`:897-915`) buoc
+    /// 1+2 — P3 KHONG co bo tieu thu doc lai `queued` nen CA HAI nhanh orphan (co/khong
+    /// `conversation_id`) deu dua thang ve `Failed`/`RESTART` qua MOT lan goi
+    /// [`lvc_store::TaskRepo::fail_orphans`] roi tach theo `has_conversation` — KHONG con goi
+    /// [`lvc_store::TaskRepo::requeue_orphans`] tu day nua (ham do van giu nguyen cho bo lap lich
+    /// P4 dung `queued` that su). Dong thoi dong moi `runs` con `running`
+    /// ([`lvc_store::RunRepo::fail_running`]) — xem doc [`RequeueReport`]. KHONG tu goi
+    /// [`Engine::resume`] (Task 7/9 quyet dinh khi nao/thu tu nao).
     ///
     /// # Errors
     /// `Store` khi doc/ghi DB loi.
     pub async fn requeue_on_start(&self, now: f64) -> Result<RequeueReport, EngineError> {
-        let requeued = self.tasks.requeue_orphans(now).await?;
-        let resumable = self
-            .tasks
-            .orphans_with_conversation()
-            .await?
-            .into_iter()
-            .map(|r| r.id)
-            .collect();
+        let orphans = self.tasks.fail_orphans(now).await?;
+        let mut requeued = Vec::new();
+        let mut resumable = Vec::new();
+        for (id, has_conversation) in orphans {
+            if has_conversation {
+                resumable.push(id);
+            } else {
+                requeued.push(id);
+            }
+        }
+        let runs_failed = self
+            .run_repo
+            .fail_running(now, "RESTART: app khoi dong lai")
+            .await?;
         Ok(RequeueReport {
             requeued,
             resumable,
+            runs_failed,
         })
     }
 
@@ -577,11 +606,14 @@ mod tests {
         assert!(f.calls().is_empty());
     }
 
-    /// (4) `requeue_on_start`: mot task `processing` KHONG `conversation_id` (orphan-khong-conv) va
-    /// mot task `processing` CO `conversation_id` (orphan-co-conv) -> `requeued=[a]`, `resumable=[b]`;
-    /// `b` KHONG bi dong (T6 chi liet ke, T7/T9 moi tu chay resume).
+    /// (4) `requeue_on_start` (fix-round 1, C1+I6): ba dong bi cham toi luc "khoi dong lai" — (a)
+    /// task `processing` KHONG `conversation_id` (b) task `processing` CO `conversation_id` (c) mot
+    /// `runs` con `running`. P3 KHONG co bo tieu thu `queued` nen CA (a) VA (b) deu thanh
+    /// `Failed`+`RESTART` (khac ban truoc: (a) tung ve `queued`) — chi khac o cho (b) GIU
+    /// `conversation_id`/`account` de "Tiep tuc" con (a) thi khong co gi de giu; (c) chuyen
+    /// `runs.status` sang `failed`.
     #[tokio::test]
-    async fn requeue_on_start_tach_orphan_co_va_khong_conv() {
+    async fn requeue_on_start_dua_ca_hai_nhanh_orphan_ve_failed_restart_va_dong_run_dang_chay() {
         let f = fx(&["a"], vec![]).await;
         f.task("a1", &scene()).await;
         f.tasks
@@ -590,17 +622,36 @@ mod tests {
             .unwrap();
         f.task("b1", &scene()).await;
         make_processing(&f, "b1", "a", "42").await;
+        f.engine
+            .run_repo
+            .create("r1", "wf1", lvc_store::RunStatus::Running, now_unix())
+            .await
+            .unwrap();
 
         let report = f.engine.requeue_on_start(now_unix()).await.unwrap();
         assert_eq!(report.requeued, vec!["a1".to_string()]);
         assert_eq!(report.resumable, vec!["b1".to_string()]);
+        assert_eq!(report.runs_failed, vec!["r1".to_string()]);
 
         let a = f.row("a1").await;
-        assert_eq!(a.status, TaskStatus::Queued);
-        assert!(a.account.is_none());
+        assert_eq!(
+            a.status,
+            TaskStatus::Failed,
+            "P3 khong co bo tieu thu queued"
+        );
+        assert_eq!(a.failure_code, Some(FailureCode::Restart));
+        assert!(a.account.is_none(), "chua tung gan tai khoan");
+        assert!(a.finished_at.is_some());
+
         let b = f.row("b1").await;
-        assert_eq!(b.status, TaskStatus::Processing, "T6 khong tu resume b");
-        assert_eq!(b.conversation_id.as_deref(), Some("42"));
+        assert_eq!(b.status, TaskStatus::Failed);
+        assert_eq!(b.failure_code, Some(FailureCode::Restart));
+        assert_eq!(b.conversation_id.as_deref(), Some("42"), "giu de Tiep tuc");
+        assert_eq!(b.account.as_deref(), Some("a"), "giu tai khoan");
+        assert!(b.finished_at.is_some());
+
+        let run = f.engine.run_repo.get("r1").await.unwrap().unwrap();
+        assert_eq!(run.status, lvc_store::RunStatus::Failed);
     }
 
     /// (5) Huy giua poll (R4, giong `generate_video`): `Cancelled`, `conversation_id`/`account`
@@ -790,16 +841,22 @@ mod tests {
         );
     }
 
-    /// M5 (fix-round 1): pin JSON `camelCase` cua `RequeueReport` (quy uoc Task 5).
+    /// M5 (fix-round 1): pin JSON `camelCase` cua `RequeueReport` (quy uoc Task 5); them
+    /// `runsFailed` (fix-round 1 final-review, C1).
     #[test]
     fn requeue_report_serde_camel_case() {
         let r = RequeueReport {
             requeued: vec!["a1".to_string()],
             resumable: vec!["b1".to_string(), "c1".to_string()],
+            runs_failed: vec!["r1".to_string()],
         };
         assert_eq!(
             serde_json::to_value(&r).unwrap(),
-            serde_json::json!({"requeued": ["a1"], "resumable": ["b1", "c1"]})
+            serde_json::json!({
+                "requeued": ["a1"],
+                "resumable": ["b1", "c1"],
+                "runsFailed": ["r1"],
+            })
         );
     }
 }

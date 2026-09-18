@@ -442,4 +442,48 @@ impl TaskRepo {
         .await?;
         rows.iter().map(row_to_task).collect()
     }
+
+    /// Fix-round 1 (final-review C1 + I6): khoi dong lai app luc con dong `processing` — P3 KHONG
+    /// co bo tieu thu doc lai `queued` (khac [`TaskRepo::requeue_orphans`], giu lai rieng cho bo
+    /// lap lich P4), nen o day chuyen THANG ve `Failed` + [`FailureCode::Restart`] + `finished_at`,
+    /// GIU NGUYEN `conversation_id`/`account` (khong dong nao bi NULL, khac
+    /// `requeue_orphans`):
+    /// - CO `conversation_id` (khac rong sau trim) -> co the "Tiep tuc" (`task_resume_impl` chap
+    ///   nhan `Failed` + con `conversation_id`, xem `crates/lvc-app/src/commands/tasks.rs`).
+    /// - KHONG co -> chua tung gui gi, nguoi dung phai chay lai workflow (thong diep loi noi ro,
+    ///   khac thong diep nhanh co conv).
+    ///
+    /// MOT cau `UPDATE ... RETURNING` DUY NHAT (nhu `requeue_orphans`) — tranh khe ho doc/ghi giua
+    /// hai lenh. Tra ve `(id, has_conversation)` de noi goi ([`crate::TaskRepo`] khong tu phan
+    /// loai — `lvc_engine::Engine::requeue_on_start` tach `requeued`/`resumable` tu cap boolean
+    /// nay).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn/ghi thất bại.
+    pub async fn fail_orphans(&self, now: f64) -> Result<Vec<(String, bool)>, StoreError> {
+        let rows = sqlx::query(
+            "UPDATE tasks
+               SET status = ?2, failure_code = ?3, finished_at = ?4, updated_at = ?4,
+                   error = CASE WHEN conversation_id IS NOT NULL AND conversation_id != ''
+                                THEN ?5 ELSE ?6 END
+             WHERE status = ?1
+             RETURNING id, conversation_id",
+        )
+        .bind(TaskStatus::Processing.as_str())
+        .bind(TaskStatus::Failed.as_str())
+        .bind(FailureCode::Restart.as_str())
+        .bind(now)
+        .bind("Ung dung khoi dong lai khi video dang tao — bam Tiep tuc")
+        .bind("Ung dung khoi dong lai truoc khi gui prompt — chay lai workflow")
+        .fetch_all(self.db.pool())
+        .await?;
+        rows.iter()
+            .map(|r| {
+                let id: String = r.try_get("id")?;
+                let conv: Option<String> = r.try_get("conversation_id")?;
+                let has_conv = conv.as_deref().is_some_and(|s| !s.is_empty());
+                Ok((id, has_conv))
+            })
+            .collect()
+    }
 }

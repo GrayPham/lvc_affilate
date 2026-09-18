@@ -282,11 +282,37 @@ impl RunRepo {
             .await?;
         rows.iter().map(row_to_run).collect()
     }
+
+    /// Fix-round 1 (final-review C1): khoi dong lai app luc con dong `runs.status = 'running'` —
+    /// P3 khong co bo tieu thu nao doc lai `runs` (chi Task 7 — DAG executor — ghi
+    /// [`RunRepo::set_status`] khi CHINH no dang chay), nen mot run dang do se "chay mai mai" tren
+    /// man Tac vu neu khong dong lai o day khi khoi dong. `error` DUNG CHUNG cho moi dong bi cham
+    /// (`Engine::requeue_on_start` goi MOT LAN luc khoi dong, khong phan biet tung run). Tra ve
+    /// danh sach `id` da dong.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn/ghi thất bại.
+    pub async fn fail_running(&self, now: f64, error: &str) -> Result<Vec<String>, StoreError> {
+        let rows = sqlx::query(
+            "UPDATE runs SET status = ?2, error = ?3, finished_at = ?4 WHERE status = ?1
+             RETURNING id",
+        )
+        .bind(RunStatus::Running.as_str())
+        .bind(RunStatus::Failed.as_str())
+        .bind(error)
+        .bind(now)
+        .fetch_all(self.db.pool())
+        .await?;
+        rows.iter()
+            .map(|r| r.try_get::<String, _>("id").map_err(StoreError::from))
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::RunStatus;
+    use super::{RunRepo, RunStatus};
+    use crate::Db;
 
     /// Fix-round 1 (M4): ghim wire string cua `RunStatus` (derive serde, dung boi lenh IPC
     /// `run_list`) KHOP dung `as_str()` (dung boi `RunRepo` khi ghi cot `status`) — hai nguon PHAI
@@ -305,5 +331,43 @@ mod tests {
                 "{s:?}"
             );
         }
+    }
+
+    /// Fix-round 1 (C1): `fail_running` chi dong nhung run con `running` (giu nguyen
+    /// completed/failed/cancelled), ghi `error` + `finished_at` truyen vao, tra ve DUNG danh sach
+    /// id da cham toi; goi lai lan hai (khong con `running` nao) -> danh sach rong.
+    #[tokio::test]
+    async fn fail_running_chi_dong_run_dang_chay() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = RunRepo::new(&db);
+        repo.create("r1", "wf1", RunStatus::Running, 1.0)
+            .await
+            .unwrap();
+        repo.create("r2", "wf1", RunStatus::Completed, 1.0)
+            .await
+            .unwrap();
+
+        let ids = repo
+            .fail_running(9000.0, "RESTART: app khoi dong lai")
+            .await
+            .unwrap();
+        assert_eq!(ids, vec!["r1".to_string()]);
+
+        let r1 = repo.get("r1").await.unwrap().unwrap();
+        assert_eq!(r1.status, RunStatus::Failed);
+        assert_eq!(r1.error, "RESTART: app khoi dong lai");
+        assert!((r1.finished_at - 9000.0).abs() < f64::EPSILON);
+
+        let r2 = repo.get("r2").await.unwrap().unwrap();
+        assert_eq!(
+            r2.status,
+            RunStatus::Completed,
+            "khong dung toi run da xong"
+        );
+
+        assert_eq!(
+            repo.fail_running(9001.0, "x").await.unwrap(),
+            Vec::<String>::new()
+        );
     }
 }

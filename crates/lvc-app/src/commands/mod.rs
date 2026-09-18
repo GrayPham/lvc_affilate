@@ -34,7 +34,7 @@ mod fixtures;
 
 use std::sync::Arc;
 
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use lvc_browser::BrowserDriver;
 use lvc_core::AppSettings;
 use lvc_engine::{AccountError, Engine, EngineError, LimiterHandle};
@@ -140,6 +140,14 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     /// tranh doc lai DB moi lan UI can hien thi.
     pub settings: RwLock<AppSettings>,
     pub runs: Arc<DashMap<String, CancellationToken>>,
+    /// I3 (fix-round 1, final-review): `task_id` dang co MOT lan `task_resume` chay nen (giua luc
+    /// spawn va luc `Engine::resume` ket thuc) — chan lan goi THU HAI cung `task_id` trong luc do
+    /// (xem doc `tasks::task_resume_impl`): hai lan resume dong thoi se chia se CUNG token huy qua
+    /// `CancelRegistry::register_guarded` (get-or-insert), roi `CancelGuard::drop` cua lan XONG
+    /// TRUOC se xoa token do trong khi lan sau van con dang poll — huy nham job dang chay that.
+    /// `DashSet` (khong phai `HashSet` sau `Mutex`) vi nhieu lenh IPC co the goi dong thoi tu nhieu
+    /// luong Tauri; insert/remove don gian hon can mot registry rieng nhu `CancelRegistry`.
+    pub resuming: Arc<DashSet<String>>,
 }
 
 /// Ho tro dung chung cho test cac lenh (`workflow.rs`/`tasks.rs`/`settings.rs`) — dung
@@ -150,7 +158,7 @@ pub(crate) mod test_support {
     use lvc_browser::FakeDriver;
     use lvc_store::AccountRepo;
 
-    use super::{Arc, Ctx, DashMap, RwLock};
+    use super::{Arc, Ctx, DashMap, DashSet, RwLock};
     use crate::bootstrap::build_engine;
 
     /// `Ctx<FakeDriver>` + thu muc tam (giu song de DB/thu muc con hieu luc) + driver (doc
@@ -180,6 +188,7 @@ pub(crate) mod test_support {
             db: boot.db,
             settings: RwLock::new(boot.settings),
             runs: Arc::new(DashMap::new()),
+            resuming: Arc::new(DashSet::new()),
         };
         (dir, ctx, driver)
     }

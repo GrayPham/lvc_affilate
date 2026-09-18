@@ -4,5 +4,8 @@
   ],
   "resumable": [
     "task_4"
+  ],
+  "runsFailed": [
+    "run_5"
   ]
 }
