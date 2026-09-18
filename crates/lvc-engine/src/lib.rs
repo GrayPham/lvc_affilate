@@ -5,7 +5,9 @@
 //! Task 17: [`generate::Engine`] (`generate_video` — dieu phoi mot video: slot → tai khoan → phien
 //! trinh duyet → gui → cho video → ghi DB) va [`session_cache::SessionCache`] (phien am theo tai
 //! khoan + reaper).
+//! Task 18: [`cli`] — bo dieu khien 1 video (`examples/gen_one.rs` la `main` mong).
 
+pub mod cli;
 pub mod error;
 pub mod generate;
 pub mod limiter;
