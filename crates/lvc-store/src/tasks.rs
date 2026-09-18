@@ -39,6 +39,14 @@ pub struct TaskRow {
     pub retry_at: f64,
     pub created_at: f64,
     pub updated_at: f64,
+    /// Task 3 (P3) — `0002_p3.sql`: id của `runs` khi task này thuộc một lần chạy
+    /// workflow (DAG executor Task 7); `''` khi task đứng lẻ (chưa gán run).
+    pub run_id: String,
+    /// Task 3 (P3): id node trong đồ thị React Flow đã sinh ra task này.
+    pub node_id: String,
+    /// Task 3 (P3): bước hiện tại trong node (vd "uploading"/"polling") — hiển thị
+    /// tiến độ chi tiết hơn `status`.
+    pub stage: String,
 }
 
 fn now() -> f64 {
@@ -79,6 +87,9 @@ fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Result<TaskRow, StoreError> {
         retry_at: row.try_get("retry_at")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
+        run_id: row.try_get("run_id")?,
+        node_id: row.try_get("node_id")?,
+        stage: row.try_get("stage")?,
     })
 }
 
@@ -260,6 +271,158 @@ impl TaskRepo {
             .bind(limit)
             .fetch_all(self.db.pool())
             .await?;
+        rows.iter().map(row_to_task).collect()
+    }
+
+    // ---- Task 3 (P3): run_id/node_id/stage + so bo cho DAG executor (Task 7),
+    // resume (Task 6) va Tauri commands (Task 9). ----
+
+    /// Gán task này vào một node của một lần chạy workflow. `true` khi có dòng
+    /// khớp `id`.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_run(&self, id: &str, run_id: &str, node_id: &str) -> Result<bool, StoreError> {
+        let result = sqlx::query(
+            "UPDATE tasks SET run_id = ?2, node_id = ?3, updated_at = ?4 WHERE id = ?1",
+        )
+        .bind(id)
+        .bind(run_id)
+        .bind(node_id)
+        .bind(now())
+        .execute(self.db.pool())
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Bước hiện tại trong node (vd "uploading"/"polling"/"downloading"). `true`
+    /// khi có dòng khớp `id`.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_stage(&self, id: &str, stage: &str) -> Result<bool, StoreError> {
+        let result = sqlx::query("UPDATE tasks SET stage = ?2, updated_at = ?3 WHERE id = ?1")
+            .bind(id)
+            .bind(stage)
+            .bind(now())
+            .execute(self.db.pool())
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_started(&self, id: &str, at: f64) -> Result<bool, StoreError> {
+        let result = sqlx::query("UPDATE tasks SET started_at = ?2, updated_at = ?3 WHERE id = ?1")
+            .bind(id)
+            .bind(at)
+            .bind(now())
+            .execute(self.db.pool())
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_finished(&self, id: &str, at: f64) -> Result<bool, StoreError> {
+        let result =
+            sqlx::query("UPDATE tasks SET finished_at = ?2, updated_at = ?3 WHERE id = ?1")
+                .bind(id)
+                .bind(at)
+                .bind(now())
+                .execute(self.db.pool())
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Mọi task thuộc một lần chạy workflow, sắp theo thứ tự cảnh rồi thời điểm
+    /// tạo (khớp thứ tự batch cũ — xem [`TaskRepo::create`]).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn thất bại.
+    pub async fn list_by_run(&self, run_id: &str) -> Result<Vec<TaskRow>, StoreError> {
+        let rows =
+            sqlx::query("SELECT * FROM tasks WHERE run_id = ?1 ORDER BY scene_index, created_at")
+                .bind(run_id)
+                .fetch_all(self.db.pool())
+                .await?;
+        rows.iter().map(row_to_task).collect()
+    }
+
+    /// Task theo trạng thái, cũ nhất trước (FIFO — dùng cho bộ lập lịch/hiển thị
+    /// hàng đợi). `limit` được kẹp vào [1, 200] như [`TaskRepo::list_recent`].
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn thất bại.
+    pub async fn list_by_status(
+        &self,
+        status: TaskStatus,
+        limit: i64,
+    ) -> Result<Vec<TaskRow>, StoreError> {
+        let limit = limit.clamp(1, 200);
+        let rows =
+            sqlx::query("SELECT * FROM tasks WHERE status = ?1 ORDER BY created_at LIMIT ?2")
+                .bind(status.as_str())
+                .bind(limit)
+                .fetch_all(self.db.pool())
+                .await?;
+        rows.iter().map(row_to_task).collect()
+    }
+
+    /// `store.py:385-397 requeue_orphans` + `server.py:903-904` (gọi lúc khởi
+    /// động): task còn `processing` nhưng CHƯA có `conversation_id` (kể cả `''`)
+    /// nghĩa là app tắt giữa chừng trước khi gửi lệnh — chưa mất lượt, đưa thẳng
+    /// về `queued` để dispatch lại ngay. Trả về danh sách id đã đụng tới.
+    ///
+    /// Khác bản Python: KHÔNG đụng `account`/`retry_at` (ruling Task 3 — chỉ
+    /// `status`/`failure_code`/`error`/`updated_at`; `account`/`retry_at` để
+    /// nguyên cho tầng gọi tự quyết).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn/ghi thất bại.
+    pub async fn requeue_orphans(&self, now: f64) -> Result<Vec<String>, StoreError> {
+        let processing = TaskStatus::Processing.as_str();
+        let rows = sqlx::query(
+            "SELECT id FROM tasks WHERE status = ?1 AND (conversation_id IS NULL OR conversation_id = '')",
+        )
+        .bind(processing)
+        .fetch_all(self.db.pool())
+        .await?;
+        let ids = rows
+            .iter()
+            .map(|r| r.try_get::<String, _>("id"))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if !ids.is_empty() {
+            sqlx::query(
+                "UPDATE tasks SET status = ?2, failure_code = ?3, error = ?4, updated_at = ?5
+                 WHERE status = ?1 AND (conversation_id IS NULL OR conversation_id = '')",
+            )
+            .bind(processing)
+            .bind(TaskStatus::Queued.as_str())
+            .bind(FailureCode::Restart.as_str())
+            .bind("RESTART: app khoi dong lai")
+            .bind(now)
+            .execute(self.db.pool())
+            .await?;
+        }
+        Ok(ids)
+    }
+
+    /// Ứng viên resume (Task 6): còn `processing` VÀ đã có `conversation_id` —
+    /// app tắt sau khi đã gửi lệnh, có thể mở lại đúng phiên chat mà không gửi
+    /// prompt lần nữa (khác [`TaskRepo::requeue_orphans`], vốn xử lý nhánh chưa
+    /// gửi gì).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn thất bại.
+    pub async fn orphans_with_conversation(&self) -> Result<Vec<TaskRow>, StoreError> {
+        let rows = sqlx::query(
+            "SELECT * FROM tasks WHERE status = ?1 AND conversation_id != '' ORDER BY created_at",
+        )
+        .bind(TaskStatus::Processing.as_str())
+        .fetch_all(self.db.pool())
+        .await?;
         rows.iter().map(row_to_task).collect()
     }
 }

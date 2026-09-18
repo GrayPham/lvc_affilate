@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::Row;
 
 use crate::{Db, StoreError};
@@ -43,6 +45,43 @@ impl SettingsRepo {
         .bind(value)
         .execute(self.db.pool())
         .await?;
+        Ok(())
+    }
+
+    /// Task 3 (P3): toàn bộ bảng `settings` thành map — `AppSettings::from_map`
+    /// (Task 5, lvc-core) đọc từ đây rồi tự áp mặc định/parse; repo này chỉ biết
+    /// key/value thô.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn thất bại.
+    pub async fn get_all(&self) -> Result<HashMap<String, String>, StoreError> {
+        let rows = sqlx::query("SELECT key, value FROM settings")
+            .fetch_all(self.db.pool())
+            .await?;
+        rows.iter()
+            .map(|r| Ok((r.try_get("key")?, r.try_get("value")?)))
+            .collect()
+    }
+
+    /// Task 3 (P3): ghi nhiều cặp trong một giao dịch (Tauri command lưu cả form
+    /// cài đặt một lần thay vì gọi [`SettingsRepo::set`] lặp — tránh trạng thái nửa
+    /// vời nếu giữa chừng lỗi).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại (toàn bộ giao dịch bị rollback).
+    pub async fn set_many(&self, pairs: &[(&str, &str)]) -> Result<(), StoreError> {
+        let mut tx = self.db.pool().begin().await?;
+        for (key, value) in pairs {
+            sqlx::query(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            )
+            .bind(*key)
+            .bind(*value)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 }
