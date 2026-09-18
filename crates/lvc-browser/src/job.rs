@@ -97,6 +97,8 @@ mod tests {
 
     /// Tien trinh con song ~30 s (`ping -n 31 127.0.0.1`, khong can stdin nhu `timeout`); gan vao
     /// Job roi DROP handle → con phai chet trong 2 s. Khong can Chrome.
+    /// Gia dinh Windows 8+/Server 2022 (Job long nhau): tren may ma Job cha cam long nhau (chi Win7)
+    /// test nay `expect` se FAIL trong khi san pham chi `warn` (review T13 M-7) — chap nhan.
     #[test]
     fn drop_handle_giet_tien_trinh_con() {
         let mut child = Command::new("ping")

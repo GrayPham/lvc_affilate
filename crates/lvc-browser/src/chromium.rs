@@ -18,7 +18,10 @@ use chromiumoxide::cdp::browser_protocol::fetch::{
 };
 use chromiumoxide::listeners::EventStream;
 use futures::StreamExt;
+use futures::future::BoxFuture;
+use futures::stream::FuturesUnordered;
 use lvc_core::{Cookie, SessionState};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::task::JoinHandle;
 
 use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, executable, ops, profile};
@@ -50,6 +53,9 @@ const CLOSE_TAB_TIMEOUT: Duration = Duration::from_secs(5);
 const STARTUP_JUNK_HOSTS: [&str; 1] = ["gxcorner.games"];
 /// Gioi han bo nho cua tap "request id da thu xac thuc proxy" (xem `proxy_auth_loop`).
 const AUTH_ATTEMPTED_CAP: usize = 1024;
+/// Review T13 M-2: URL gia cho tab ma `Page::url()` khong tra loi trong [`FIRST_PAGE_WAIT`] (target
+/// init loi/treo) — KHONG chon lam tab chinh, KHONG dong (nhu tab rac), khong lam `launch()` loi.
+const UNREADABLE_URL: &str = "<khong-doc-duoc>";
 
 /// Bo co MAC DINH cua patchright 1.62.3 (Chromium 1234), chep NGUYEN VAN tu dong lenh that
 /// ma patchright khoi chay (bat `DEBUG=pw:browser` khi Python goi
@@ -139,6 +145,9 @@ pub struct ChromiumSession {
     pub page: Page,
     handler: Option<JoinHandle<()>>,
     proxy_auth: Option<JoinHandle<()>>,
+    /// Dinh so lenh `Fetch.continue*` dang bay cung luc (review T13 I-1: bang chung tra loi song
+    /// song); `None` khi khong bat proxy auth.
+    proxy_auth_peak: Option<Arc<AtomicUsize>>,
     #[cfg(windows)]
     job: Option<crate::job::JobHandle>,
     /// PID tien trinh Chrome (browser process) — chan doan / smoke test dong lenh.
@@ -172,6 +181,16 @@ impl ChromiumSession {
     #[must_use]
     pub fn browser(&self) -> Option<&Browser> {
         self.browser.as_deref()
+    }
+
+    /// Chan doan (review T13 I-1): so lenh `Fetch.continueRequest`/`continueWithAuth` NHIEU NHAT
+    /// tung bay cung luc trong [`proxy_auth_loop`]; `None` khi proxy khong co user/pass (khong bat
+    /// Fetch). ≥ 2 = tra loi duoc pipeline, khong tuan tu.
+    #[must_use]
+    pub fn proxy_auth_peak_inflight(&self) -> Option<usize> {
+        self.proxy_auth_peak
+            .as_ref()
+            .map(|p| p.load(Ordering::Relaxed))
     }
 
     /// Lay het phan can dong ra khoi `self` (mot lan): `None` neu da `close()`.
@@ -258,7 +277,11 @@ async fn shutdown(parts: SessionParts, wait: Duration) {
             drop(b);
         }
         Err(shared) => {
-            // Khong xay ra khi task proxy auth da dung; luoi an toan: van yeu cau dong qua CDP.
+            // KHONG THE XAY RA theo cau truc (review T13 M-6): `browser()` chi cho `&Browser`, task
+            // auth muon `&Browser` va da bi abort+await o tren, `launch()` drop clone cua no truoc
+            // khi goi shutdown. Nhanh nay chi la luoi an toan: gui Browser.close qua `execute` (khong
+            // dat `closing` cua handler, khong doi tien trinh) — dung "sua" thanh cho doi.
+            debug_assert!(false, "Arc<Browser> con tham chieu khac luc shutdown");
             tracing::warn!(
                 "Arc<Browser> con tham chieu khac — chi gui Browser.close, khong doi duoc"
             );
@@ -383,8 +406,12 @@ pub(crate) fn proxy_credentials(opts: &LaunchOpts) -> Option<(String, String)> {
     Some((username, p.password.clone().unwrap_or_default()))
 }
 
-/// Python `browser.py` `is_startup_junk`: URL thuoc host rac luc khoi dong (Opera GX).
+/// Python `browser.py` `is_startup_junk`: URL thuoc host rac luc khoi dong (Opera GX). Tab
+/// [`UNREADABLE_URL`] (M-2) doi xu nhu tab rac: khong chon, khong dong.
 fn is_startup_junk(url: &str) -> bool {
+    if url == UNREADABLE_URL {
+        return true;
+    }
     let u = url.to_ascii_lowercase();
     STARTUP_JUNK_HOSTS.iter().any(|h| u.contains(h))
 }
@@ -422,7 +449,19 @@ async fn first_page(browser: &Browser) -> Result<Page, BrowserError> {
     };
     let mut urls = Vec::with_capacity(pages.len());
     for p in &pages {
-        urls.push(p.url().await?);
+        // Review T13 M-2: `Page::url()` chi duoc tra loi sau khi target init xong; tab init loi/treo
+        // → khong lam launch() loi, danh dau UNREADABLE_URL (khong chon, khong dong).
+        match tokio::time::timeout(FIRST_PAGE_WAIT, p.url()).await {
+            Ok(Ok(u)) => urls.push(u),
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "khong doc duoc URL tab — bo qua tab nay");
+                urls.push(Some(UNREADABLE_URL.to_string()));
+            }
+            Err(_elapsed) => {
+                tracing::warn!(?FIRST_PAGE_WAIT, "tab khong tra loi URL — bo qua tab nay");
+                urls.push(Some(UNREADABLE_URL.to_string()));
+            }
+        }
     }
     let Some(keep) = choose_main_page(&urls) else {
         tracing::debug!(tabs = pages.len(), "khong co tab dung duoc — mo tab moi");
@@ -469,11 +508,15 @@ async fn first_page(browser: &Browser) -> Result<Page, BrowserError> {
 /// `Page::authenticate`/`enable_request_intercept` (chung gui kem `Network.setCacheDisabled`).
 ///
 /// Dang ky listener TRUOC `Fetch.enable` de khong lot su kien dau tien.
+///
+/// Review T13 M-5 (log): `Fetch.continueWithAuth` mang MAT KHAU trong payload CDP, va chromiumoxide
+/// in MOI lenh gui di o muc `trace` (`conn.rs`). Chinh sach log o `lib.rs` (`chromiumoxide=warn`,
+/// khong bao gio `debug`/`trace`) la DIEU KIEN de tinh nang nay khong lo mat khau ra log.
 async fn enable_proxy_auth(
     browser: &Arc<Browser>,
     username: String,
     password: String,
-) -> Result<JoinHandle<()>, BrowserError> {
+) -> Result<(JoinHandle<()>, Arc<AtomicUsize>), BrowserError> {
     let paused = browser.event_listener::<EventRequestPaused>().await?;
     let auth = browser.event_listener::<EventAuthRequired>().await?;
     browser
@@ -485,13 +528,16 @@ async fn enable_proxy_auth(
         )
         .await?;
     tracing::debug!("Fetch.enable(handleAuthRequests) tren phien browser — proxy co user/pass");
-    Ok(tokio::spawn(proxy_auth_loop(
+    let peak = Arc::new(AtomicUsize::new(0));
+    let task = tokio::spawn(proxy_auth_loop(
         Arc::clone(browser),
         paused,
         auth,
         username,
         password,
-    )))
+        Arc::clone(&peak),
+    ));
+    Ok((task, peak))
 }
 
 /// Vong nghe su kien Fetch (task rieng, huy trong [`shutdown`]):
@@ -502,24 +548,34 @@ async fn enable_proxy_auth(
 ///   nguon `Server` (401 cua trang) → `Default` (khong phai viec cua ta).
 ///
 /// Tap id da thu bi xoa khi qua [`AUTH_ATTEMPTED_CAP`] (id la duy nhat theo request, chi can nho
-/// ngan han). Xu ly tuan tu tung su kien: round-trip CDP cuc bo ~ms, du nhanh.
-/// KHONG log `ev.request` (URL co chu ky) va KHONG BAO GIO log `password`.
+/// ngan han). KHONG log `ev.request` (URL co chu ky) va KHONG BAO GIO log `password`.
+///
+/// Review T13 I-1 — tra loi PIPELINE, khong tuan tu: hai nhanh su kien chi TAO future
+/// `browser.execute(..)` va day vao `FuturesUnordered` (muon `&Browser`, khong clone `Arc` → `shutdown`
+/// van `Arc::try_unwrap` duoc); nhanh thu ba gom ket qua. Mot round-trip CDP cham (Chrome ban, toi
+/// `request_timeout` 30 s) khong con chan moi request khac cua ca trinh duyet — Playwright cung
+/// `_sendMayFail` khong await trong handler. `peak` ghi dinh so lenh dang bay (bang chung smoke).
 async fn proxy_auth_loop(
     browser: Arc<Browser>,
     mut paused: EventStream<EventRequestPaused>,
     mut auth: EventStream<EventAuthRequired>,
     username: String,
     password: String,
+    peak: Arc<AtomicUsize>,
 ) {
+    let browser: &Browser = &browser;
     let mut attempted: HashSet<String> = HashSet::new();
+    let mut inflight: FuturesUnordered<
+        BoxFuture<'_, Result<&'static str, chromiumoxide::error::CdpError>>,
+    > = FuturesUnordered::new();
     loop {
         tokio::select! {
             ev = paused.next() => {
                 let Some(ev) = ev else { break };
                 let params = ContinueRequestParams::new(ev.request_id.clone());
-                if let Err(e) = browser.execute(params).await {
-                    tracing::debug!(error = %e, "Fetch.continueRequest loi");
-                }
+                inflight.push(Box::pin(async move {
+                    browser.execute(params).await.map(|_| "Fetch.continueRequest")
+                }));
             }
             ev = auth.next() => {
                 let Some(ev) = ev else { break };
@@ -548,11 +604,17 @@ async fn proxy_auth_loop(
                     reply.password = Some(password.clone());
                 }
                 let params = ContinueWithAuthParams::new(ev.request_id.clone(), reply);
-                if let Err(e) = browser.execute(params).await {
-                    tracing::warn!(error = %e, "Fetch.continueWithAuth loi");
+                inflight.push(Box::pin(async move {
+                    browser.execute(params).await.map(|_| "Fetch.continueWithAuth")
+                }));
+            }
+            Some(res) = inflight.next(), if !inflight.is_empty() => {
+                if let Err(e) = res {
+                    tracing::debug!(error = %e, "Fetch.continue* loi");
                 }
             }
         }
+        peak.fetch_max(inflight.len(), Ordering::Relaxed);
     }
     tracing::debug!("proxy_auth_loop ket thuc (luong su kien dong)");
 }
@@ -664,6 +726,7 @@ impl BrowserDriver for ChromiumDriver {
             #[cfg(windows)]
             job,
         };
+        let mut proxy_auth_peak: Option<Arc<AtomicUsize>> = None;
         // M-12: neu buoc nao duoi day loi, TRUOC day ham tra Err ngay va lam `browser` bi drop
         // — Drop cua Browser chi canh bao (khong doi CDP), va Child ben duoi kill_on_drop
         // (TerminateProcess) giet Chrome GIUA chung khi no co the dang ghi profile (giong hai
@@ -672,7 +735,9 @@ impl BrowserDriver for ChromiumDriver {
         let init_result: Result<Page, BrowserError> = async {
             // Task 13: proxy co user/pass → Fetch.* tren phien browser TRUOC khi tab dau dieu huong.
             if let Some((username, password)) = proxy_credentials(opts) {
-                parts.proxy_auth = Some(enable_proxy_auth(&browser, username, password).await?);
+                let (task, peak) = enable_proxy_auth(&browser, username, password).await?;
+                parts.proxy_auth = Some(task);
+                proxy_auth_peak = Some(peak);
             }
             let page = first_page(&browser).await?;
             page.execute(SetLocaleOverrideParams::builder().locale(LOCALE).build())
@@ -728,6 +793,7 @@ impl BrowserDriver for ChromiumDriver {
             page,
             handler,
             proxy_auth,
+            proxy_auth_peak,
             #[cfg(windows)]
             job,
             pid,
@@ -817,7 +883,8 @@ impl BrowserDriver for ChromiumDriver {
                 texts: Vec::new(),
                 composer: false,
                 url,
-                state: SessionState::LoggedOut,
+                // Review T13 M-3: mot nguon su that cho luat trang thai (= LoggedOut).
+                state: lvc_core::classify_session(false, &[], false),
             });
         }
         let evaluated = tokio::time::timeout(PROBE_EVAL_TIMEOUT, async {
@@ -1195,6 +1262,12 @@ mod tests {
             "URL rong = about:blank; so sanh host rac khong phan biet hoa thuong"
         );
         assert_eq!(choose_main_page(&[u("https://gxcorner.games/")]), None);
+        // M-2: tab khong doc duoc URL doi xu nhu rac
+        assert_eq!(choose_main_page(&[u(UNREADABLE_URL)]), None);
+        assert_eq!(
+            choose_main_page(&[u(UNREADABLE_URL), u("chrome://newtab/")]),
+            Some(1)
+        );
     }
 
     /// M-11: co proxy → `proxy-server=<server()>` (KHONG kem user:pass) va ngay sau la

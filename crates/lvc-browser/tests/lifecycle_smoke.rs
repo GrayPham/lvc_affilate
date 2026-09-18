@@ -206,14 +206,30 @@ async fn trang_dau_dung_1_trang_headed() {
 }
 
 /// Proxy GIA cuc bo: khong co `Proxy-Authorization` dung → `407` + `Proxy-Authenticate: Basic`; co →
-/// tu tra `200` trang co dinh (khong forward, khong mang ngoai). Ghi lai gia tri header da thay.
+/// tu tra `200` (khong forward, khong mang ngoai). Ghi lai gia tri header da thay.
+/// - `GET http://…/ok` → trang co dinh `<body id="ok">`; `/song-song` → trang ban 20 `fetch('/sub/i')`
+///   cung luc (review T13 I-1); `/sub/<i>` → text ngan.
+/// - `CONNECT host:443` (review T13 M-9): 407 khi thieu header; co → `200 Connection established`, doc
+///   `ClientHello` roi DONG (khong co TLS) → Chrome bao `ERR_CONNECTION_CLOSED` (tunnel da qua xac thuc).
 struct FakeProxy {
     addr: String,
     n407: Arc<AtomicUsize>,
     n200: Arc<AtomicUsize>,
     auth_seen: Arc<std::sync::Mutex<Vec<String>>>,
+    /// Moi dong `CONNECT`: (host:port, gia tri `Proxy-Authorization` neu co) theo thu tu den.
+    connect_seen: ConnectLog,
     task: tokio::task::JoinHandle<()>,
 }
+
+/// Nhat ky `CONNECT` cua proxy gia: `(host:port, Proxy-Authorization)` theo thu tu den.
+type ConnectLog = Arc<std::sync::Mutex<Vec<(String, Option<String>)>>>;
+
+/// Trang cho `/song-song`: 20 fetch cung luc toi `/sub/i`, xong thi `body#done` + `data-ok=<so 200>`.
+const SONG_SONG_HTML: &str = r"<html><head><title>song song</title></head><body>
+<script>
+Promise.all(Array.from({length: 20}, (_, i) => fetch('/sub/' + i, {cache: 'no-store'}).then(r => r.status).catch(() => 0)))
+  .then(st => { document.body.dataset.ok = String(st.filter(x => x === 200).length); document.body.id = 'done'; });
+</script></body></html>";
 
 impl FakeProxy {
     async fn start(expected_basic: String) -> Self {
@@ -222,16 +238,23 @@ impl FakeProxy {
         let n407 = Arc::new(AtomicUsize::new(0));
         let n200 = Arc::new(AtomicUsize::new(0));
         let auth_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let (n407c, n200c, seenc) = (Arc::clone(&n407), Arc::clone(&n200), Arc::clone(&auth_seen));
+        let connect_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (n407c, n200c, seenc, connc) = (
+            Arc::clone(&n407),
+            Arc::clone(&n200),
+            Arc::clone(&auth_seen),
+            Arc::clone(&connect_seen),
+        );
         let task = tokio::spawn(async move {
             loop {
                 let Ok((mut sock, _)) = listener.accept().await else {
                     break;
                 };
-                let (n407, n200, seen, expected) = (
+                let (n407, n200, seen, conn, expected) = (
                     Arc::clone(&n407c),
                     Arc::clone(&n200c),
                     Arc::clone(&seenc),
+                    Arc::clone(&connc),
                     expected_basic.clone(),
                 );
                 tokio::spawn(async move {
@@ -248,6 +271,9 @@ impl FakeProxy {
                         }
                     }
                     let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let mut first = req.lines().next().unwrap_or("").split(' ');
+                    let method = first.next().unwrap_or("").to_string();
+                    let target = first.next().unwrap_or("").to_string();
                     let auth = req
                         .lines()
                         .find_map(|l| l.strip_prefix("Proxy-Authorization: "))
@@ -257,16 +283,42 @@ impl FakeProxy {
                         seen.lock().unwrap().push(a.clone());
                     }
                     let ok = auth.as_deref() == Some(expected.as_str());
-                    let resp = if ok {
-                        n200.fetch_add(1, Ordering::SeqCst);
-                        let body = "<html><head><title>qua proxy</title></head><body id=\"ok\">qua proxy</body></html>";
-                        format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}",
-                            body.len()
-                        )
-                    } else {
+                    if method == "CONNECT" {
+                        conn.lock().unwrap().push((target.clone(), auth.clone()));
+                    }
+                    let resp = if !ok {
                         n407.fetch_add(1, Ordering::SeqCst);
                         "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"lvc\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                    } else if method == "CONNECT" {
+                        n200.fetch_add(1, Ordering::SeqCst);
+                        // Tunnel "mo" roi doc ClientHello va dong: du de chung minh CONNECT da qua
+                        // xac thuc, khong can TLS cuc bo.
+                        let _ = sock
+                            .write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                            .await;
+                        let mut hello = [0_u8; 4096];
+                        let _ = tokio::time::timeout(Duration::from_secs(2), sock.read(&mut hello))
+                            .await;
+                        let _ = sock.shutdown().await;
+                        return;
+                    } else {
+                        n200.fetch_add(1, Ordering::SeqCst);
+                        let path = target
+                            .split("://")
+                            .nth(1)
+                            .and_then(|s| s.find('/').map(|i| &s[i..]))
+                            .unwrap_or("/");
+                        let (ctype, body) = if path == "/song-song" {
+                            ("text/html; charset=utf-8", SONG_SONG_HTML.to_string())
+                        } else if path.starts_with("/sub/") {
+                            ("text/plain", format!("sub {path}"))
+                        } else {
+                            ("text/html; charset=utf-8", "<html><head><title>qua proxy</title></head><body id=\"ok\">qua proxy</body></html>".to_string())
+                        };
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
                     };
                     let _ = sock.write_all(resp.as_bytes()).await;
                     let _ = sock.shutdown().await;
@@ -278,9 +330,145 @@ impl FakeProxy {
             n407,
             n200,
             auth_seen,
+            connect_seen,
             task,
         }
     }
+
+    /// `LaunchOpts` headless di qua proxy nay voi user:pass.
+    fn opts(&self, dir: &tempfile::TempDir, user: &str, pass: &str) -> LaunchOpts {
+        LaunchOpts {
+            proxy: lvc_core::parse_proxy(&format!("http://{user}:{pass}@{}", self.addr)).unwrap(),
+            ..opts_headless(dir)
+        }
+    }
+}
+
+/// `Basic base64(user:pass)` nhu Chrome gui.
+fn basic(user: &str, pass: &str) -> String {
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"))
+    )
+}
+
+/// Review T13 I-1: 20 request cung luc qua proxy co auth — moi request deu bi Fetch tam dung; vong
+/// `proxy_auth_loop` phai tra loi PIPELINE (dinh so lenh dang bay ≥ 2, khong bao gio ≥ 2 neu tuan tu)
+/// va ca 20 deu xong nhanh (< 5 s, xa muc 20 × round-trip + 20 × 407/retry).
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test lifecycle_smoke -- --ignored"]
+async fn proxy_auth_tra_loi_song_song_20_request() {
+    let (user, pass) = ("tenND", "matkhauBM");
+    let proxy = FakeProxy::start(basic(user, pass)).await;
+    let dir = tempfile::tempdir().unwrap();
+    let d = ChromiumDriver;
+    let s = d
+        .launch(&proxy.opts(&dir, user, pass))
+        .await
+        .expect("launch");
+    // Some ngay sau launch (proxy co auth); gia tri co the da > 0 vi Chrome tu gui vai request nen
+    // luc khoi dong (deu vao proxy gia, khong ra mang ngoai).
+    assert!(s.proxy_auth_peak_inflight().is_some());
+
+    let t0 = Instant::now();
+    d.goto(&s, "http://proxy-test.lvc.invalid/song-song")
+        .await
+        .expect("goto /song-song");
+    let mut id = String::new();
+    while t0.elapsed() < Duration::from_secs(10) {
+        id = ops::eval_json(s.page(), "document.body.id").await.unwrap();
+        if id == "done" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let elapsed = t0.elapsed();
+    assert_eq!(id, "done", "20 fetch khong xong trong 10 s");
+    let ok: String = ops::eval_json(s.page(), "document.body.dataset.ok")
+        .await
+        .unwrap();
+    assert_eq!(ok, "20", "ca 20 fetch phai 200 qua proxy");
+    assert!(elapsed < Duration::from_secs(5), "qua cham: {elapsed:?}");
+    assert!(
+        proxy.n200.load(Ordering::SeqCst) >= 21,
+        "{}",
+        proxy.n200.load(Ordering::SeqCst)
+    );
+    let peak = s.proxy_auth_peak_inflight().expect("proxy co auth → Some");
+    eprintln!(
+        "[song-song] 20 fetch xong sau {elapsed:?}; dinh Fetch.continue* dang bay = {peak}; proxy 200 = {}, 407 = {}",
+        proxy.n200.load(Ordering::SeqCst),
+        proxy.n407.load(Ordering::SeqCst)
+    );
+    assert!(
+        peak >= 2,
+        "Fetch.continue* phai bay song song, dinh = {peak}"
+    );
+
+    d.close(s).await.unwrap();
+    proxy.task.abort();
+}
+
+/// Review T13 M-9: duong HTTPS = `CONNECT host:443` qua proxy HTTP. Proxy gia thay `CONNECT` khong
+/// header (→ 407) roi `CONNECT` cung host voi `Proxy-Authorization` dung (→ tunnel 200); vi khong co
+/// TLS phia sau, Chrome bao `Navigation{net_error: net::ERR_CONNECTION_CLOSED}` va KHONG phai
+/// `is_proxy_down()` (tunnel da mo, chi lop TLS that bai) — khac han `ERR_TUNNEL_CONNECTION_FAILED`.
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test lifecycle_smoke -- --ignored"]
+async fn proxy_auth_connect_https() {
+    let (user, pass) = ("tenND", "matkhauBM");
+    let expected = basic(user, pass);
+    let proxy = FakeProxy::start(expected.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let d = ChromiumDriver;
+    let s = d
+        .launch(&proxy.opts(&dir, user, pass))
+        .await
+        .expect("launch");
+
+    let err = d
+        .goto(&s, "https://connect-test.lvc.invalid/ok?bi_mat=1")
+        .await
+        .expect_err("khong co TLS phia sau tunnel → phai loi");
+    match &err {
+        BrowserError::Navigation {
+            url_host_path,
+            net_error,
+        } => {
+            assert_eq!(url_host_path, "https://connect-test.lvc.invalid/ok");
+            assert!(
+                matches!(
+                    net_error.as_str(),
+                    "net::ERR_CONNECTION_CLOSED"
+                        | "net::ERR_CONNECTION_RESET"
+                        | "net::ERR_EMPTY_RESPONSE"
+                ),
+                "loi phai o lop TLS/ket noi sau tunnel, khong phai proxy: {net_error}"
+            );
+        }
+        other => panic!("sai bien the: {other:?}"),
+    }
+    assert!(!err.is_proxy_down(), "{err:?}");
+
+    let conns = proxy.connect_seen.lock().unwrap().clone();
+    let host = "connect-test.lvc.invalid:443";
+    let ours: Vec<&(String, Option<String>)> = conns.iter().filter(|(h, _)| h == host).collect();
+    assert!(
+        ours.len() >= 2,
+        "phai thay CONNECT it nhat 2 lan (407 roi co header): {conns:?}"
+    );
+    assert_eq!(
+        ours[0].1, None,
+        "CONNECT dau tien chua co header: {conns:?}"
+    );
+    assert!(
+        ours.iter()
+            .any(|(_, a)| a.as_deref() == Some(expected.as_str())),
+        "CONNECT sau phai mang dung Proxy-Authorization: {conns:?}"
+    );
+
+    d.close(s).await.unwrap();
+    proxy.task.abort();
 }
 
 /// Proxy co user:pass: `goto` qua proxy gia thanh cong (trang 200 cua proxy), proxy DA thay 407 truoc
@@ -290,17 +478,11 @@ impl FakeProxy {
 #[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test lifecycle_smoke -- --ignored"]
 async fn proxy_auth_qua_fetch_tren_phien_browser() {
     let (user, pass) = ("tenND", "matkhauBM");
-    let expected = format!(
-        "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"))
-    );
+    let expected = basic(user, pass);
     let proxy = FakeProxy::start(expected.clone()).await;
     let dir = tempfile::tempdir().unwrap();
     let d = ChromiumDriver;
-    let opts = LaunchOpts {
-        proxy: lvc_core::parse_proxy(&format!("http://{user}:{pass}@{}", proxy.addr)).unwrap(),
-        ..opts_headless(&dir)
-    };
+    let opts = proxy.opts(&dir, user, pass);
     assert!(opts.proxy.as_ref().unwrap().has_auth());
     let s = d.launch(&opts).await.expect("launch");
 

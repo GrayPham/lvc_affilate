@@ -625,14 +625,17 @@ pub async fn goto(page: &Page, url: &str, settle: Duration) -> Result<(), Browse
     navigate(page, url).await?;
     match tokio::time::timeout(RELOAD_TIMEOUT, dcl.next()).await {
         Ok(Some(_)) => {}
+        // Review T13 M-1: thong diep loi chi mang host/path (khong query — URL co chu ky).
         Ok(None) => {
             return Err(BrowserError::Timeout(format!(
-                "goto {url}: luong su kien Page.domContentEventFired dong truoc khi trang tai xong"
+                "goto {}: luong su kien Page.domContentEventFired dong truoc khi trang tai xong",
+                url_host_path(url)
             )));
         }
         Err(_elapsed) => {
             return Err(BrowserError::Timeout(format!(
-                "goto {url}: khong nhan Page.domContentEventFired trong {RELOAD_TIMEOUT:?}"
+                "goto {}: khong nhan Page.domContentEventFired trong {RELOAD_TIMEOUT:?}",
+                url_host_path(url)
             )));
         }
     }
