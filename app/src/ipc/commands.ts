@@ -5,23 +5,31 @@
 // — lech hop dong phai nem loi ro rang NGAY tai diem goi, khong am tham lot qua kieu `any`.
 import { invoke } from "./tauri";
 import {
+  AccountStatusSchema,
   AppSettingsSchema,
+  ImportCookiesReportSchema,
+  LegacyImportReportSchema,
   PlanSummarySchema,
   RunInfoSchema,
   RunRowSchema,
   TaskDtoSchema,
   TaskResumeInfoSchema,
+  VerifyReportSchema,
   WorkflowDocSchema,
   WorkflowMetaSchema,
   IpcErrorSchema,
+  type AccountStatus,
   type AppSettings,
   type Graph,
+  type ImportCookiesReport,
   type IpcError,
+  type LegacyImportReport,
   type PlanSummary,
   type RunInfo,
   type RunRow,
   type TaskDto,
   type TaskResumeInfo,
+  type VerifyReport,
   type WorkflowDoc,
   type WorkflowMeta,
 } from "./types";
@@ -123,4 +131,50 @@ export async function pickDirectory(): Promise<string | null> {
 export async function pickFiles(images: boolean): Promise<string[]> {
   const res = await invoke<unknown>("pick_files", { images });
   return z.array(z.string()).parse(res);
+}
+
+// ---- accounts.rs (Task 10) -----------------------------------------------------------------
+// Xem task-10-report.md "Exact command list (Task 14 mirrors this)" cho bang doi chieu day du
+// ten lenh/tham so/ma loi. `proxy` trong `AccountStatus` tra ve tu `accountList` DA duoc Rust
+// che (`mask_proxy`) — khong bao gio hien nguyen van, chi gui gia tri MOI khi luu.
+
+export async function accountList(): Promise<AccountStatus[]> {
+  const res = await invoke<unknown>("account_list");
+  return z.array(AccountStatusSchema).parse(res);
+}
+
+export async function accountImportCookies(
+  name: string,
+  cookieText: string,
+  proxy: string,
+): Promise<ImportCookiesReport> {
+  const res = await invoke<unknown>("account_import_cookies", { name, cookieText, proxy });
+  return ImportCookiesReportSchema.parse(res);
+}
+
+export async function accountVerify(name: string): Promise<VerifyReport> {
+  const res = await invoke<unknown>("account_verify", { name });
+  return VerifyReportSchema.parse(res);
+}
+
+export async function accountSetScheduling(name: string, on: boolean): Promise<null> {
+  const res = await invoke<unknown>("account_set_scheduling", { name, on });
+  return z.null().parse(res);
+}
+
+export async function accountSetProxy(name: string, proxy: string): Promise<null> {
+  const res = await invoke<unknown>("account_set_proxy", { name, proxy });
+  return z.null().parse(res);
+}
+
+/** `false` = khong co gi de xoa (idempotent — xem `account_delete_impl`). */
+export async function accountDelete(name: string): Promise<boolean> {
+  const res = await invoke<unknown>("account_delete", { name });
+  return z.boolean().parse(res);
+}
+
+/** Nhap du lieu tu ban Python cu (thu muc goc chua `*.db`/`accounts/`) — dung boi man Cai dat. */
+export async function legacyImport(pythonDir: string): Promise<LegacyImportReport> {
+  const res = await invoke<unknown>("legacy_import", { pythonDir });
+  return LegacyImportReportSchema.parse(res);
 }

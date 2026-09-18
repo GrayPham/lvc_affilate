@@ -370,3 +370,99 @@ export const STAGES = [
 ] as const;
 export const StageSchema = z.enum(STAGES);
 export type Stage = z.infer<typeof StageSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Tai khoan (Task 10 `crates/lvc-engine/src/accounts.rs` + `lvc-app/src/commands/accounts.rs`,
+// Task 14 man UI) — 7 lenh `account_*`/`legacy_import`, xem task-10-report.md "Exact command
+// list" + fixtures `account_status.json`/`import_reports.json`.
+// ---------------------------------------------------------------------------------------------
+
+/** `crates/lvc-core/src/session.rs::SessionState` — `#[serde(rename_all = "snake_case")]`. */
+export const SessionStateSchema = z.enum(["logged_in", "logged_out", "unknown"]);
+export type SessionState = z.infer<typeof SessionStateSchema>;
+
+/**
+ * `AccountStatus` (`lvc-engine::accounts`) — moi truong o day co MAT trong Rust, `proxy` la chuoi
+ * DA QUA `mask_proxy` (khong bao gio mat khau day du) — UI TUYET DOI khong tu "un-mask", chi gui
+ * gia tri MOI khi luu (`ProxyEditor`). `loginOk` la `bool` THAT (khong nullable) — trang thai
+ * "chua ro" duoc suy tu `loginCheckedAt <= 0` (chua tung kiem tra), xem `format/account.ts::
+ * accountStatusLabel`.
+ */
+export const AccountStatusSchema = z.object({
+  name: z.string(),
+  scheduling: z.boolean(),
+  note: z.string(),
+  email: z.string(),
+  createdAt: z.number(),
+  lastUsedAt: z.number(),
+  loginOk: z.boolean(),
+  loginCheckedAt: z.number(),
+  cooldownUntil: z.number(),
+  cooling: z.boolean(),
+  rateLimitedUntil: z.number(),
+  rateLimited: z.boolean(),
+  limitReason: z.string(),
+  quotaBlockedUntil: z.number(),
+  quotaBlocked: z.boolean(),
+  quotaReason: z.string(),
+  creditBalance: z.number().nullable(),
+  creditCheckedAt: z.number(),
+  proxy: z.string(),
+  browser: z.string(),
+  proxySet: z.boolean(),
+  loggedOutAt: z.number(),
+  autoVerifyState: z.string(),
+  autoVerifyTries: z.number(),
+  cookieExpiresAt: z.number(),
+  usedToday: z.number(),
+  limit: z.number(),
+  remaining: z.number(),
+  usedPro: z.number(),
+  limitPro: z.number(),
+  usedProMax: z.number(),
+  limitProMax: z.number(),
+  usedAgent: z.number(),
+  limitAgent: z.number(),
+});
+export type AccountStatus = z.infer<typeof AccountStatusSchema>;
+
+/** Ket qua `account_import_cookies`. */
+export const ImportCookiesReportSchema = z.object({
+  name: z.string(),
+  sessionidExpiresAt: z.number().nullable(),
+});
+export type ImportCookiesReport = z.infer<typeof ImportCookiesReportSchema>;
+
+/** Ket qua `account_verify` — `loginOk: null` khi `state === "unknown"` (DB KHONG doi). */
+export const VerifyReportSchema = z.object({
+  state: SessionStateSchema,
+  loginOk: z.boolean().nullable(),
+  checkedAt: z.number(),
+});
+export type VerifyReport = z.infer<typeof VerifyReportSchema>;
+
+/**
+ * Ket qua `legacy_import`. `profilesSkipped` la truong MOI (Task 10 fix-round 1, dang chay song
+ * song luc Task 14 viet file nay) — `.default([])` de vAn parse duoc fixture CU (chua co truong
+ * nay) LAN fixture MOI (da them), khong ep mot phia phai xong truoc.
+ */
+export const LegacyImportReportSchema = z.object({
+  tasks: z.number(),
+  accounts: z.number(),
+  usage: z.number(),
+  settings: z.number(),
+  skipped: z.array(z.string()),
+  profilesCopied: z.number(),
+  profilesSkipped: z.array(z.string()).default([]),
+});
+export type LegacyImportReport = z.infer<typeof LegacyImportReportSchema>;
+
+/**
+ * Dinh dang RIENG cua fixture `import_reports.json` — gop `ImportCookiesReport` +
+ * `LegacyImportReport` vao MOT file thay vi hai file gan-rong (xem task-10-report.md
+ * "Fixtures"). Khong phai mot kieu Rust that — chi dung de test fixture nay parse dung.
+ */
+export const ImportReportsFixtureSchema = z.object({
+  cookies: ImportCookiesReportSchema,
+  legacy: LegacyImportReportSchema,
+});

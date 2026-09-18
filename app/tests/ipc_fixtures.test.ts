@@ -9,10 +9,12 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  AccountStatusSchema,
   AppSettingsSchema,
   EngineEventSchema,
   GraphErrorSchema,
   GraphSchema,
+  ImportReportsFixtureSchema,
   IpcErrorSchema,
   NODE_KIND_ORDER,
   PlanSummarySchema,
@@ -44,10 +46,12 @@ interface AnySchema {
 }
 
 const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
+  ["account_status.json", AccountStatusSchema],
   ["app_settings.json", AppSettingsSchema],
   ["engine_events.json", z.array(EngineEventSchema)],
   ["graph.json", GraphSchema],
   ["graph_errors.json", z.array(GraphErrorSchema)],
+  ["import_reports.json", ImportReportsFixtureSchema],
   ["ipc_error.json", IpcErrorSchema],
   ["plan_summary.json", PlanSummarySchema],
   ["ports.json", PortsFixtureSchema],
@@ -58,9 +62,9 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["workflow_meta.json", WorkflowMetaSchema],
 ];
 
-describe("fixture IPC (Task 9) parse dung voi schema zod (Task 11)", () => {
-  it("bao phu dung 12 file da commit — khong sot, khong thua", () => {
-    expect(FIXTURE_CASES).toHaveLength(12);
+describe("fixture IPC (Task 9 + Task 10 tai khoan) parse dung voi schema zod (Task 11/14)", () => {
+  it("bao phu dung 14 file da commit — khong sot, khong thua", () => {
+    expect(FIXTURE_CASES).toHaveLength(14);
   });
 
   it.each(FIXTURE_CASES)("%s parse OK", (file, schema) => {
