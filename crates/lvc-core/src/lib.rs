@@ -18,6 +18,7 @@ pub mod scene;
 pub mod scene_txt;
 pub mod scheduling;
 pub mod session;
+pub mod settings;
 pub mod value;
 pub mod video_url;
 
@@ -56,6 +57,7 @@ pub use session::{
     DOLA_REGION_RESTRICTED, REVOKED_HINT, SESSION_PROBE_JS, SessionState, classify_session,
     dola_self_logout, has_login_marker, is_region_restricted,
 };
+pub use settings::AppSettings;
 pub use value::{LogoMode, Model, Ratio};
 pub use video_url::{
     RAW_PARAMS, RawCandidate, decode_main_url, extract_unwatermarked_url, find_fallback_apis,

@@ -9,6 +9,8 @@
 //!
 //! P3 Task 4: [`cancel::CancelRegistry`] (huy bang `CancellationToken`, R4) va
 //! [`events::EngineEvents`] (`EngineEvent` qua broadcast, R5) — `Engine::cancel`, `Engine::events`.
+//! P3 Task 5: [`settings`] — `EngineConfig::from_settings` + `Engine::apply_settings`, cau hinh tu
+//! `AppSettings` (bang `settings`, `lvc-store::settings`).
 
 pub mod cancel;
 pub mod cli;
@@ -18,6 +20,7 @@ pub mod generate;
 pub mod limiter;
 pub mod pool;
 pub mod session_cache;
+pub mod settings;
 
 pub use cancel::{CancelGuard, CancelRegistry};
 pub use error::EngineError;

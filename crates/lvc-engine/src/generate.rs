@@ -137,9 +137,11 @@ pub struct Engine<D: BrowserDriver + 'static> {
     cache: Arc<SessionCache<D::Session>>,
     tasks: TaskRepo,
     limits: Limits,
-    cfg: EngineConfig,
+    // pub(crate): Task 5 (P3) can doc tu `crate::settings::Engine::apply_settings` (module khac,
+    // impl block rieng de generate.rs khong phinh to — xem settings.rs).
+    pub(crate) cfg: EngineConfig,
     /// Ban sao de `refresh_account_count` goi `set_accounts` (ban goc tra cho caller).
-    handle: LimiterHandle,
+    pub(crate) handle: LimiterHandle,
     /// Reaper cua [`SessionCache`]; `shutdown`/`Drop` abort.
     reaper: Mutex<Option<JoinHandle<()>>>,
     /// P3 Task 4 (R5): kenh su kien cho UI.
