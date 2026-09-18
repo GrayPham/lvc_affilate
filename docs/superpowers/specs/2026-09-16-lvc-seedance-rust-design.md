@@ -208,6 +208,15 @@ impl Drop for Permit {
 Giữ đúng ngữ nghĩa ADR-016: tăng luồng → đánh thức ngay; giảm luồng → không cắt job
 đang chạy, lượt xin tiếp theo mới chờ.
 
+> **Sửa sau review P2 Task 15 (2026-09-18):** đoạn mã trên có **race mất wakeup** —
+> `self.notify.notified()` được tạo *sau* khi kiểm `active < effective()`, còn
+> `notify_waiters()` chỉ đánh thức waiter *đã đăng ký*; nếu `Permit` drop đúng khe đó,
+> waiter treo vĩnh viễn dù có chỗ. Bản hiện thực trong `lvc-engine::limiter` tạo
+> `Notified` + `enable()` **trước** khi đọc `active` ở mỗi vòng lặp (`tokio::pin!`). Hai
+> nhánh `watch::changed()` không bị (edge-triggered theo version). Giảm `effective()`
+> giữa `load` và CAS có thể nhận thừa vài permit trong đúng khoảnh khắc đó — chấp nhận
+> theo ADR-016.
+
 ### 5.2 Khoá theo tài khoản
 
 ```rust
