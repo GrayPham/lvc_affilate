@@ -53,6 +53,9 @@ pub struct Limits {
     /// video_worker_ui.py:2563-2600 `for i in range(30): await page.wait_for_timeout(1000)` —
     /// 30 giây không có `conversation_id` thì `NO_CONVERSATION` (literal trong vòng lặp, không phải hằng số Python).
     pub no_conversation_timeout_s: u32,
+    /// config.py:304 `AGENT_VIDEO_STYLE` (`DOLA_AGENT_VIDEO_STYLE`, mặc định rỗng) — `VIDEO_STYLE=` trong
+    /// `agent_prompt` (`video_worker_ui.py:2379` truyền `style=... or None`); rỗng = không truyền.
+    pub agent_video_style: String,
 }
 
 impl Default for Limits {
@@ -83,6 +86,7 @@ impl Default for Limits {
             confirm_max_replies: 3,
             link_raw_grace_s: 45,
             no_conversation_timeout_s: 30,
+            agent_video_style: String::new(),
         }
     }
 }
@@ -130,6 +134,10 @@ mod tests {
         assert_eq!(
             l.no_conversation_timeout_s, 30,
             "video_worker_ui.py:2563-2600 range(30) x wait_for_timeout(1000)"
+        );
+        assert_eq!(
+            l.agent_video_style, "",
+            "config.py:304 AGENT_VIDEO_STYLE (DOLA_AGENT_VIDEO_STYLE, mac dinh rong)"
         );
     }
 }
