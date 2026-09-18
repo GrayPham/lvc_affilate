@@ -74,6 +74,23 @@ export function docToDraft(doc: ScriptDoc): DraftScene[] {
   }));
 }
 
+/** `true` khi noi dung `row` (ban nhap) con khop CHINH XAC voi `scene` (su that server) — dung boi
+ * `saveScenes()` (fix-round 1, review C1 "belt and braces") de phat hien canh dang chay ma nguoi
+ * dung da tung sua truoc khi UI kip khoa o nhap (`SceneRow.tsx`, dua vao `canStop`). */
+function draftMatchesScene(row: DraftScene, scene: SceneDto): boolean {
+  return (
+    row.prompt === scene.prompt &&
+    row.ratio === scene.ratio &&
+    row.duration === scene.duration &&
+    row.model === scene.model &&
+    row.mode === scene.mode &&
+    row.logo === scene.logo &&
+    row.account === scene.account &&
+    row.refs.length === scene.refs.length &&
+    row.refs.every((r, i) => r === scene.refs[i])
+  );
+}
+
 export function toSceneIn(d: DraftScene): SceneIn {
   return {
     id: d.id,
@@ -172,6 +189,14 @@ interface ScriptsState {
   stopScene: (taskId: string) => Promise<void>;
   /** `run_cancel(lastRunId)` — khong lam gi khi chua co lan chay nao (`lastRunId === null`). */
   stopAll: () => Promise<void>;
+  /**
+   * Fix-round 1 (review I1): xoa `lastRunId` NEU no KHOP `runId` — goi tu `pages/ScriptsPage.tsx`
+   * ngay khi mot su kien `run_done` toi (KHONG debounce, chi doi trang thai cuc bo, khong goi
+   * IPC nao ca). "Dừng tất cả" het y nghia SAU KHI chinh lan chay ma no tro toi da ket thuc — neu
+   * khong xoa, nut van bat sang mai mai (giong loi da tung sua o `store/run.ts`/
+   * `engine_bridge.ts` cho tab Workflow).
+   */
+  clearRunIdIfMatches: (runId: string) => void;
   openSceneFile: (taskId: string) => Promise<void>;
   /** `scriptResetScenes` cho `sceneIdsToRun(doc, selectedIds)` (uu tien da chon, roi ve moi canh
    * `failed`) — khong lam gi neu danh sach do rong. */
@@ -335,6 +360,13 @@ export const useScriptsStore = create<ScriptsState>((set, get) => {
       try {
         const doc = await scriptGet(id);
         set({ doc });
+        // Fix-round 1 (review I1, dieu kien thu hai): khong con canh nao dang chay trong kich
+        // ban nay -> "Dừng tất cả" khong con gi de huy nua, DU su kien `run_done` co the chua toi
+        // kip (tab bi nen lau) hoac bi mat — dua truc tiep vao trang thai THAT cua doc thay vi chi
+        // dua vao su kien.
+        if (get().lastRunId !== null && !doc.scenes.some((s) => canStop(s))) {
+          set({ lastRunId: null });
+        }
       } catch (e) {
         set({ error: errorText(e) });
       }
@@ -375,9 +407,25 @@ export const useScriptsStore = create<ScriptsState>((set, get) => {
     },
 
     saveScenes: async () => {
-      const { selectedScriptId, draft } = get();
+      const { selectedScriptId, draft, doc } = get();
       if (selectedScriptId === null) {
         return false;
+      }
+      // Fix-round 1 (review C1 "belt and braces"): `SceneRow.tsx` khoa o nhap khi `canStop`, nhung
+      // co the co MOT canh vua CHUYEN sang chay NGAY SAU khi nguoi dung bat dau go (truoc khi khoa
+      // do kip ap dung lai) — kiem lai O DAY, TRUOC khi goi IPC: neu canh dang chay VA noi dung
+      // draft da lech server, TU CHOI CA LUOT (khong goi `script_put_scenes`, khong dong `draft`/
+      // `dirty`) va bao loi ro rang, thay vi de Rust am tham GIU NGUYEN noi dung server (dung R2)
+      // roi `saveScenes()` lai bao "thanh cong" sai lech (dung y review — mat edit khong bao loi).
+      if (doc) {
+        for (let i = 0; i < draft.length; i += 1) {
+          const row = draft[i]!;
+          const docScene = doc.scenes.find((s) => s.id === row.id);
+          if (docScene && canStop(docScene) && !draftMatchesScene(row, docScene)) {
+            set({ error: `Cảnh #${i + 1} đang chạy — không lưu được thay đổi của cảnh đó` });
+            return false;
+          }
+        }
       }
       set({ busy: true, error: null });
       try {
@@ -454,6 +502,12 @@ export const useScriptsStore = create<ScriptsState>((set, get) => {
         set({ error: errorText(e) });
       } finally {
         set({ busy: false });
+      }
+    },
+
+    clearRunIdIfMatches: (runId) => {
+      if (get().lastRunId === runId) {
+        set({ lastRunId: null });
       }
     },
 

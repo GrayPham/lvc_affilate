@@ -27,6 +27,7 @@ export default function ScriptsPage() {
   const refreshList = useScriptsStore((s) => s.refreshList);
   const refreshDoc = useScriptsStore((s) => s.refreshDoc);
   const doc = useScriptsStore((s) => s.doc);
+  const clearRunIdIfMatches = useScriptsStore((s) => s.clearRunIdIfMatches);
   const events = useRunStore((s) => s.events);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -39,6 +40,17 @@ export default function ScriptsPage() {
     };
     // `refreshList` la action zustand (tham chieu on dinh) — chi can chay dung mot lan luc mount.
   }, []);
+
+  // Fix-round 1 (review I1): su kien `run_done` ket thuc CHINH lan chay dang duoc "Dừng tất cả"
+  // theo doi -> xoa `lastRunId` NGAY (khong debounce, chi doi trang thai store, khong goi IPC) —
+  // `clearRunIdIfMatches` tu kiem `runId` co khop khong nen an toan goi cho MOI su kien run_done,
+  // ke ca cua mot kich ban/run khac (khong khop thi khong lam gi).
+  useEffect(() => {
+    const last = events[events.length - 1];
+    if (last && last.type === "run_done") {
+      clearRunIdIfMatches(last.runId);
+    }
+  }, [events, clearRunIdIfMatches]);
 
   // Moi lan `events` doi tham chieu VA su kien MOI NHAT la mot su kien cham task CUA MOT taskId
   // thuoc kich ban dang mo (`doc.scenes[].taskId`) -> dat lai debounce 300ms roi doc lai `doc` +

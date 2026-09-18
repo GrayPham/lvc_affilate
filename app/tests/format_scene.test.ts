@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canEditScene,
   canRerun,
   canRun,
   canStop,
@@ -78,11 +79,29 @@ describe("canRun / canRerun / canStop", () => {
   });
 });
 
+describe("canEditScene (fix-round 1, review C1)", () => {
+  it("false khi canh dang queued hoac processing — khoa moi o nhap", () => {
+    expect(canEditScene(scene({ taskStatus: "queued" }))).toBe(false);
+    expect(canEditScene(scene({ taskStatus: "processing" }))).toBe(false);
+  });
+
+  it("true khi canh chua chay/da xong/that bai", () => {
+    expect(canEditScene(scene({ taskStatus: null }))).toBe(true);
+    expect(canEditScene(scene({ taskStatus: "completed" }))).toBe(true);
+    expect(canEditScene(scene({ taskStatus: "failed" }))).toBe(true);
+  });
+
+  it("true khi docScene la undefined (dong MOI THEM, chua tung luu len server)", () => {
+    expect(canEditScene(undefined)).toBe(true);
+  });
+});
+
 describe("scriptErrorLabel", () => {
-  it("dung nhan tieng Viet cho 5 ma da biet", () => {
+  it("dung nhan tieng Viet cho 6 ma da biet (fix-round 1 review I2: them RUN_FAILED)", () => {
     expect(scriptErrorLabel("SCENE_RUNNING")).toBe("Cảnh đang chạy");
     expect(scriptErrorLabel("SCENE_EMPTY")).toBe("Prompt trống");
     expect(scriptErrorLabel("SCENE_INVALID")).toBe("Cảnh không hợp lệ");
+    expect(scriptErrorLabel("RUN_FAILED")).toBe("Run không tạo được task (xem Tác vụ/log)");
     expect(scriptErrorLabel("TOO_MANY_SCENES")).toBe("Quá nhiều cảnh");
     expect(scriptErrorLabel("SCRIPT_NOT_FOUND")).toBe("Không tìm thấy kịch bản");
   });

@@ -187,19 +187,29 @@ describe("runScene — tu luu (auto-save-then-run) khi dang dirty", () => {
     expect(useScriptsStore.getState().dirty).toBe(true);
 
     const calls: string[] = [];
+    // Truoc khi `script_run` chay: canh MOI da luu nhung CHUA co task (taskId/taskStatus null).
     const savedDoc = docOf([sceneDto(), sceneDto({ id: "sc_new", idx: 2, prompt: "cảnh mới" })]);
+    // SAU khi `script_run` chay (`refreshDoc()` ben trong `runAndRefresh`): canh vua chay dang
+    // `queued` — can thiet de kiem `lastRunId` khong bi tu dong xoa boi guard moi (fix-round 1,
+    // review I1: `refreshDoc()` xoa `lastRunId` khi KHONG con canh nao dang chay).
+    const runningDoc = docOf([
+      sceneDto(),
+      sceneDto({ id: "sc_new", idx: 2, prompt: "cảnh mới", taskId: "t1", taskStatus: "queued" }),
+    ]);
+    let scriptRunCalled = false;
     mockInvoke.mockImplementation((cmd, args) => {
       calls.push(cmd);
       if (cmd === "script_put_scenes") {
         return Promise.resolve([sceneRow(), sceneRow({ id: "sc_new", idx: 2, prompt: "cảnh mới" })]);
       }
       if (cmd === "script_get") {
-        return Promise.resolve(savedDoc);
+        return Promise.resolve(scriptRunCalled ? runningDoc : savedDoc);
       }
       if (cmd === "script_run") {
         expect(args).toEqual(
           expect.objectContaining({ id: "scr1", sceneIds: ["sc_new"], style: "" }),
         );
+        scriptRunCalled = true;
         return Promise.resolve({ runId: "run1", tasks: [{ sceneId: "sc_new", taskId: "t1" }], errors: [] });
       }
       if (cmd === "script_list") {
@@ -276,5 +286,118 @@ describe("refreshDoc — dong bo doc tu server, KHONG dong draft/dirty (su kien 
     // draft/dirty KHONG bi dong de mat edit dang do cua nguoi dung.
     expect(state.dirty).toBe(true);
     expect(state.draft[0]!.prompt).toBe("prompt dang go do, chua luu");
+  });
+});
+
+describe("saveScenes — tu choi khi canh dang chay bi sua (fix-round 1, review C1 'belt and braces')", () => {
+  it("canh dang queued/processing ma draft da lech server -> tu choi ca luot, KHONG goi IPC", async () => {
+    // Canh 1 dang chay (giong the truong hop UI chua kip khoa o nhap — vd canh CHUYEN sang chay
+    // NGAY SAU khi nguoi dung bat dau go, truoc khi `SceneRow.tsx` render lai khoa moi).
+    const doc = docOf([
+      sceneDto({ id: "sc1", idx: 1, taskId: "t1", taskStatus: "queued" }),
+      sceneDto({ id: "sc2", idx: 2, taskStatus: null }),
+    ]);
+    useScriptsStore.setState({
+      selectedScriptId: "scr1",
+      doc,
+      draft: [
+        { ...draftOf(doc.scenes[0]!), prompt: "prompt da sua cua canh dang chay" },
+        draftOf(doc.scenes[1]!),
+      ],
+      dirty: true,
+    });
+
+    const calls: string[] = [];
+    mockInvoke.mockImplementation((cmd) => {
+      calls.push(cmd);
+      return Promise.reject(new Error(`khong duoc goi IPC nao khi tu choi som: ${cmd}`));
+    });
+
+    const ok = await useScriptsStore.getState().saveScenes();
+
+    expect(ok).toBe(false);
+    expect(calls).toHaveLength(0); // tu choi TRUOC khi goi bat ky lenh IPC nao.
+    const state = useScriptsStore.getState();
+    expect(state.error).toBe("Cảnh #1 đang chạy — không lưu được thay đổi của cảnh đó");
+    // draft/dirty GIU NGUYEN — khong am tham mat edit, khong gia mao "da luu".
+    expect(state.dirty).toBe(true);
+    expect(state.draft[0]!.prompt).toBe("prompt da sua cua canh dang chay");
+  });
+
+  it("canh dang chay nhung draft KHONG doi (chi doi thu tu/canh khac) -> van luu binh thuong", async () => {
+    const doc = docOf([
+      sceneDto({ id: "sc1", idx: 1, taskId: "t1", taskStatus: "processing" }),
+      sceneDto({ id: "sc2", idx: 2, prompt: "cu", taskStatus: null }),
+    ]);
+    useScriptsStore.setState({
+      selectedScriptId: "scr1",
+      doc,
+      draft: [
+        draftOf(doc.scenes[0]!), // canh dang chay — GIU NGUYEN noi dung, khong sua.
+        { ...draftOf(doc.scenes[1]!), prompt: "moi" }, // canh KHONG chay — duoc phep sua.
+      ],
+      dirty: true,
+    });
+
+    const savedDoc = docOf([
+      sceneDto({ id: "sc1", idx: 1, taskId: "t1", taskStatus: "processing" }),
+      sceneDto({ id: "sc2", idx: 2, prompt: "moi", taskStatus: null }),
+    ]);
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "script_put_scenes") {
+        return Promise.resolve([sceneRow({ id: "sc1" }), sceneRow({ id: "sc2", prompt: "moi" })]);
+      }
+      if (cmd === "script_get") {
+        return Promise.resolve(savedDoc);
+      }
+      return Promise.reject(new Error(`lenh khong mong doi: ${cmd}`));
+    });
+
+    const ok = await useScriptsStore.getState().saveScenes();
+    expect(ok).toBe(true);
+    expect(useScriptsStore.getState().error).toBeNull();
+    expect(useScriptsStore.getState().dirty).toBe(false);
+  });
+});
+
+describe("lastRunId — xoa khi run_done khop HOAC khi doc khong con canh nao dang chay (fix-round 1, review I1)", () => {
+  it("clearRunIdIfMatches: chi xoa khi runId KHOP, bo qua runId khac", () => {
+    useScriptsStore.setState({ lastRunId: "run1" });
+    useScriptsStore.getState().clearRunIdIfMatches("run_khac");
+    expect(useScriptsStore.getState().lastRunId).toBe("run1");
+
+    useScriptsStore.getState().clearRunIdIfMatches("run1");
+    expect(useScriptsStore.getState().lastRunId).toBeNull();
+  });
+
+  it("refreshDoc(): con canh dang chay -> GIU nguyen lastRunId", async () => {
+    const doc = docOf([sceneDto({ taskId: "t1", taskStatus: "queued" })]);
+    useScriptsStore.setState({ selectedScriptId: "scr1", lastRunId: "run1" });
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "script_get") {
+        return Promise.resolve(doc);
+      }
+      return Promise.reject(new Error(`lenh khong mong doi: ${cmd}`));
+    });
+
+    await useScriptsStore.getState().refreshDoc();
+    expect(useScriptsStore.getState().lastRunId).toBe("run1");
+  });
+
+  it("refreshDoc(): KHONG con canh nao dang chay -> tu dong xoa lastRunId", async () => {
+    const doc = docOf([
+      sceneDto({ id: "sc1", taskId: "t1", taskStatus: "completed" }),
+      sceneDto({ id: "sc2", taskId: "t2", taskStatus: "failed" }),
+    ]);
+    useScriptsStore.setState({ selectedScriptId: "scr1", lastRunId: "run1" });
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "script_get") {
+        return Promise.resolve(doc);
+      }
+      return Promise.reject(new Error(`lenh khong mong doi: ${cmd}`));
+    });
+
+    await useScriptsStore.getState().refreshDoc();
+    expect(useScriptsStore.getState().lastRunId).toBeNull();
   });
 });

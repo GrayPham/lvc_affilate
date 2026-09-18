@@ -5,7 +5,7 @@
 // tu `SceneTable`, khong tu doc store.
 import { ModeSchema, ModelSchema, RatioSchema, type Mode, type Model, type SceneDto } from "../ipc/types";
 import { allowedDurations } from "../graph/rules";
-import { canRerun, canRun, canStop, sceneStatusLabel } from "../format/scene";
+import { canEditScene, canRerun, canRun, canStop, sceneStatusLabel } from "../format/scene";
 import type { DraftScene } from "../store/scripts";
 
 /** Sieu tap thoi luong CO THE co (hop cua `allowedDurations` qua moi mode/model) — dung khi canh
@@ -71,6 +71,16 @@ export default function SceneRow({
   const showRun = !docScene || canRun(docScene);
   const showRerun = docScene ? canRerun(docScene) : false;
   const showStop = docScene ? canStop(docScene) : false;
+  // Fix-round 1 (review C1 — Critical): canh dang `queued`/`processing` KHOA moi o nhap (prompt/
+  // ti le/thoi luong/model/mode/tai khoan) VA o chon "Đặt lại trạng thái" (M2) — giong het dieu
+  // kien da khoa "Xoá dòng" tu truoc (`showStop`), qua ham thuan da test rieng `canEditScene`.
+  // Neu khong khoa, nguoi dung sua duoc prompt cua mot canh dang chay, bam "Lưu cảnh" -> Rust
+  // (`replace_scenes_rows`, dung R2) AM THAM giu NGUYEN noi dung server (chi doi `idx`) roi tra ve
+  // "thanh cong" — edit mat khong bao loi (xem them guard `saveScenes()` o `store/scripts.ts`,
+  // "belt and braces" cho dung truong hop dua — canh CHUYEN sang chay NGAY SAU khi nguoi dung bat
+  // dau sua, truoc khi khoa nay kip ap dung).
+  const fieldsDisabled = disabled || !canEditScene(docScene);
+  const runningTitle = showStop ? "Cảnh đang chạy — dừng cảnh trước khi sửa" : undefined;
 
   function handleRunClick(): void {
     onRun();
@@ -90,6 +100,8 @@ export default function SceneRow({
             <input
               type="checkbox"
               checked={selected}
+              disabled={showStop}
+              title={runningTitle}
               onChange={onToggleSelect}
               aria-label={`Chọn cảnh ${index} cho "Đặt lại trạng thái"`}
             />
@@ -99,17 +111,21 @@ export default function SceneRow({
       </td>
       <td className="min-w-[16rem] px-2 py-1">
         <textarea
-          className="w-full resize-none rounded border border-slate-300 px-1.5 py-1 text-xs"
+          className="w-full resize-none rounded border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-50"
           rows={2}
           value={draft.prompt}
+          disabled={fieldsDisabled}
+          title={runningTitle}
           onChange={(e) => onPromptChange(e.target.value)}
           placeholder="Nội dung cảnh…"
         />
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.ratio ?? ""}
+          disabled={fieldsDisabled}
+          title={runningTitle}
           onChange={(e) => onFieldChange({ ratio: e.target.value === "" ? null : e.target.value })}
           aria-label={`Tỉ lệ cảnh ${index}`}
         >
@@ -123,8 +139,10 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.duration ?? ""}
+          disabled={fieldsDisabled}
+          title={runningTitle}
           onChange={(e) =>
             onFieldChange({ duration: e.target.value === "" ? null : Number(e.target.value) })
           }
@@ -140,8 +158,10 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.model ?? ""}
+          disabled={fieldsDisabled}
+          title={runningTitle}
           onChange={(e) => onFieldChange({ model: e.target.value === "" ? null : e.target.value })}
           aria-label={`Model cảnh ${index}`}
         >
@@ -155,8 +175,10 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.mode ?? ""}
+          disabled={fieldsDisabled}
+          title={runningTitle}
           onChange={(e) => onFieldChange({ mode: e.target.value === "" ? null : e.target.value })}
           aria-label={`Mode cảnh ${index}`}
         >
@@ -171,8 +193,10 @@ export default function SceneRow({
       <td className="px-2 py-1">
         <input
           type="text"
-          className="w-24 rounded border border-slate-300 px-1 py-0.5 text-xs"
+          className="w-24 rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.account}
+          disabled={fieldsDisabled}
+          title={runningTitle}
           onChange={(e) => onFieldChange({ account: e.target.value })}
           placeholder="(tự chọn)"
           aria-label={`Tài khoản cảnh ${index}`}
@@ -201,7 +225,7 @@ export default function SceneRow({
               Mở thư mục
             </button>
           ) : null}
-          <button type="button" disabled={disabled || showStop} className={BTN_DANGER} onClick={onRemove}>
+          <button type="button" disabled={fieldsDisabled} title={runningTitle} className={BTN_DANGER} onClick={onRemove}>
             Xoá dòng
           </button>
         </div>

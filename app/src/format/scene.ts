@@ -42,6 +42,19 @@ export function canStop(scene: Pick<SceneDto, "taskStatus">): boolean {
 }
 
 /**
+ * Fix-round 1 (review C1 — Critical): `true` khi cac o nhap cua canh nay (prompt/ti le/thoi
+ * luong/model/mode/tai khoan) CON SUA duoc — `false` khi canh dang `queued`/`processing`
+ * (`canStop`). Canh CHUA tung luu (`docScene` la `undefined` — dong moi them, chua co tren
+ * server) luon sua duoc. Dung boi `SceneRow.tsx` de khoa o nhap (VA o chon "Đặt lại trạng thái",
+ * review M2) khi canh dang chay — sua mot canh dang chay se bi Rust (`replace_scenes_rows`, dung
+ * R2) AM THAM bo qua (chi doi `idx`, giu nguyen noi dung), nen phai chan tu phia UI TRUOC khi
+ * nguoi dung go duoc chu nao, khong chi sau khi bam Lưu.
+ */
+export function canEditScene(docScene: Pick<SceneDto, "taskStatus"> | undefined): boolean {
+  return !docScene || !canStop(docScene);
+}
+
+/**
  * Nhan tieng Viet cho ma loi RIENG cua mien kich ban — hai nguon: `ScriptRunReport.errors[].code`
  * (tung canh khong duoc chay trong mot lan `script_run`) VA `IpcError.code` cua cac lenh
  * `script_*` khac (`script_delete`/`script_put_scenes`/`script_import_txt`...). Ma khong nam
@@ -52,6 +65,11 @@ const SCRIPT_ERROR_VI: Record<string, string> = {
   SCENE_RUNNING: "Cảnh đang chạy",
   SCENE_EMPTY: "Prompt trống",
   SCENE_INVALID: "Cảnh không hợp lệ",
+  // Fix-round 1 (review I2): ma moi tu fix-round 1 Rust (`crates/lvc-engine/src/scripts.rs`,
+  // hang `RUN_FAILED`) — lan chay khong tao duoc dong TaskRow cho canh nay (run that bai/bi huy
+  // truoc khi kip tao dong, hoac het han an toan cua kenh `tasks_ready`) — cung nam trong
+  // `ScriptRunReport.errors`, khong phai loi rieng cua noi dung canh.
+  RUN_FAILED: "Run không tạo được task (xem Tác vụ/log)",
   TOO_MANY_SCENES: "Quá nhiều cảnh",
   SCRIPT_NOT_FOUND: "Không tìm thấy kịch bản",
 };
