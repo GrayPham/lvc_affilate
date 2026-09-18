@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACCOUNT_ERROR_VI,
   accountStatusLabel,
   describeAccountError,
   formatRemaining,
@@ -261,5 +262,41 @@ describe("describeAccountError — khong bao gio ra '[object Object]' cho loi IP
 
   it("gia tri la khac -> String()", () => {
     expect(describeAccountError("chuoi loi tho")).toBe("chuoi loi tho");
+  });
+});
+
+describe("ACCOUNT_ERROR_VI — pin dung 12 ma cua AccountError::code() (review, Minor #1)", () => {
+  // Copy TAY tu `crates/lvc-engine/src/accounts.rs` — ham `AccountError::code()`, nhanh `match`
+  // liet ke moi bien the (~dong 140-153 tai thoi diem viet test nay). Neu Rust them/bo/doi ten
+  // mot bien the, danh sach nay lac hau va test duoi day se do — do la CHU DICH (khong phai fixture
+  // sinh tu Rust nhu `ipc_fixtures.test.ts`, vi `AccountError` khong di qua IPC nhu mot DTO co
+  // `Serialize` — chi ma chuoi `code()` cua no moi sang UI).
+  const RUST_ACCOUNT_ERROR_CODES: readonly string[] = [
+    "ACCOUNT_EXISTS",
+    "ACCOUNT_NOT_FOUND",
+    "INVALID_NAME",
+    "COOKIE_INVALID",
+    "COOKIE_NOT_LOGGED_IN",
+    "INVALID_PROXY",
+    "PROFILE_BUSY",
+    "ACCOUNT_BUSY",
+    "BROWSER",
+    "STORE",
+    "IO",
+    "ENGINE",
+  ];
+
+  it("dung 12 ma, khong sot khong thua", () => {
+    expect(RUST_ACCOUNT_ERROR_CODES).toHaveLength(12);
+  });
+
+  it.each(RUST_ACCOUNT_ERROR_CODES)("%s co nhan tieng Viet rieng trong ACCOUNT_ERROR_VI", (code) => {
+    expect(ACCOUNT_ERROR_VI).toHaveProperty(code);
+    expect(typeof ACCOUNT_ERROR_VI[code]).toBe("string");
+    expect(ACCOUNT_ERROR_VI[code]!.length).toBeGreaterThan(0);
+  });
+
+  it("ACCOUNT_ERROR_VI khong co key thua ngoai danh sach 12 ma tren", () => {
+    expect(Object.keys(ACCOUNT_ERROR_VI).sort()).toEqual([...RUST_ACCOUNT_ERROR_CODES].sort());
   });
 });

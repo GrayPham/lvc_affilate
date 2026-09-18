@@ -256,7 +256,13 @@ export function formatRemaining(row: RemainingRow, now: number): string {
 // Ma loi IPC -> thong diep tieng Viet (xem task-10-report.md "Error codes").
 // ---------------------------------------------------------------------------------------------
 
-const ACCOUNT_ERROR_VI: Record<string, string> = {
+/**
+ * Exported de test pin duoc (xem `tests/format_account.test.ts` — "pin ma loi"): danh sach 12 gia
+ * tri phai khop CHINH XAC `AccountError::code()` (`crates/lvc-engine/src/accounts.rs`), khong hon
+ * khong kem, de mot bien the loi MOI (hoac mot ma bi go sai) fail build thay vi am tham thieu
+ * nhan tieng Viet (review task-14-review.md, Minor #1).
+ */
+export const ACCOUNT_ERROR_VI: Record<string, string> = {
   ACCOUNT_EXISTS: "Tài khoản đã tồn tại.",
   ACCOUNT_NOT_FOUND: "Không tìm thấy tài khoản.",
   INVALID_NAME: NAME_INVALID_MSG,

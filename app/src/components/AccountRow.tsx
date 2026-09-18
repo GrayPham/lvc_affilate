@@ -97,7 +97,7 @@ export default function AccountRow({
         {schedulingError ? <p className="mt-0.5 text-xs text-red-600">{schedulingError}</p> : null}
       </td>
       <td className="px-2 py-1.5">
-        <ProxyEditor name={row.name} value={row.proxy} onSave={onSaveProxy} />
+        <ProxyEditor name={row.name} value={row.proxy} busy={busy} onSave={onSaveProxy} />
       </td>
       <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs text-slate-600">
         {formatUsageCompact(row)}

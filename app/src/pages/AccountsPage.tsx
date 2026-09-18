@@ -81,7 +81,7 @@ export default function AccountsPage() {
                 <AccountRow
                   key={row.name}
                   row={row}
-                  busy={busy[row.name] === true}
+                  busy={(busy[row.name] ?? 0) > 0}
                   now={now}
                   onVerify={verify}
                   onToggleScheduling={setScheduling}

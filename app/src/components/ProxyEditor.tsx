@@ -11,14 +11,26 @@ interface ProxyEditorProps {
   name: string;
   /** Gia tri DA CHE tra ve tu `account_list` (`AccountStatus.proxy`). */
   value: string;
+  /**
+   * `true` khi tai khoan nay dang co MOT hanh dong KHAC chay (Kiem tra/lich/Xoa/chinh lenh
+   * `set_proxy` cua o nay — tu `store.busy[name] > 0`, dem tham chieu). Chan CA "Sua" lan "Luu"
+   * trong luc do: `set_proxy` phia Rust khong lay lease (`crates/lvc-engine/src/accounts.rs`,
+   * `upsert` vo dieu kien) nen mot `Xoa` dang chay dong thoi co the bi mot `set_proxy` "hoi sinh"
+   * lai dong DB vua xoa neu khong khoa o day (review task-14-review.md, Important #2).
+   */
+  busy: boolean;
   onSave: (name: string, proxy: string) => Promise<void>;
 }
 
-export default function ProxyEditor({ name, value, onSave }: ProxyEditorProps) {
+export default function ProxyEditor({ name, value, busy: externalBusy, onSave }: ProxyEditorProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Khoa khi CHINH lenh save nay dang cho (`saving`) HOAC mot hanh dong KHAC tren cung tai khoan
+  // dang chay (`externalBusy`) — ca hai deu phai chan "Sua"/"Luu"/o nhap.
+  const busy = saving || externalBusy;
 
   function startEdit(): void {
     setDraft("");
@@ -37,7 +49,7 @@ export default function ProxyEditor({ name, value, onSave }: ProxyEditorProps) {
       setError(clientError);
       return;
     }
-    setBusy(true);
+    setSaving(true);
     setError(null);
     try {
       await onSave(name, draft);
@@ -45,7 +57,7 @@ export default function ProxyEditor({ name, value, onSave }: ProxyEditorProps) {
     } catch (e) {
       setError(describeAccountError(e));
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
@@ -57,7 +69,8 @@ export default function ProxyEditor({ name, value, onSave }: ProxyEditorProps) {
         </span>
         <button
           type="button"
-          className="text-xs text-sky-600 hover:underline"
+          disabled={busy}
+          className="text-xs text-sky-600 hover:underline disabled:opacity-50"
           onClick={startEdit}
         >
           Sửa
@@ -87,7 +100,9 @@ export default function ProxyEditor({ name, value, onSave }: ProxyEditorProps) {
         </button>
         <button
           type="button"
-          disabled={busy}
+          // Chi khoa "Huỷ" khi CHINH lenh luu nay dang cho (`saving`) — dong nay dang bi mot hanh
+          // dong KHAC (`externalBusy`) chiem khong nen ngan nguoi dung dong lai o sua cuc bo.
+          disabled={saving}
           className="text-xs text-slate-500 hover:underline disabled:opacity-50"
           onClick={cancelEdit}
         >
