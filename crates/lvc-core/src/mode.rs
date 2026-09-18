@@ -289,6 +289,17 @@ mod tests {
     }
 
     #[test]
+    fn mode_serde_json_khop_as_str_va_roundtrip() {
+        // Task 1 (graph): Mode phai serde duoc de lam field cua NodeKind::Video trong
+        // file workflow JSON — chuoi phai khop as_str() de nguoi doc file hieu duoc.
+        for m in [Mode::Fast, Mode::Pro, Mode::ProMax, Mode::Agent] {
+            let json = serde_json::to_string(&m).unwrap();
+            assert_eq!(json, format!("\"{}\"", m.as_str()));
+            assert_eq!(serde_json::from_str::<Mode>(&json).unwrap(), m);
+        }
+    }
+
+    #[test]
     fn han_muc_ngay_lay_tu_limits() {
         let l = Limits::default();
         assert_eq!(

@@ -8,6 +8,7 @@ pub mod cookie;
 pub mod dola_text;
 pub mod error;
 pub mod failure;
+pub mod graph;
 pub mod limits;
 pub mod mode;
 pub mod pro_prompt;
@@ -37,6 +38,9 @@ pub use dola_text::{
 };
 pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;
+pub use graph::{
+    Edge, Graph, GraphError, Node, NodeKind, PortSpec, PortType, topo_order, validate,
+};
 pub use limits::Limits;
 pub use mode::{Mode, route_30s, video_timeout};
 pub use pro_prompt::{agent_prompt, pro_max_prompt, pro_prompt};

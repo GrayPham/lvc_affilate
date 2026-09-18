@@ -247,6 +247,46 @@ mod tests {
     }
 
     #[test]
+    fn ratio_serde_json_khop_as_str_va_roundtrip() {
+        // Task 1 (graph): cac enum nay lam field cua NodeKind::Video trong file workflow
+        // JSON — chuoi serde phai khop as_str() de file nguoi doc duoc.
+        for r in [
+            Ratio::R9x16,
+            Ratio::R16x9,
+            Ratio::R1x1,
+            Ratio::R4x3,
+            Ratio::R3x4,
+        ] {
+            let json = serde_json::to_string(&r).unwrap();
+            assert_eq!(json, format!("\"{}\"", r.as_str()));
+            assert_eq!(serde_json::from_str::<Ratio>(&json).unwrap(), r);
+        }
+    }
+
+    #[test]
+    fn model_serde_json_khop_as_str_va_roundtrip() {
+        for m in [Model::Seedance20, Model::Seedance25, Model::Seedance10] {
+            let json = serde_json::to_string(&m).unwrap();
+            assert_eq!(json, format!("\"{}\"", m.as_str()));
+            assert_eq!(serde_json::from_str::<Model>(&json).unwrap(), m);
+        }
+    }
+
+    #[test]
+    fn logo_mode_serde_json_khop_as_str_va_roundtrip() {
+        for l in [
+            LogoMode::Off,
+            LogoMode::Crop,
+            LogoMode::Delogo,
+            LogoMode::Auto,
+        ] {
+            let json = serde_json::to_string(&l).unwrap();
+            assert_eq!(json, format!("\"{}\"", l.as_str()));
+            assert_eq!(serde_json::from_str::<LogoMode>(&json).unwrap(), l);
+        }
+    }
+
+    #[test]
     fn logo_mode_ba_gia_tri_rong_la_off() {
         assert_eq!(LogoMode::parse("").unwrap(), LogoMode::Off);
         assert_eq!(LogoMode::parse("  ").unwrap(), LogoMode::Off);
