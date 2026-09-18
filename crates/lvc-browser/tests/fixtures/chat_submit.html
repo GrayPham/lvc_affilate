@@ -8,6 +8,11 @@
   [role=menu] { border: 1px solid #888; padding: 6px; width: 220px; background: #fff; }
   [role=menuitem] { padding: 4px 6px; cursor: pointer; }
   #captcha-wrap iframe { width: 300px; height: 120px; border: 1px solid #c33; }
+  [role=listbox] { border: 1px solid #484; padding: 6px; width: 220px; background: #efe; }
+  [role=option] { padding: 4px 6px; cursor: pointer; }
+  #ability-tag { display: inline-block; border: 1px solid #66c; padding: 2px 6px; }
+  #ability-tag svg { width: 12px; height: 12px; vertical-align: middle; background: #66c; cursor: pointer; }
+  #send-wrap button svg { width: 14px; height: 14px; pointer-events: none; }
   #log { white-space: pre; font-size: 11px; }
 </style>
 </head>
@@ -30,6 +35,19 @@
                         id MOI 777000000000000001 (xem RECENT_CONV_BODY_LATER)
     ?dur=none        -> composer KHONG co nut thoi luong (15 s -> giu 10 s + hook ADR-044)
     ?nofetch=1       -> Enter KHONG goi fetch /chat/completion (hook khong bao gio `patched:N`)
+  Task 12 (dola::skill):
+    ?skill=1         -> co nut スキル (#skill-btn): bam -> [role="listbox"] #skill-list voi 3
+                        [role="option"] (画像の生成 / 動画の生成 / ドキュメントの生成); bam 動画の生成 -> log
+                        `skill 動画の生成`, xoa listbox, chen the ky nang #ability-tag
+                        (`[data-input-engine-action-source]` + <div>動画を作成</div> + svg ✕) vao #tag-wrap
+                        (log `tag inserted`); bam svg -> go the (log `tag cleared`)
+    ?tag=1           -> the ky nang #ability-tag CO SAN khi tai (agent phai go truoc khi gui)
+    ?sendbtn=1       -> Enter trong o soan KHONG gui (log `enter ignored`, chu giu nguyen); chi nut
+                        #send-btn `button[aria-label="送信"]` (co <svg>) moi gui; truoc no co nut moi
+                        #decoy-svg (cung co <svg>, khong lam gi) de chac `.last` chon dung nut
+    ?nomode=1        -> KHONG co nut che do (ke ca sau reload) -> select_mode MODE_UNAVAILABLE (agent nuot)
+    ?stuck=1         -> bam muc menu che do KHONG doi duoc nhan (log `mode stuck` -> ModeSwitch; agent nuot)
+    ?create=hidden   -> nut 動画を作成 display:none (open_video_composer_pro: khong skill, khong nut -> Ok)
   Enter trong o soan -> log `send "<text>"`, xoa o, goi window.fetch('/chat/completion', body co
   "duration":10) qua stub fetch (ghi `fetch <url> body=<body>`; hook DURATION_HOOK_JS boc ben ngoai
   nen stub thay body DA doi). Menu `[role=menu]` tao/xoa dong, Escape xoa.
@@ -38,8 +56,11 @@
 <div id="mode-wrap"><button id="mode-btn">高速</button></div>
 <div id="login-wrap"></div>
 <button id="create-btn">動画を作成</button>
+<span id="skill-wrap"></span>
 <div id="composer-extra"></div>
+<div id="tag-wrap"></div>
 <textarea id="prompt" rows="4" cols="60"></textarea>
+<span id="send-wrap"></span>
 <div id="captcha-wrap"></div>
 <div>loads=<span id="loads">0</span></div>
 <pre id="log"></pre>
@@ -103,10 +124,62 @@
   var modeBtn = document.getElementById('mode-btn');
   modeBtn.addEventListener('click', function () {
     openMenu(modeBtn, 'mode-menu', ['高速', 'プロ'], function (label) {
+      if (q.get('stuck') === '1') { log('mode stuck'); return; }
       modeBtn.textContent = label;
       log('mode ' + label);
     });
   });
+  // Task 12: ?nomode=1 -> khong co nut che do (ke ca sau reload) -> select_mode MODE_UNAVAILABLE.
+  if (q.get('nomode') === '1') document.getElementById('mode-wrap').innerHTML = '';
+
+  // Task 12: the ky nang trong o nhap (DOM do that 2026-09-17: <div data-input-engine-action-source>
+  // <div>動画を作成</div><svg class="…exit-skill-close-btn…"></svg></div>). Bam svg -> go the.
+  var tagWrap = document.getElementById('tag-wrap');
+  function insertAbilityTag() {
+    tagWrap.innerHTML = '<div id="ability-tag" data-input-engine-action-source="actionbar" data-value="17" contenteditable="false">' +
+      '<div>動画を作成</div><svg class="exit-skill-close-btn-x1" viewBox="0 0 12 12"></svg></div>';
+    document.querySelector('#ability-tag svg').addEventListener('click', function () {
+      tagWrap.innerHTML = '';
+      log('tag cleared');
+    });
+    log('tag inserted');
+  }
+  if (q.get('tag') === '1') insertAbilityTag();
+
+  // Task 12: ?skill=1 -> nut スキル mo [role="listbox"] voi [role="option"]; chon 動画の生成 -> the ky nang.
+  if (q.get('skill') === '1') {
+    var skillWrap = document.getElementById('skill-wrap');
+    skillWrap.innerHTML = '<button id="skill-btn">スキル</button>';
+    var skillBtn = document.getElementById('skill-btn');
+    skillBtn.addEventListener('click', function () {
+      var old = document.getElementById('skill-list');
+      if (old) { old.remove(); return; }
+      var list = document.createElement('div');
+      list.setAttribute('role', 'listbox');
+      list.id = 'skill-list';
+      ['画像の生成', '動画の生成', 'ドキュメントの生成'].forEach(function (label) {
+        var it = document.createElement('div');
+        it.setAttribute('role', 'option');
+        it.textContent = label;
+        it.addEventListener('click', function () {
+          log('skill ' + label);
+          list.remove();
+          if (label === '動画の生成') insertAbilityTag();
+        });
+        list.appendChild(it);
+      });
+      skillBtn.insertAdjacentElement('afterend', list);
+    });
+  }
+
+  // Task 12: ?sendbtn=1 -> Enter khong gui; nut 送信 (co <svg>) moi gui. Nut moi #decoy-svg dung TRUOC.
+  var sendBtnMode = q.get('sendbtn') === '1';
+  if (sendBtnMode) {
+    var sendWrap = document.getElementById('send-wrap');
+    sendWrap.innerHTML = '<button id="decoy-svg" aria-label="添付"><svg viewBox="0 0 12 12"></svg></button> ' +
+      '<button id="send-btn" aria-label="送信"><svg viewBox="0 0 12 12"></svg></button>';
+    document.getElementById('send-btn').addEventListener('click', function () { doSend(); });
+  }
 
   // Composer video: モデル / 10s / 比率.
   var extra = document.getElementById('composer-extra');
@@ -143,6 +216,7 @@
     });
   }
   var createBtn = document.getElementById('create-btn');
+  if (q.get('create') === 'hidden') createBtn.style.display = 'none';
   createBtn.addEventListener('click', function () {
     if (extra.firstChild) { extra.innerHTML = ''; log('composer closed'); return; }
     buildComposer();
@@ -157,10 +231,19 @@
     log('captcha iframe');
   }
 
-  // O soan: Enter (khong Shift) = gui.
+  // Ghi input de test doc lai (Task 12: End + insertText " ..." cua pro, Ctrl+A/Delete cua agent).
+  textarea.addEventListener('input', function (e) {
+    log('input ' + e.inputType + ' ' + JSON.stringify(textarea.value));
+  });
+
+  // O soan: Enter (khong Shift) = gui (tru ?sendbtn=1: chi nut 送信 gui).
   textarea.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
+    if (sendBtnMode) { log('enter ignored'); return; }
+    doSend();
+  });
+  function doSend() {
     log('send ' + JSON.stringify(textarea.value));
     textarea.value = '';
     if (q.get('nofetch') !== '1') {
@@ -187,7 +270,7 @@
     } else {
       setTimeout(function () { pushConv('123456789012'); }, 1000);
     }
-  });
+  }
 })();
 </script>
 </body>
