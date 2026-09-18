@@ -40,6 +40,17 @@ async fn tat_lich_va_dat_proxy() {
 }
 
 #[tokio::test]
+async fn set_browser_ghi_cot_browser() {
+    // Task 17: engine doc `browser` qua BrowserKind::parse; UI (P3) dat gia tri. Mac dinh ''.
+    let db = Db::open_memory().await.unwrap();
+    let repo = AccountRepo::new(&db);
+    repo.upsert("acc2").await.unwrap();
+    assert_eq!(repo.get("acc2").await.unwrap().unwrap().browser, "");
+    repo.set_browser("acc2", "chrome").await.unwrap();
+    assert_eq!(repo.get("acc2").await.unwrap().unwrap().browser, "chrome");
+}
+
+#[tokio::test]
 async fn usage_dem_rieng_tung_che_do() {
     let db = Db::open_memory().await.unwrap();
     let repo = AccountRepo::new(&db);

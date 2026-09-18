@@ -137,6 +137,20 @@ impl AccountRepo {
         Ok(())
     }
 
+    /// Cột `browser` (Task 4/HOP-DONG v1.5: `chromium`/`chrome`/`opera`, `''` = chromium) — engine
+    /// đọc qua `BrowserKind::parse`; giá trị KHÔNG được kiểm ở đây (UI P3 kiểm trước khi ghi).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_browser(&self, name: &str, browser: &str) -> Result<(), StoreError> {
+        sqlx::query("UPDATE accounts_meta SET browser = ?2 WHERE name = ?1")
+            .bind(name)
+            .bind(browser)
+            .execute(self.db.pool())
+            .await?;
+        Ok(())
+    }
+
     /// Trạng thái phiên (Task 16 `AccountPool::mark_logged_out` + Verify/cookie ở P3):
     /// - `ok = false` (browser_pool.py:651-654 `mark_logged_out`): `login_ok=0`,
     ///   `login_checked_at=at`, `logged_out_at=at`; KHÔNG đụng `auto_verify_*` (`:663` ghi
