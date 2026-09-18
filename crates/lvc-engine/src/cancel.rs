@@ -55,6 +55,27 @@ impl CancelRegistry {
             .clone()
     }
 
+    /// Nhu [`CancelRegistry::register`] nhung token con la con cua `parent` (khong phai cua
+    /// `root`) — P3 Task 7 (`dag.rs`): dang ky token cua MOI canh video la con cua token CUA RUN
+    /// TRUOC khi spawn; `generate_video` sau do tu goi `register_guarded` (get-or-insert), nhan lai
+    /// DUNG token nay thay vi tao token con cua `root`. Vi tokio-util tu dong lan truyen huy tu cha
+    /// xuong con, `token.cancel()` tren token cua run se lam MOI `CancellationToken::cancelled()`
+    /// dang cho (ca ba `tokio::select!` trong `generate.rs` — cho slot limiter, `lease_wait`, ngu
+    /// giua nhip doi tai khoan ban) tra ve NGAY, khong chi cac diem kiem dong bo
+    /// (`should_cancel()`/`check(..)`) — sua Critical #1 review fix-round 1 (`RunCancelHooks` chi
+    /// toi duoc cac diem dong bo, khong toi duoc ba `select!` do).
+    ///
+    /// Get-or-insert giong `register`: neu `task_id` da dang ky tu truoc (bat ke la con cua `root`
+    /// hay cua run nao khac), tra NGUYEN token cu — KHONG doi cha cua mot token da ton tai (tranh
+    /// "hoi sinh" mot token da huy thanh chua huy neu goi lai voi `parent` khac).
+    #[must_use]
+    pub fn register_child(&self, task_id: &str, parent: &CancellationToken) -> CancellationToken {
+        self.map
+            .entry(task_id.to_string())
+            .or_insert_with(|| parent.child_token())
+            .clone()
+    }
+
     /// [`CancelRegistry::register`] + guard RAII go token khi drop.
     pub fn register_guarded(&self, task_id: &str) -> (CancellationToken, CancelGuard<'_>) {
         let token = self.register(task_id);
@@ -134,6 +155,24 @@ impl CancelRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fix-round 1 (C1): token con cua `parent` -> huy `parent` lan truyen xuong (tokio-util cha/
+    /// con). Get-or-insert: dang ky lai cung `task_id` (voi `parent` KHAC) tra NGUYEN token cu.
+    #[test]
+    fn register_child_la_con_cua_parent_va_huy_lan_truyen() {
+        let r = CancelRegistry::new();
+        let parent = CancellationToken::new();
+        let tok = r.register_child("t1", &parent);
+        assert!(!tok.is_cancelled());
+        parent.cancel();
+        assert!(tok.is_cancelled(), "huy cha phai lan truyen xuong con");
+
+        // get-or-insert: goi lai voi parent KHAC (chua huy) van tra token CU (da huy).
+        let other_parent = CancellationToken::new();
+        let tok2 = r.register_child("t1", &other_parent);
+        assert!(tok2.is_cancelled(), "khong doi cha cua token da dang ky");
+        assert!(!other_parent.is_cancelled());
+    }
 
     #[test]
     fn register_get_or_insert_cung_token() {

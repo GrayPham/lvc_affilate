@@ -12,20 +12,44 @@
 //!   `Cancelled` rieng, xem `lvc_store::tasks`), run `cancelled` (uu tien hon `failed` du co the
 //!   canh da loi truoc do vi ly do khac).
 //!
-//! # Thiet ke tu quyet dinh (khong co san trong brief — xem bao cao Task 7 de biet ly do day du)
+//! # Fix-round 1 (review `task-7-review.md`, commit `e6b9a82`)
 //!
-//! **Huy (khac vs doc `cancel.rs`)**: `cancel_run` PHAI la ham dong bo (brief ghim chu ky `fn
-//! cancel_run(&self, run_id) -> bool`, khong `async`) nen KHONG the tu no doc `TaskRepo::list_by_run`
-//! roi `cancels().cancel_many(..)` (can `.await`). Thay vao do, MOI job video nhan hooks rieng
-//! ([`RunCancelHooks`]) boc token CUA RUN (khong phai token cua `CancelRegistry` theo `task_id`) —
-//! `RunCancelHooks::should_cancel()` tra `true` ngay khi token cua run bi huy, VA `EngineHooks` cua
-//! `generate_video` da OR san hai nguon huy (`self.token.is_cancelled() || self.inner.should_cancel()`,
-//! xem `generate.rs`), nen job DANG cho slot (limiter) van thay huy o buoc kiem NGAY SAU KHI co slot
-//! (`hooks.check("sau slot")`), con job dang poll thay huy qua `PollHooks::should_cancel()` (moi
-//! nhip). Ca hai duong deu di qua nhanh loi binh thuong cua `generate_video` — TU NO ghi `Failed` +
-//! `failure_code = cancelled` vao dong `tasks` TRUOC khi tra ve (xem `Engine::generate_video`), nen
-//! khong co task nao "con queued": moi `TaskRow` da tao cho MOT job video LUON duoc `generate_video`
-//! xu ly toi cung (`JoinSet` khong bao gio bi drop giua chung — xem duoi).
+//! **C1 (Critical, sua)**: ban dau `cancel_run` chi huy mot token RIENG (`RunCancelHooks`) duoc OR
+//! vao CAC DIEM KIEM DONG BO cua `generate_video` (`should_cancel()`/`check(..)`) — nhung BA
+//! `tokio::select!` cho async (cho slot `DynamicLimiter`, `lease_wait` mot tai khoan chi dinh, ngu
+//! giua nhip doi tai khoan ban) chi bam token CUA `CancelRegistry` (`hooks.token`, dang ky BEN
+//! TRONG `generate_video`), nen mot canh bi chan o do KHONG BAO GIO thay `cancel_run` — run co the
+//! "running" vo thoi han neu mot job KHAC (run khac / resume / P2 CLI) dang giu het permit. Sua
+//! bang [`crate::cancel::CancelRegistry::register_child`] (moi, `cancel.rs`): `run_video_step` dang
+//! ky token cua TUNG canh la CON cua token cua RUN TRUOC KHI spawn; `generate_video` tu goi
+//! `register_guarded` (get-or-insert) va nhan lai DUNG token con nay — `tokio-util` tu lan truyen
+//! huy tu cha xuong con nen ca ba `select!` do gio thay `cancel_run` NGAY, khong can doi. Xoa
+//! `RunCancelHooks` (het tac dung — hooks cua caller truyen thang, khong boc them).
+//!
+//! **I1 (sua)**: run `failed` do canh loi gio ghi `runs.error` neu ten canh that bai (vd `"node
+//! vid: canh 1,3 that bai"`), thay vi chuoi rong.
+//!
+//! **I2 (sua)**: vong lap buoc dung NGAY khi `token.is_cancelled()` (kiem o dau vong lap NGOAI, va
+//! LAI o dau vong lap tao dong task trong `run_video_step` — huy co the den GIUA luc dang tao dong
+//! cho nhieu canh cua CUNG mot buoc Video). Node nao chua kip chay toi (con "queued") khi vong lap
+//! dung som duoc phat MOT `NodeState` cuoi (`cancelled` neu do huy, `failed` neu do `hard_stop`)
+//! thay vi bo mac o "queued" mai mai.
+//!
+//! **I3 (sua)**: than vong buoc (goi `hooks_factory` cua Task 9 — co the panic) chay trong MOT
+//! `tokio::spawn` con rieng; `Err(JoinError)` (panic) duoc bat va coi nhu run that bai voi thong
+//! diep loi, KHONG de dong `runs` ket "running" mai mai / `run_tokens` ri rac / khong `RunDone`.
+//!
+//! **I4**: test 3 (huy giua chung) doi su kien `TaskStage{stage:"generating"}` thay vi `sleep` co
+//! dinh truoc khi goi `cancel_run` — het "0 hoac 3 loi goi" (co the la 2 duoi tai), luon dung 3.
+//!
+//! **M1/M3/M4 (sua)**: `HooksFactory` bo bound `Send + Sync` thua tren `Box<dyn PollHooks>`
+//! (`PollHooks: Send + Sync` da la supertrait — `poll.rs:177`); canh bi huy ma CHUA BAO GIO thuc
+//! su chay (bi bat o `check("sau slot")`/lease/doi tai khoan ban truoc khi mo Chrome) cung duoc ghi
+//! `finished_at` (khoang trong co san cua `generate_video`, gioi han sua o day cho dung nhom canh
+//! nay — xem bao cao); su kien `NodeState` "queued" ban dau mang dung `total` (so canh cua node,
+//! tra tu `RunPlan` qua [`node_totals`]) thay vi luon `0`.
+//!
+//! # Thiet ke tu quyet dinh con lai (xem bao cao Task 7 de biet ly do day du)
 //!
 //! **File luu**: ten `<run_id>_<video_node_id>_<scene_index>.mp4` — dung id NODE VIDEO NGUON
 //! (`SaveJob::from_node`), KHONG dung id node Luu: mot node Luu co the nhan tu NHIEU node Tao video
@@ -42,15 +66,14 @@
 //!
 //! **id run/task**: `uuid` v4 (da la dependency workspace — xem `Cargo.toml`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 
 use lvc_browser::BrowserDriver;
 use lvc_browser::dola::{NoopHooks, PollHooks, VideoArtifact};
-use lvc_core::Scene;
 use lvc_core::graph::{Graph, RunPlan, SaveJob, Step, VideoJob, plan};
+use lvc_core::{FailureCode, Scene};
 use lvc_store::{BatchRef, RunStatus};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -66,16 +89,21 @@ pub const NODE_QUEUED: &str = "queued";
 pub const NODE_RUNNING: &str = "running";
 pub const NODE_DONE: &str = "done";
 pub const NODE_FAILED: &str = "failed";
+/// Fix-round 1 (I2): trang thai cuoi cho mot node CHUA KIP CHAY khi run bi huy giua chung (phan
+/// biet voi [`NODE_FAILED`] — do khong phai node do tu that bai, ma do vong lap dung som).
+pub const NODE_CANCELLED: &str = "cancelled";
 
 /// Hooks cho MOT job video, tao theo `task_id` — Task 9 truyen factory rieng cho UI (theo doi tien
 /// do tung canh); mac dinh [`noop_hooks_factory`]. `Fn` (khong phai `FnOnce`) vi goi lai cho MOI
-/// canh trong cung mot lan chay.
-pub type HooksFactory = Arc<dyn Fn(&str) -> Box<dyn PollHooks + Send + Sync> + Send + Sync>;
+/// canh trong cung mot lan chay. Fix-round 1 (M1): `Box<dyn PollHooks>` KHONG can ghi them
+/// `+ Send + Sync` — `PollHooks: Send + Sync` da la supertrait (`lvc_browser::dola::poll::
+/// PollHooks`), nen moi kieu cu the impl no da Send+Sync san.
+pub type HooksFactory = Arc<dyn Fn(&str) -> Box<dyn PollHooks> + Send + Sync>;
 
 /// Factory mac dinh: hooks khong lam gi (dung cho test/CLI khong can theo doi tien do tung job).
 #[must_use]
 pub fn noop_hooks_factory() -> HooksFactory {
-    Arc::new(|_task_id: &str| Box::new(NoopHooks) as Box<dyn PollHooks + Send + Sync>)
+    Arc::new(|_task_id: &str| Box::new(NoopHooks) as Box<dyn PollHooks>)
 }
 
 /// Dau ra da gom cua tung node trong MOT lan chay (bo nho tam thoi, khong luu DB — dong `tasks`
@@ -98,37 +126,43 @@ pub struct RunHandle {
     pub join: JoinHandle<()>,
 }
 
-/// Hooks boc MOT job video: OR token cua RUN vao nguon huy, chuyen tiep phan con lai cho hooks cua
-/// caller (`hooks_factory`) — xem doc module ve ly do day la co che huy CHINH (khong qua
-/// `CancelRegistry`).
-struct RunCancelHooks {
-    run_token: CancellationToken,
-    inner: Box<dyn PollHooks + Send + Sync>,
-}
-
-impl PollHooks for RunCancelHooks {
-    fn on_poll(&self, elapsed: Duration) {
-        self.inner.on_poll(elapsed);
-    }
-    fn on_stage(&self, stage: &str) {
-        self.inner.on_stage(stage);
-    }
-    fn on_agent_reply(&self, text: &str) {
-        self.inner.on_agent_reply(text);
-    }
-    fn should_cancel(&self) -> bool {
-        self.run_token.is_cancelled() || self.inner.should_cancel()
-    }
-}
-
-/// Ket qua MOT job video da chay xong (`JoinSet` gom lai).
+/// Ket qua MOT job video da chay xong (`JoinSet` gom lai). `task_id` (fix-round 1, M3/I1): can lai
+/// de ghi `finished_at` cho canh bi huy va de thong diep loi (I1) neu can trong tuong lai.
 struct VideoJobResult {
+    task_id: String,
     scene_index: u32,
     result: Result<GenerateOutcome, EngineError>,
 }
 
 fn new_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4())
+}
+
+/// Fix-round 1 (M4): tong so "con" (don vi hoan tat) cua tung node theo `RunPlan` — dung de dien
+/// `total` cho `NodeState` "queued" phat luc bat dau run (truoc day luon la `0`). Prompt/
+/// `ImageUpload`/Save = 1 (mot buoc la xong, ke ca Save gom nhieu canh nguon — xem
+/// `run_save_group`); Video = so canh (`jobs.len()`). Node khong xuat hien trong buoc nao (khong
+/// nen xay ra sau khi `plan()` da hop le — xem doc `plan::plan`) khong co trong map; goi noi dung
+/// `unwrap_or(1)`.
+fn node_totals(run_plan: &RunPlan) -> HashMap<String, u32> {
+    let mut totals = HashMap::new();
+    for step in &run_plan.steps {
+        match step {
+            Step::Prompt { node_id, .. } | Step::ImageUpload { node_id, .. } => {
+                totals.insert(node_id.clone(), 1);
+            }
+            Step::Video { node_id, jobs } => {
+                totals.insert(
+                    node_id.clone(),
+                    u32::try_from(jobs.len()).unwrap_or(u32::MAX),
+                );
+            }
+            Step::Save(job) => {
+                totals.entry(job.node_id.clone()).or_insert(1);
+            }
+        }
+    }
+    totals
 }
 
 /// Gom MOI `Step::Save` LIEN TIEP tu vi tri `i` cung `node_id` (`lvc_core::graph::plan` sinh chung
@@ -204,6 +238,9 @@ impl<D: BrowserDriver + 'static> Engine<D> {
 
     /// Huy MOT lan chay dang co (dong bo — xem doc module ve ly do). Tra `false` khi khong biet
     /// `run_id` (chua chay/da xong — `run_tokens` chi giu run DANG chay, xem `run_graph_task`).
+    /// Fix-round 1 (C1): huy DUY NHAT token cua run la du — token cua tung canh la CON cua token
+    /// nay (`run_video_step` goi `register_child` truoc khi spawn), nen `tokio-util` tu lan truyen
+    /// xuong het, ke ca cac `tokio::select!` cho slot/lease (xem doc module).
     #[must_use = "false = khong biet run_id nay (chua chay/da xong)"]
     pub fn cancel_run(&self, run_id: &str) -> bool {
         match self.run_tokens.get(run_id) {
@@ -238,7 +275,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     }
 
     /// Than vong chay nen cua [`Engine::run_graph`] — KHONG tra `Result` (da tach nhanh loi lap ke
-    /// hoach ra ngoai, truoc khi spawn); moi loi o day chi lam RUN NAY that bai, khong panic.
+    /// hoach ra ngoai, truoc khi spawn); moi loi o day chi lam RUN NAY that bai, khong panic. Fix
+    /// round 1 (I3): than vong BUOC (co goi `hooks_factory` cua caller — co the panic) chay trong
+    /// MOT `tokio::spawn` con rieng — `Err(JoinError)` (panic) duoc bat va coi la run that bai voi
+    /// thong diep loi, thay vi lam `run_graph_task` panic theo (dong `runs` ket "running" mai mai,
+    /// `run_tokens` ri rac, khong `RunDone` — xem doc module).
     async fn run_graph_task(
         self: Arc<Self>,
         run_id: String,
@@ -256,29 +297,72 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         {
             warn!(run_id, error = %e, "khong tao duoc dong runs - dung run nay");
             self.run_tokens.remove(&run_id);
+            // M2 (fix-round 1, parked theo ruling controller): chua co dong `runs` de cap nhat nen
+            // KHONG phat `RunDone` o day — chap nhan hien trang, xem bao cao Task 7.
             return;
         }
+
+        let run_id_steps = run_id.clone();
+        let token_steps = token.clone();
+        let steps_fut = Arc::clone(&self).run_steps(
+            run_id_steps,
+            node_ids,
+            run_plan,
+            token_steps,
+            hooks_factory,
+        );
+        let (error, failed) = match tokio::spawn(steps_fut).await {
+            Ok(r) => r,
+            Err(join_err) => {
+                warn!(run_id, error = %join_err, "than vong chay buoc panic - ket thuc run la failed");
+                (
+                    Some(format!("loi he thong: than vong chay panic ({join_err})")),
+                    true,
+                )
+            }
+        };
+
+        self.finish_run(run_id, &token, error, failed).await;
+    }
+
+    /// Duyet `RunPlan::steps` theo dung thu tu topo, tra `(thong diep loi de ghi vao runs.error,
+    /// co that bai hay khong)` — KHONG tu ghi DB/phat `RunDone`, `run_graph_task` lam viec do sau
+    /// khi than vong nay (co the panic — xem doc do) tra ve/bi bat.
+    async fn run_steps(
+        self: Arc<Self>,
+        run_id: String,
+        node_ids: Vec<String>,
+        run_plan: RunPlan,
+        token: CancellationToken,
+        hooks_factory: HooksFactory,
+    ) -> (Option<String>, bool) {
+        let totals = node_totals(&run_plan);
         for node_id in &node_ids {
-            self.emit_node_state(&run_id, node_id, NODE_QUEUED, (0, 0, 0, 0));
+            let total = totals.get(node_id).copied().unwrap_or(1);
+            self.emit_node_state(&run_id, node_id, NODE_QUEUED, (0, total, 0, 0));
         }
 
         let mut outputs = NodeOutputs::default();
-        let mut any_failed = false;
+        let mut touched: HashSet<String> = HashSet::new();
+        let mut failures: Vec<String> = Vec::new();
         let mut hard_stop: Option<String> = None;
 
         let mut i = 0usize;
         while i < run_plan.steps.len() {
-            if hard_stop.is_some() {
+            // I2 (fix-round 1): huy giua chung -> dung NGAY, KHONG buoc/canh nao moi duoc tao nua.
+            if hard_stop.is_some() || token.is_cancelled() {
                 break;
             }
             match &run_plan.steps[i] {
                 Step::Prompt { node_id, scenes } => {
+                    touched.insert(node_id.clone());
                     self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, 1, 0, 0));
                     outputs.texts.insert(node_id.clone(), scenes.clone());
                     self.emit_node_state(&run_id, node_id, NODE_DONE, (1, 1, 1, 0));
                     i += 1;
                 }
                 Step::ImageUpload { node_id, paths } => {
+                    touched.insert(node_id.clone());
                     self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, 1, 0, 0));
                     match missing_paths(paths).await {
                         None => {
@@ -296,7 +380,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 }
                 Step::Video { node_id, jobs } => {
                     let node_id = node_id.clone();
-                    let failed = self
+                    touched.insert(node_id.clone());
+                    if let Some(msg) = self
                         .run_video_step(
                             &run_id,
                             &node_id,
@@ -305,22 +390,48 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                             &hooks_factory,
                             &mut outputs,
                         )
-                        .await;
-                    any_failed |= failed;
+                        .await
+                    {
+                        failures.push(msg);
+                    }
                     i += 1;
                 }
-                Step::Save(_) => {
-                    let (node_id, jobs, next_i) = collect_save_group(&run_plan, i);
+                Step::Save(first) => {
+                    let node_id = first.node_id.clone();
+                    let (_, jobs, next_i) = collect_save_group(&run_plan, i);
                     i = next_i;
-                    let failed = self
+                    touched.insert(node_id.clone());
+                    if let Some(msg) = self
                         .run_save_group(&run_id, &node_id, &jobs, &outputs)
-                        .await;
-                    any_failed |= failed;
+                        .await
+                    {
+                        failures.push(msg);
+                    }
                 }
             }
         }
 
-        self.finish_run(run_id, &token, hard_stop, any_failed).await;
+        // I2: node CHUA KIP CHAY toi (vong lap dung som vi huy/hard_stop) khong duoc bo mac "queued"
+        // mai mai — phat MOT NodeState cuoi cho tung node do.
+        if hard_stop.is_some() || token.is_cancelled() {
+            let pending_state = if token.is_cancelled() {
+                NODE_CANCELLED
+            } else {
+                NODE_FAILED
+            };
+            for node_id in &node_ids {
+                if !touched.contains(node_id) {
+                    let total = totals.get(node_id).copied().unwrap_or(1);
+                    self.emit_node_state(&run_id, node_id, pending_state, (0, total, 0, total));
+                }
+            }
+        }
+
+        // I1: uu tien thong diep hard_stop (ImageUpload thieu file — chi 1 nguyen nhan ro rang);
+        // khong thi gop danh sach canh/Save that bai tu cac node (co the nhieu node cung loi).
+        let error = hard_stop.or_else(|| (!failures.is_empty()).then(|| failures.join("; ")));
+        let failed = error.is_some();
+        (error, failed)
     }
 
     /// Duoc quyet dinh trang thai cuoi (huy > loi cung/canh > hoan tat), ghi `RunRepo::set_status`,
@@ -329,12 +440,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         &self,
         run_id: String,
         token: &CancellationToken,
-        hard_stop: Option<String>,
-        any_failed: bool,
+        error: Option<String>,
+        failed: bool,
     ) {
         let status = if token.is_cancelled() {
             RunStatus::Cancelled
-        } else if hard_stop.is_some() || any_failed {
+        } else if failed {
             RunStatus::Failed
         } else {
             RunStatus::Completed
@@ -342,7 +453,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         let finished = now_unix();
         if let Err(e) = self
             .run_repo
-            .set_status(&run_id, status, hard_stop.as_deref(), finished)
+            .set_status(&run_id, status, error.as_deref(), finished)
             .await
         {
             warn!(run_id, error = %e, "khong ghi duoc trang thai run");
@@ -358,7 +469,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// `JoinSet` chay dong thoi (limiter/`AccountPool` lo song song — xem `generate.rs`); mot canh
     /// loi KHONG dung cac canh khac (ruling). Ghi `NodeOutputs.videos[node_id]` = cac canh THANH
     /// CONG (sap theo `scene_index`) — canh loi khong co mat, Save (buoc sau) tu dong chi luu canh
-    /// OK. Tra `true` khi CO IT NHAT 1 canh loi.
+    /// OK. Tra `Some(thong diep)` (I1: `"node {node_id}: canh {idx,..} that bai"`) khi CO IT NHAT
+    /// 1 canh loi, `None` khi tat ca OK.
     async fn run_video_step(
         self: &Arc<Self>,
         run_id: &str,
@@ -367,13 +479,20 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         run_token: &CancellationToken,
         hooks_factory: &HooksFactory,
         outputs: &mut NodeOutputs,
-    ) -> bool {
+    ) -> Option<String> {
         let total = u32::try_from(jobs.len()).unwrap_or(u32::MAX);
         self.emit_node_state(run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
 
         let mut set: JoinSet<VideoJobResult> = JoinSet::new();
-        let mut pre_fail = 0u32;
+        let mut failed_indices: Vec<String> = Vec::new();
         for job in jobs {
+            // I2: huy den GIUA luc dang tao dong task cho cac canh CON LAI cua CHINH buoc nay ->
+            // dung tao them (nhung KHONG bo cac dong DA tao — chung tu ket thuc qua token con,
+            // xem duoi).
+            if run_token.is_cancelled() {
+                failed_indices.push(job.scene_index.to_string());
+                continue;
+            }
             let task_id = new_id("task");
             let batch = BatchRef {
                 batch_id: run_id.to_string(),
@@ -382,23 +501,27 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             };
             if let Err(e) = self.tasks.create(&task_id, &job.scene, Some(&batch)).await {
                 warn!(run_id, node_id, error = %e, "khong tao duoc dong task cho canh");
-                pre_fail += 1;
+                failed_indices.push(job.scene_index.to_string());
                 continue;
             }
             if let Err(e) = self.tasks.set_run(&task_id, run_id, node_id).await {
                 warn!(run_id, node_id, task_id, error = %e, "khong gan duoc run_id/node_id");
             }
+            // C1 (fix-round 1): dang ky token cua CANH NAY la CON cua token cua RUN, TRUOC KHI
+            // spawn — xem doc module + `cancel::CancelRegistry::register_child`.
+            let _ = self.cancels().register_child(&task_id, run_token);
 
             let engine = Arc::clone(self);
             let scene = job.scene.clone();
             let scene_index = job.scene_index;
-            let hooks = RunCancelHooks {
-                run_token: run_token.clone(),
-                inner: hooks_factory(&task_id),
-            };
+            let hooks = hooks_factory(&task_id);
+            let tid = task_id.clone();
             set.spawn(async move {
-                let result = engine.generate_video(&task_id, &scene, None, &hooks).await;
+                let result = engine
+                    .generate_video(&tid, &scene, None, hooks.as_ref())
+                    .await;
                 VideoJobResult {
+                    task_id: tid,
                     scene_index,
                     result,
                 }
@@ -406,46 +529,62 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         }
 
         let mut ok = 0u32;
-        let mut failed = pre_fail;
         let mut artifacts: Vec<(u32, VideoArtifact)> = Vec::new();
         while let Some(joined) = set.join_next().await {
             match joined {
                 Ok(VideoJobResult {
                     scene_index,
                     result: Ok(out),
+                    ..
                 }) => {
                     ok += 1;
                     artifacts.push((scene_index, out.artifact));
                 }
-                Ok(VideoJobResult { result: Err(_), .. }) => {
-                    failed += 1;
+                Ok(VideoJobResult {
+                    task_id,
+                    scene_index,
+                    result: Err(e),
+                }) => {
+                    failed_indices.push(scene_index.to_string());
+                    // M3 (fix-round 1, pham vi da gioi han theo ruling controller): canh bi huy MA
+                    // CHUA BAO GIO thuc su chay (bat o cho slot/lease/doi tai khoan ban) van can
+                    // `finished_at` — `generate_video` khong tu ghi cot nay o bat ky duong nao
+                    // (khoang trong co san, xem review M3); o day chi sua rieng nhom canh do.
+                    if e.failure_code() == Some(FailureCode::Cancelled) {
+                        if let Err(se) = self.tasks.set_finished(&task_id, now_unix()).await {
+                            warn!(run_id, node_id, task_id, error = %se, "khong ghi duoc finished_at");
+                        }
+                    }
                 }
                 Err(join_err) => {
                     warn!(run_id, node_id, error = %join_err, "job video ket thuc bat thuong (panic)");
-                    failed += 1;
+                    failed_indices.push("panic".to_string());
                 }
             }
         }
         artifacts.sort_by_key(|(idx, _)| *idx);
         outputs.videos.insert(node_id.to_string(), artifacts);
 
+        let failed = u32::try_from(failed_indices.len()).unwrap_or(u32::MAX);
         let state = if failed > 0 { NODE_FAILED } else { NODE_DONE };
         self.emit_node_state(run_id, node_id, state, (ok + failed, total, ok, failed));
-        failed > 0
+
+        (!failed_indices.is_empty())
+            .then(|| format!("node {node_id}: canh {} that bai", failed_indices.join(",")))
     }
 
     /// Buoc `Save`: gom MOI `Step::Save` LIEN TIEP cung `node_id` (do `lvc_core::graph::plan` sinh
     /// chung mot cho khi tham node Luu do — xem doc `plan::plan`) thanh MOT `NodeState`. Nguon la
     /// video -> copy (KHONG di chuyen) tung file vao `out_dir`; nguon la anh -> no-op (P4, xem doc
-    /// module); nguon khong co dau ra (buoc truoc bi bo qua/loi ha tang) -> coi la loi. Tra `true`
-    /// khi CO IT NHAT 1 job loi.
+    /// module); nguon khong co dau ra (buoc truoc bi bo qua/loi ha tang) -> coi la loi. Tra
+    /// `Some("{node_id}: luu loi")` (I1) khi CO IT NHAT 1 job loi, `None` khi tat ca OK.
     async fn run_save_group(
         &self,
         run_id: &str,
         node_id: &str,
         jobs: &[SaveJob],
         outputs: &NodeOutputs,
-    ) -> bool {
+    ) -> Option<String> {
         self.emit_node_state(run_id, node_id, NODE_RUNNING, (0, 1, 0, 0));
         let mut ok = true;
         for job in jobs {
@@ -469,7 +608,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             (NODE_FAILED, 0, 1)
         };
         self.emit_node_state(run_id, node_id, state, (1, 1, o, f));
-        !ok
+        (!ok).then(|| format!("{node_id}: luu loi"))
     }
 }
 
@@ -507,7 +646,7 @@ async fn missing_paths(paths: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use lvc_browser::dola::{ConversationId, poll::NOTE_RAW};
     use lvc_browser::{DolaError, FakeCall, FakeDriver, FakeStep};
@@ -542,6 +681,22 @@ mod tests {
         Db,
         Arc<FakeDriver>,
     ) {
+        build_engine_with(accounts, threads, steps, |_cfg| {}).await
+    }
+
+    /// Nhu [`build_engine`] nhung cho tuy chinh `EngineConfig` (fix-round 1: C1 test 2 can
+    /// `busy_wait_max` ngan de kiem tra "dung ngay" khong lien quan gi den han cho tai khoan ban).
+    async fn build_engine_with(
+        accounts: &[&str],
+        threads: usize,
+        steps: Vec<FakeStep>,
+        tune: impl FnOnce(&mut EngineConfig),
+    ) -> (
+        tempfile::TempDir,
+        Arc<Engine<FakeDriver>>,
+        Db,
+        Arc<FakeDriver>,
+    ) {
         let db = Db::open_memory().await.unwrap();
         let dir = tempfile::tempdir().unwrap();
         let accounts_dir = dir.path().join("accounts");
@@ -552,6 +707,7 @@ mod tests {
         }
         let mut cfg = EngineConfig::new(&accounts_dir, dir.path().join("downloads"));
         cfg.logs_dir = dir.path().join("logs");
+        tune(&mut cfg);
         let driver = Arc::new(FakeDriver::new(steps));
         let (engine, _handle) = Engine::new(
             Arc::clone(&driver),
@@ -585,13 +741,19 @@ mod tests {
     }
 
     fn video_kind() -> NodeKind {
+        video_kind_for("")
+    }
+
+    /// Nhu [`video_kind`] nhung chi dinh `account` (fix-round 1, C1 test 2: node "chi dinh" mot
+    /// tai khoan cu the -> `Scene::account` -> `prefer` -> `run_mode` vao nhanh `lease_wait`).
+    fn video_kind_for(account: &str) -> NodeKind {
         NodeKind::Video {
             mode: Mode::Fast,
             model: Model::Seedance20,
             ratio: Ratio::R9x16,
             duration: 10,
             logo: LogoMode::Off,
-            account: String::new(),
+            account: account.to_string(),
         }
     }
 
@@ -645,6 +807,19 @@ mod tests {
         v
     }
 
+    /// Doc su kien toi khi gap `TaskStage{stage, ..}` khop dung `stage` (fix-round 1, I4): dong bo
+    /// theo su kien thay vi `sleep` co dinh — het flaky "duoi tai co the la 0/2/3 loi goi driver".
+    async fn wait_for_stage(rx: &mut broadcast::Receiver<EngineEvent>, stage: &str) {
+        loop {
+            let ev = next_event(rx).await.expect("kenh su kien con mo");
+            if let EngineEvent::TaskStage { stage: s, .. } = &ev {
+                if s == stage {
+                    return;
+                }
+            }
+        }
+    }
+
     /// Doc het su kien toi khi thay `RunDone` (bao gom).
     async fn drain_until_run_done(rx: &mut broadcast::Receiver<EngineEvent>) -> Vec<EngineEvent> {
         let mut out = Vec::new();
@@ -677,6 +852,134 @@ mod tests {
             ok,
             failed,
         }
+    }
+
+    // ---- RED evidence (fix-round 1, C1): kich ban nay TREO voi co che huy cu (`RunCancelHooks`
+    // chi OR vao cac diem kiem DONG BO — hai `tokio::select!` cho slot limiter/`lease_wait` chi
+    // xem token cua `CancelRegistry`, khong bao gio thay token cua RUN) — `timeout(2s)` bat panic
+    // ro rang thay vi treo ca test suite. Giu comment nay lai lam bang chung sau khi sua (test se
+    // xanh); xem task-7-report.md muc "Fix round 1" de biet dau ra chay TRUOC khi sua.
+    #[tokio::test]
+    async fn huy_khi_canh_dang_cho_slot_limiter_ket_thuc_ngay() {
+        let (dir, engine, db, driver) = build_engine(&["acc1", "acc2"], 1, vec![]).await;
+        // Giu DUY NHAT permit cua limiter (threads=1) TU BEN NGOAI run — ca 2 canh cua run se
+        // block vo thoi han trong `limiter.acquire()` cho toi khi `_permit` duoc tra.
+        let _permit = engine.limiter().acquire().await;
+        let out_dir = dir.path().join("out");
+        let graph = linear_graph("canh 1\ncanh 2", &out_dir);
+
+        let handle = engine
+            .run_graph("wf1", &graph, noop_hooks_factory())
+            .await
+            .unwrap();
+        let run_id = handle.run_id.clone();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(engine.cancel_run(&run_id));
+
+        let t0 = Instant::now();
+        tokio::time::timeout(Duration::from_secs(2), handle.join)
+            .await
+            .expect("run phai ket thuc trong 2s (khong duoc treo cho permit ben ngoai)")
+            .unwrap();
+        assert!(
+            t0.elapsed() < Duration::from_secs(1),
+            "phai dung gan nhu ngay: {:?}",
+            t0.elapsed()
+        );
+
+        let run_row = engine.run_repo.get(&run_id).await.unwrap().unwrap();
+        assert_eq!(run_row.status, RunStatus::Cancelled);
+
+        let tasks = TaskRepo::new(&db);
+        let rows = tasks.list_by_run(&run_id).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        for r in &rows {
+            assert_eq!(r.status, TaskStatus::Failed, "{r:?}");
+            assert_eq!(r.failure_code, Some(FailureCode::Cancelled), "{r:?}");
+        }
+        assert!(
+            driver.calls.lock().unwrap().is_empty(),
+            "khong canh nao kip cham driver (con bi chan o limiter)"
+        );
+    }
+
+    /// C1 test 2 (fix-round 1, demanded by review): canh CHI DINH mot tai khoan ("acc1") dang bi
+    /// mot lease NGOAI RUN giu -> `run_mode` vao nhanh `lease_wait` (prefer) va bi chan o do (KHONG
+    /// lien quan `busy_wait_max` — dat ngan 5s chi de lo neu sua sai lai roi ve cho het gio thay vi
+    /// dung ngay). Truoc fix C1 kich ban nay CUNG treo (ly do y het test 1: `select!` cua
+    /// `lease_wait` chi bam token registry, khong bam token run).
+    #[tokio::test]
+    async fn huy_khi_canh_dang_cho_lease_tai_khoan_chi_dinh_ket_thuc_ngay() {
+        let (dir, engine, db, driver) = build_engine_with(&["acc1", "acc2"], 1, vec![], |cfg| {
+            cfg.busy_wait_max = Duration::from_secs(5);
+        })
+        .await;
+        // Giu khoa "acc1" TU BEN NGOAI run — canh chi dinh account="acc1" se cho vo thoi han
+        // (trong pham vi busy_wait_max) tai `lease_wait`.
+        let _lease = engine.pool().try_lease("acc1", "").unwrap();
+
+        let out_dir = dir.path().join("out");
+        let graph = Graph {
+            version: 1,
+            nodes: vec![
+                node(
+                    "pr",
+                    NodeKind::Prompt {
+                        text: "canh 1".to_string(),
+                    },
+                ),
+                node("vid", video_kind_for("acc1")),
+                node(
+                    "sv",
+                    NodeKind::Save {
+                        out_dir: out_dir.display().to_string(),
+                    },
+                ),
+            ],
+            edges: vec![
+                edge("e1", "pr", "out", "vid", "prompt"),
+                edge("e2", "vid", "out", "sv", "video"),
+            ],
+        };
+
+        let handle = engine
+            .run_graph("wf1", &graph, noop_hooks_factory())
+            .await
+            .unwrap();
+        let run_id = handle.run_id.clone();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(engine.cancel_run(&run_id));
+
+        let t0 = Instant::now();
+        tokio::time::timeout(Duration::from_secs(2), handle.join)
+            .await
+            .expect("run phai ket thuc trong 2s (khong duoc treo cho lease_wait)")
+            .unwrap();
+        assert!(
+            t0.elapsed() < Duration::from_secs(1),
+            "phai dung gan nhu ngay, khong doi busy_wait_max: {:?}",
+            t0.elapsed()
+        );
+
+        let run_row = engine.run_repo.get(&run_id).await.unwrap().unwrap();
+        assert_eq!(run_row.status, RunStatus::Cancelled);
+
+        let tasks = TaskRepo::new(&db);
+        let rows = tasks.list_by_run(&run_id).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, TaskStatus::Failed, "{:?}", rows[0]);
+        assert_eq!(
+            rows[0].failure_code,
+            Some(FailureCode::Cancelled),
+            "{:?}",
+            rows[0]
+        );
+        assert!(
+            driver.calls.lock().unwrap().is_empty(),
+            "khong duoc mo Chrome (IDEA-016)"
+        );
     }
 
     // ---- (1) 3 canh thanh cong: 3 TaskRow, 3 file luu, NodeState/RunDone ghim dung thu tu ----
@@ -746,9 +1049,11 @@ mod tests {
             })
             .collect();
         let expected = vec![
-            node_state(&run_id, "pr", NODE_QUEUED, 0, 0, 0, 0),
-            node_state(&run_id, "vid", NODE_QUEUED, 0, 0, 0, 0),
-            node_state(&run_id, "sv", NODE_QUEUED, 0, 0, 0, 0),
+            // M4 (fix-round 1): "queued" mang dung total tu RunPlan (pr=1 canh Prompt, vid=3 canh
+            // video, sv=1 "buoc Luu") thay vi luon 0 nhu truoc.
+            node_state(&run_id, "pr", NODE_QUEUED, 0, 1, 0, 0),
+            node_state(&run_id, "vid", NODE_QUEUED, 0, 3, 0, 0),
+            node_state(&run_id, "sv", NODE_QUEUED, 0, 1, 0, 0),
             node_state(&run_id, "pr", NODE_RUNNING, 0, 1, 0, 0),
             node_state(&run_id, "pr", NODE_DONE, 1, 1, 1, 0),
             node_state(&run_id, "vid", NODE_RUNNING, 0, 3, 0, 0),
@@ -790,6 +1095,13 @@ mod tests {
 
         let run_row = engine.run_repo.get(&run_id).await.unwrap().unwrap();
         assert_eq!(run_row.status, RunStatus::Failed);
+        // I1 (fix-round 1): loi run phai neu ten node + canh that bai — truoc day la chuoi rong.
+        assert!(
+            run_row.error.contains("vid"),
+            "phai neu ten node 'vid': {:?}",
+            run_row.error
+        );
+        assert!(run_row.error.contains("that bai"), "{:?}", run_row.error);
 
         let tasks = TaskRepo::new(&db);
         let rows = tasks.list_by_run(&run_id).await.unwrap();
@@ -802,6 +1114,13 @@ mod tests {
         assert_eq!(
             failed_rows[0].failure_code,
             Some(FailureCode::NoConversation)
+        );
+        // I1: dung 1 chi so canh duoc neu ten trong loi run.
+        let failed_idx = failed_rows[0].scene_index.unwrap().to_string();
+        assert!(
+            run_row.error.contains(&failed_idx),
+            "loi run phai neu dung chi so canh that bai {failed_idx}: {:?}",
+            run_row.error
         );
         let ok_rows: Vec<_> = rows
             .iter()
@@ -828,16 +1147,20 @@ mod tests {
         let out_dir = dir.path().join("out");
         let graph = linear_graph("canh 1\ncanh 2\ncanh 3", &out_dir);
 
+        let mut rx = engine.events().subscribe();
         let handle = engine
             .run_graph("wf1", &graph, noop_hooks_factory())
             .await
             .unwrap();
         let run_id = handle.run_id.clone();
 
-        // doi job dau tien vao han PollUntilCancelled (tick 10 ms) roi moi huy — dung nghia "huy
-        // giua chung" hon huy ngay tu dau. 100 ms (tran brief cho phep) de bot nhay duoi tai chay
-        // song song nhieu test trong cung binary — van co the la 0 (xem assertion calls_len duoi).
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // I4 (fix-round 1): dong bo theo su kien thay vi `sleep` co dinh — doi DUNG luc job dau
+        // tien vao `PollUntilCancelled` (FakeDriver phat `TaskStage{stage:"generating"}` ngay khi
+        // vao vong lap do — `fake.rs` doc module). Truoc day mot `sleep(100ms)` co dinh co the
+        // roi vao khe ho GIUA `check("truoc launch")` va `should_cancel()` dau tien trong
+        // `submit()` (chi co Launch+Submit da xay ra, chua Poll) -> `calls_len == 2`, ngoai tap
+        // `{0, 3}` ma test cu gia dinh — flake tiem an duoc I4 vach ra.
+        wait_for_stage(&mut rx, "generating").await;
         assert!(engine.cancel_run(&run_id));
 
         handle.join.await.unwrap();
@@ -851,26 +1174,124 @@ mod tests {
         for r in &rows {
             assert_eq!(r.status, TaskStatus::Failed, "{r:?}");
             assert_eq!(r.failure_code, Some(FailureCode::Cancelled), "{r:?}");
+            // M3 (fix-round 1): canh bi huy (ca canh CHUA BAO GIO thuc su chay) cung duoc ghi
+            // finished_at, khong con NULL vinh vien.
+            assert!(r.finished_at.is_some(), "{r:?}");
         }
         assert!(
             !out_dir.exists() || out_dir.read_dir().unwrap().next().is_none(),
             "khong file nao duoc luu (khong canh nao thanh cong)"
         );
 
-        // Duoi tai (nhieu test khac chay song song trong cung binary) job dau tien co the CHUA
-        // kip toi PollUntilCancelled truoc khi ta huy o tren — khi do ca 3 job deu bi huy truoc
-        // Launch (0 loi goi). Binh thuong (job dau kip chay) thi dung 1 job cham driver (3 loi goi:
-        // Launch+Submit+Poll) — 2 job con lai luon bi huy TRUOC khi mo Chrome (IDEA-016). Khong bao
-        // gio > 3: script chi du cho DUNG 1 job, job thu 2 cham driver se panic (kich ban het).
-        let calls_len = driver.calls.lock().unwrap().len();
-        assert!(
-            calls_len == 0 || calls_len == 3,
-            "calls_len={calls_len} (mong 0 hoac 3 — xem ghi chu o tren)"
+        // I4 (fix-round 1): dong bo theo su kien -> LUON dung 1 job cham driver (3 loi goi:
+        // Launch+Submit+Poll); 2 job con lai bi huy TRUOC khi mo Chrome (IDEA-016) vi token cua
+        // chung la CON cua token run (C1) nen `tokio::select!` cho slot thay huy NGAY.
+        assert_eq!(
+            driver.calls.lock().unwrap().len(),
+            3,
+            "dong bo theo su kien 'generating' -> luon dung 3 loi goi (Launch+Submit+Poll)"
         );
 
         // run da ket thuc -> khong con trong run_tokens -> cancel lan nua tra false.
         assert!(!engine.cancel_run(&run_id));
         assert!(!engine.cancel_run("khong-ton-tai"));
+    }
+
+    /// I2 (fix-round 1, demanded by review): do thi CO 2 node Tao video doc lap (prA->vidA->svA,
+    /// prB->vidB->svB, khai bao THEO DUNG THU TU do de topo (Kahn's, xem `validate::topo_order`,
+    /// luon chon chi so THAP NHAT trong tap san sang) chac chan xu ly HET nhanh A truoc khi cham
+    /// toi nhanh B). Huy giua luc vidA dang poll: vidB KHONG duoc tao task nao (vong lap dung o
+    /// dau lan lap tiep theo, TRUOC ca svA — xem doc `run_steps`/I2), `NodeState` cuoi cua vidB la
+    /// [`NODE_CANCELLED`] thay vi bo mac "queued" mai mai.
+    #[tokio::test]
+    async fn huy_giua_video_dau_video_thu_hai_khong_tao_task_nao() {
+        let steps = vec![
+            FakeStep::Launch(Ok(())),
+            FakeStep::Submit(Ok(ConversationId("c1".into()))),
+            FakeStep::PollUntilCancelled,
+        ];
+        let (dir, engine, db, driver) = build_engine(&["acc1", "acc2", "acc3"], 1, steps).await;
+        let out_dir = dir.path().join("out");
+        let graph = Graph {
+            version: 1,
+            nodes: vec![
+                node(
+                    "prA",
+                    NodeKind::Prompt {
+                        text: "canh A".to_string(),
+                    },
+                ),
+                node("vidA", video_kind()),
+                node(
+                    "svA",
+                    NodeKind::Save {
+                        out_dir: out_dir.join("a").display().to_string(),
+                    },
+                ),
+                node(
+                    "prB",
+                    NodeKind::Prompt {
+                        text: "canh B".to_string(),
+                    },
+                ),
+                node("vidB", video_kind()),
+                node(
+                    "svB",
+                    NodeKind::Save {
+                        out_dir: out_dir.join("b").display().to_string(),
+                    },
+                ),
+            ],
+            edges: vec![
+                edge("e1", "prA", "out", "vidA", "prompt"),
+                edge("e2", "vidA", "out", "svA", "video"),
+                edge("e3", "prB", "out", "vidB", "prompt"),
+                edge("e4", "vidB", "out", "svB", "video"),
+            ],
+        };
+
+        let mut rx = engine.events().subscribe();
+        let handle = engine
+            .run_graph("wf1", &graph, noop_hooks_factory())
+            .await
+            .unwrap();
+        let run_id = handle.run_id.clone();
+
+        wait_for_stage(&mut rx, "generating").await;
+        assert!(engine.cancel_run(&run_id));
+
+        tokio::time::timeout(Duration::from_secs(2), handle.join)
+            .await
+            .expect("khong duoc treo")
+            .unwrap();
+
+        let run_row = engine.run_repo.get(&run_id).await.unwrap().unwrap();
+        assert_eq!(run_row.status, RunStatus::Cancelled);
+
+        let tasks = TaskRepo::new(&db);
+        let rows = tasks.list_by_run(&run_id).await.unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "chi vidA tao dong task cho canh cua no; vidB KHONG duoc tao: {rows:?}"
+        );
+        assert_eq!(rows[0].node_id, "vidA");
+
+        assert_eq!(
+            driver.calls.lock().unwrap().len(),
+            3,
+            "chi vidA (dang chay khi huy) cham driver"
+        );
+
+        // NodeState cuoi cung cho vidB phai la "cancelled" — khong bo mac "queued" mai mai (I2).
+        let events = drain_until_run_done(&mut rx).await;
+        let vidb_terminal = events.iter().rev().find_map(|e| match e {
+            EngineEvent::NodeState { node_id, state, .. } if node_id == "vidB" => {
+                Some(state.clone())
+            }
+            _ => None,
+        });
+        assert_eq!(vidb_terminal.as_deref(), Some(NODE_CANCELLED), "{events:?}");
     }
 
     // ---- (4) do thi khong hop le: Err, KHONG tao dong runs ----
@@ -944,6 +1365,57 @@ mod tests {
         let rows = tasks.list_by_run(&run_id).await.unwrap();
         assert!(rows.is_empty(), "khong task video nao duoc tao: {rows:?}");
         assert!(driver.calls.lock().unwrap().is_empty());
+    }
+
+    // ---- I3 (fix-round 1, demanded by review): panic trong than vong buoc khong lam mat run ----
+
+    /// `hooks_factory` cua Task 9 (ma nguoi dung/UI) panic — tinh huong thuc te duy nhat co the lam
+    /// `run_steps` panic (xem doc module). Truoc fix I3, panic nay se lam `run_graph_task` panic
+    /// theo (bi `tokio::spawn` cua `run_graph` nuot lang le): dong `runs` ket "running" mai mai,
+    /// `run_tokens` ri rac (`cancel_run` tra `true` vinh vien cho mot run da "chet"), khong bao gio
+    /// co `RunDone`. Sau fix: than vong con (`tokio::spawn(steps_fut)`) panic, `run_graph_task` bat
+    /// duoc qua `Err(JoinError)`, coi la run that bai voi thong diep loi ro rang.
+    #[tokio::test]
+    async fn than_vong_buoc_panic_run_ket_thuc_la_failed_khong_treo() {
+        let (dir, engine, _db, driver) = build_engine(&["acc1"], 1, vec![]).await;
+        let out_dir = dir.path().join("out");
+        let graph = linear_graph("canh 1", &out_dir);
+
+        let panicking: HooksFactory = Arc::new(|_task_id: &str| -> Box<dyn PollHooks> {
+            panic!("hooks_factory co y panic (I3 test)")
+        });
+
+        let mut rx = engine.events().subscribe();
+        let handle = engine.run_graph("wf1", &graph, panicking).await.unwrap();
+        let run_id = handle.run_id.clone();
+
+        tokio::time::timeout(Duration::from_secs(2), handle.join)
+            .await
+            .expect("khong duoc treo du than vong buoc panic")
+            .unwrap();
+
+        let run_row = engine.run_repo.get(&run_id).await.unwrap().unwrap();
+        assert_eq!(run_row.status, RunStatus::Failed, "{run_row:?}");
+        assert!(
+            run_row.error.contains("panic"),
+            "loi run phai neu ro la panic: {:?}",
+            run_row.error
+        );
+
+        let events = drain_until_run_done(&mut rx).await;
+        let last = events.last().expect("phai co it nhat RunDone");
+        assert!(
+            matches!(last, EngineEvent::RunDone { status, .. } if status == "failed"),
+            "RunDone van phai duoc phat du panic giua chung: {events:?}"
+        );
+
+        // run da ket thuc (finish_run da chay, go token) -> cancel_run tra false, khong "song"
+        // vinh vien nhu truoc fix.
+        assert!(!engine.cancel_run(&run_id));
+        assert!(
+            driver.calls.lock().unwrap().is_empty(),
+            "panic xay ra TRUOC khi spawn job nao - driver chua bi dung toi"
+        );
     }
 
     // ---- cac test nho bo tro ----
