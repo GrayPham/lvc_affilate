@@ -14,6 +14,11 @@
 //! thu tu (khac ban Python dung hang doi ve co thu tu — xem `browser_pool.py`). Day la ruling cua
 //! plan P2 Task 15: KHONG port lai ve FIFO trong ban Rust nay; moi nguoi cho tranh CAS lai tu dau,
 //! ai thanh cong truoc thi lay permit truoc — cong bang "best effort", khong dam bao thu tu den.
+//!
+//! **Sua sau review vong 1 (C1 — mat wakeup):** ban dau crate nay chep nguyen van snippet spec
+//! §5.1, va snippet do co bug — xem doc cua [`DynamicLimiter::acquire`]. Spec da duoc controller
+//! chu thich lai sau review (commit `1397820`, "docs(spec): §5.1 ghi race mất wakeup trong snippet
+//! `DynamicLimiter`"); ban hien thuc o day la ban DA SUA, khong con khop nguyen van snippet cu nua.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -113,10 +118,34 @@ impl DynamicLimiter {
     /// `compare_exchange_weak` (that bai gia — spurious failure — chi can thu lai, KHONG phai loi
     /// that); neu da day thi cho mot trong ba tin hieu (`notify` tu `Permit::drop`, hoac
     /// `threads`/`accounts` thay doi qua `LimiterHandle`) roi vong lai tu dau.
+    ///
+    /// **C1 (review vong 1, Critical) — da sua**: ban dau (snippet spec §5.1 nguyen van) tao
+    /// `self.notify.notified()` BEN TRONG `tokio::select!`, tuc la SAU khi kiem `cur < effective()`.
+    /// Neu `Permit::drop` chay dung vao khe ho giua hai buoc do — `notify_waiters()` chi danh thuc
+    /// nguoi ĐÃ đăng ký — thi nguoi cho khong duoc dang ky kip se khong bao gio duoc danh thuc, va
+    /// co the treo vinh vien du dang co cho trong (mat wakeup, xem `task-15-review.md` C1). Sua:
+    /// tao + `enable()` `Notified` o DAU moi vong lap, TRUOC khi doc `active` — `enable()` dang ky
+    /// waiter ngay lap tuc (khong can `.await`/poll truoc), nen bat ky `notify_waiters()` nao xay
+    /// ra sau diem nay (ke ca truoc khi vao `select!`) deu chac chan duoc quan sat. Hai nhanh
+    /// `threads.changed()`/`accounts.changed()` KHONG bi loi nay (edge-triggered theo version cua
+    /// `watch`, xem review — clone lay "version" tai thoi diem goi `acquire`, khong the bi rot).
+    ///
+    /// **I1 (review vong 1, Important) — chap nhan**: `cur = active.load()` roi kiem `cur <
+    /// effective()` roi moi CAS — CAS chi so sanh voi `active`, khong so sanh lai `effective()`.
+    /// Neu `set_threads`/`set_accounts` thu hep `effective()` DUNG vao khe ho giua doc va CAS, CAS
+    /// van thanh cong va co the cap permit vuot gioi han moi — pham vi rat hep (nano-giay) va theo
+    /// dung ADR-016 ("giam luong khong duoc cat job dang chay": permit da bat dau nhan trong khe do
+    /// duoc coi nhu da bat dau truoc khi thu hep). Khong sua code; ghi lai de nguoi doc sau khong
+    /// nham la bug chua phat hien.
     pub async fn acquire(self: &Arc<Self>) -> Permit {
         let mut threads = self.threads.clone();
         let mut accounts = self.accounts.clone();
         loop {
+            // Dang ky waiter TRUOC khi doc `active` (sua C1) — xem doc o tren ham nay.
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
             let cur = self.active.load(Ordering::Acquire);
             if cur < self.effective() {
                 if self
@@ -132,7 +161,7 @@ impl DynamicLimiter {
                 continue;
             }
             tokio::select! {
-                () = self.notify.notified() => {}
+                () = &mut notified => {}
                 _ = threads.changed() => {}
                 _ = accounts.changed() => {}
             }
@@ -311,6 +340,57 @@ mod tests {
             "so permit dong thoi ({}) vuot effective ({})",
             max_seen.load(Ordering::SeqCst),
             limiter.effective()
+        );
+    }
+
+    /// I2 (review vong 1): stress test danh rieng cho C1 (mat wakeup). Khe ho C1 chi rong vai
+    /// nano-giay (giua "kiem tra `active < effective`" that bai va "dang ky `Notified`"), va CHI co
+    /// the xay ra khi hai task thuc su chay song song tren hai luong OS khac nhau (runtime nhieu
+    /// luong) — mot task dang thuc thi dong ma dong bo (khong `.await`) trong khi task kia chay
+    /// `Permit::drop` that su cung luc; tren runtime 1 luong khong co co hoi nay vi khong co diem
+    /// nhuong giua doc `active` va vao `select!`. Vi vay test nay CAN `flavor = "multi_thread"`.
+    ///
+    /// 200 nghin vong, moi vong 2 task CUNG mau (`effective=1` nen chi 1 trong 2 thang duoc): xin
+    /// permit roi tha NGAY (0ms) — ai thang truoc thi tha truoc, danh thuc thang con lai; toi da
+    /// hoa co hoi ke thua roi dung vao khe ho C1 luc dang kiem tra dieu kien. QUAN TRONG: ca hai
+    /// task tu tha permit cua minh BEN TRONG task da spawn (khong tra permit ra ngoai roi tha sau
+    /// `join!`) — neu task thua giu permit cho toi sau `join!` thi task thang se cho vinh vien mot
+    /// thong bao khong bao gio den truoc khi `join!` tra ve, tuc tu tao deadlock GIA (khong lien
+    /// quan C1). Ca vong lap duoc boc trong mot `timeout` TONG 10s: neu C1 con ton tai, som muon se
+    /// co mot lan thang thua khong bao gio duoc danh thuc (permit hong vinh vien) va tong thoi gian
+    /// se vuot 10s — that bai ro rang thay vi treo vo han bai test.
+    ///
+    /// Da do kiem: 200 vong (nhu review de xuat) KHONG du de bat C1 mot cach dang tin cay (khe ho
+    /// chi vai nano-giay, ngau nhien 3/3 lan chay tren ban chua sua deu "qua" gia); phai toi 200
+    /// NGHIN vong moi tai hien duoc that bai trong vong 10s tren may phat trien (xac nhan lai bang
+    /// cach dan tam thoi bug C1 vao va chay). Giu so vong lon nay thay vi 200 de test thuc su co
+    /// gia tri regression, khong chi la ve hinh thuc.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn stress_khong_mat_wakeup_khi_tha_ngay() {
+        let (limiter, _handle) = DynamicLimiter::new(1, 5); // effective = 1
+
+        let outcome = tokio::time::timeout(Duration::from_secs(10), async {
+            for _ in 0..200_000 {
+                let limiter_a = Arc::clone(&limiter);
+                let limiter_b = Arc::clone(&limiter);
+                let a = tokio::spawn(async move {
+                    let permit = limiter_a.acquire().await;
+                    drop(permit);
+                });
+                let b = tokio::spawn(async move {
+                    let permit = limiter_b.acquire().await;
+                    drop(permit);
+                });
+                let (a_res, b_res) = tokio::join!(a, b);
+                a_res.expect("task A khong duoc panic");
+                b_res.expect("task B khong duoc panic");
+            }
+        })
+        .await;
+
+        assert!(
+            outcome.is_ok(),
+            "C1 (mat wakeup) tai hien: it nhat 1 trong 200 vong bi treo qua 10s"
         );
     }
 
