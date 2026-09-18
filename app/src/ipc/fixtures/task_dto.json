@@ -1,0 +1,23 @@
+[
+  {
+    "id": "task_1",
+    "promptPreview": "con meo di bo tren duong lang",
+    "status": "completed",
+    "failureCode": null,
+    "error": null,
+    "account": "acc1",
+    "mode": "fast",
+    "duration": 10,
+    "ratio": "9:16",
+    "model": "seedance-2.0",
+    "localPath": "C:\\out\\run_1_n2_1.mp4",
+    "sceneIndex": 1,
+    "runId": "run_1",
+    "nodeId": "n2",
+    "stage": "done",
+    "createdAt": 1700000000.0,
+    "startedAt": 1700000001.0,
+    "finishedAt": 1700000010.0,
+    "hasConversation": true
+  }
+]

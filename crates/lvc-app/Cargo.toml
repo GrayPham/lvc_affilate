@@ -34,6 +34,8 @@ tracing.workspace = true
 # sync: AppState.settings dung tokio::sync::RwLock (giu qua diem await trong Tauri command Task 9/10).
 tokio = { workspace = true, features = ["sync"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+# commands/workflow.rs (Task 9): id workflow moi khi workflow_save khong truyen id (uuid v4).
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

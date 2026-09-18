@@ -1,0 +1,11 @@
+[
+  {
+    "type": "unknown_node",
+    "id": "n99"
+  },
+  {
+    "type": "missing_required_input",
+    "node": "n2",
+    "port": "prompt"
+  }
+]

@@ -1,0 +1,39 @@
+[
+  {
+    "type": "task_stage",
+    "taskId": "task_1",
+    "stage": "generating",
+    "detail": "acc1",
+    "elapsedMs": 1234
+  },
+  {
+    "type": "task_done",
+    "taskId": "task_1",
+    "account": "acc1",
+    "conversationId": "conv_1",
+    "localPath": "C:\\out\\run_1_n2_1.mp4",
+    "bytes": 12345,
+    "watermarked": false
+  },
+  {
+    "type": "task_failed",
+    "taskId": "task_2",
+    "code": "PROXY_DOWN",
+    "message": "PROXY_DOWN: acc2: loi mang"
+  },
+  {
+    "type": "node_state",
+    "runId": "run_1",
+    "nodeId": "n2",
+    "state": "running",
+    "done": 1,
+    "total": 3,
+    "ok": 1,
+    "failed": 0
+  },
+  {
+    "type": "run_done",
+    "runId": "run_1",
+    "status": "completed"
+  }
+]

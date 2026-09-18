@@ -1,0 +1,15 @@
+{
+  "code": "GRAPH_INVALID",
+  "message": "do thi khong hop le: 2 loi",
+  "details": [
+    {
+      "type": "unknown_node",
+      "id": "n99"
+    },
+    {
+      "type": "missing_required_input",
+      "node": "n2",
+      "port": "prompt"
+    }
+  ]
+}

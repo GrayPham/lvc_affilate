@@ -1,0 +1,11 @@
+{
+  "threads": 1,
+  "silentMode": false,
+  "modeFallback": true,
+  "accountsDir": "",
+  "outputDir": "downloads",
+  "defaultMode": "fast",
+  "defaultModel": "seedance-2.0",
+  "defaultRatio": "9:16",
+  "defaultDuration": 10
+}

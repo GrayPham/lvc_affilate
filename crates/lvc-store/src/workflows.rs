@@ -4,6 +4,7 @@
 //! workflow) — DAG executor (Task 7), resume (Task 6) và Tauri commands
 //! (Task 9) dùng hai repo này.
 
+use serde::Serialize;
 use sqlx::Row;
 
 use crate::{Db, StoreError};
@@ -20,7 +21,11 @@ pub struct WorkflowRow {
 
 /// Siêu dữ liệu workflow KHÔNG kèm `json` — dùng cho danh sách (Tauri command
 /// liệt kê workflow không cần tải cả đồ thị).
-#[derive(Debug, Clone)]
+///
+/// Task 9 (P3, additive): `Serialize` camelCase — lệnh IPC `workflow_list`/`workflow_save` trả
+/// thẳng kiểu này cho frontend, không cần lớp DTO riêng chỉ để đổi cách viết hoa.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowMeta {
     pub id: String,
     pub name: String,
@@ -122,7 +127,11 @@ impl WorkflowRepo {
 /// đương Python — nhưng theo đúng khuôn `TaskStatus`/`FailureCode` (lvc-core):
 /// enum + `as_str`/`parse`, không để chuỗi trạng thái trôi tự do giữa các nơi
 /// gọi `RunRepo::create`/`set_status` (review vòng 1 M3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Task 9 (P3, additive): `Serialize` — lệnh IPC `run_list` trả thẳng `RunRow` (mang `RunStatus`)
+/// cho frontend; wire string khớp `RunStatus::as_str` (khớp `EngineEvent::RunDone.status`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RunStatus {
     Running,
     Completed,
@@ -155,7 +164,10 @@ impl RunStatus {
 
 /// Một dòng `runs` — một lần chạy workflow (DAG executor Task 7 cập nhật khi
 /// chạy; resume Task 6 đọc lại sau khi khởi động lại app).
-#[derive(Debug, Clone)]
+///
+/// Task 9 (P3, additive): `Serialize` camelCase — lệnh IPC `run_list` trả thẳng kiểu này.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunRow {
     pub id: String,
     pub workflow_id: String,

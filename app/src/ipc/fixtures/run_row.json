@@ -1,0 +1,8 @@
+{
+  "id": "run_1",
+  "workflowId": "wf_1",
+  "status": "completed",
+  "startedAt": 1700000000.0,
+  "finishedAt": 1700000100.0,
+  "error": ""
+}

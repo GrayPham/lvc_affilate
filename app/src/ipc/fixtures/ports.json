@@ -1,0 +1,134 @@
+[
+  {
+    "kind": "prompt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "kind": "image_upload",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "image_from_url",
+    "inputs": [
+      {
+        "name": "url",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "image_gen",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "ref",
+        "type": "image"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "video",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "refs",
+        "type": "image"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "remove_logo",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "ensure_h264",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "concat",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "save",
+    "inputs": [
+      {
+        "name": "video",
+        "type": "video"
+      },
+      {
+        "name": "image",
+        "type": "image"
+      }
+    ],
+    "outputs": []
+  }
+]
