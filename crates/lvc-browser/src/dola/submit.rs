@@ -4,11 +4,14 @@
 //! |---|---|
 //! | [`precheck_duration`] | `generate_video` `:2399-2403` (`ValueError` -> `DURATION_UNAVAILABLE`) |
 //! | [`submit_timeout`] | `:2398` `video_timeout(...)` + `:2404-2405` (`lvc_core::video_timeout`) |
-//! | [`submit`] / [`submit_at`] | `generate_video` `:2444-2494` (chat MOI — R5; bo balance `:2473` — R7) |
+//! | [`submit`] / [`submit_at`] | `generate_video` `:2444-2510` (chat MOI — R5; bo balance `:2473` — R7; bo nguoi that `:2491-2498`) |
 //! | [`open_new_chat`] | `:2461-2469` (goto `/chat` + 5 s, `assert_logged_in`) |
 //! | — `known` | `:2472` `known_conv_ids = set(await recent_conv_ids(...))` |
-//! | — `select_mode` | `:2475-2485` (`target_mode`; Agent nuot loi — Task 12) |
+//! | — `select_mode` | `:2475-2485` (`target_mode`; Agent NUOT loi `:2481-2483`, con lai `raise` `:2484-2485`) |
+//! | — re nhanh | `:2499-2506` (`agent` -> `skill::submit_agent`, `pro_max` -> `skill::submit_pro_max`, `pro` -> `skill::submit_pro`, con lai [`submit_fast`]) |
 //! | [`submit_fast`] | `_submit_fast` `:2264-2301` |
+//! | [`clear_old_attachments`] | `_clear_composer_attachments` goi tu `:2268`, `:2307`, `:2319`, `:2377` (+ log Python) |
+//! | [`attach_refs`] | `_attach_refs` `:1682-1689` (chi nhanh file `:1688-1689`; `add_ref_src` nguoi that khong port — P2) |
 //! | [`select_duration_or_hook`] | `:2274-2288` (15/30 khong co tren UI -> 10 s + hook ADR-044) |
 //! | [`hook_not_patched_msg`] | `:2296-2299` |
 //! | [`after_submit`] | `_after_submit` `:2533-2600` (captcha + conv id; KHONG poll — Task 11) |
@@ -57,6 +60,7 @@ use super::error::DolaError;
 use super::labels::{CAPTCHA_FRAME_KEY, DOLA_CHAT_URL};
 use super::refs;
 use super::session;
+use super::skill;
 use super::util;
 use crate::BrowserError;
 use crate::ops;
@@ -272,11 +276,6 @@ fn is_recent_tick(i: u32) -> bool {
     i % 3 == 2
 }
 
-/// Task 12 se thay bang `skill::submit_pro/_pro_max/_agent`.
-fn unsupported_mode(mode: Mode) -> DolaError {
-    DolaError::ModeUnavailable(format!("mode {} chưa hỗ trợ (Task 12)", mode.as_str()))
-}
-
 /// `compose`/`refs` goi `raise_if_logged_out(page, "", ...)` nhu Python (`:887`, `:1953`...) -> dien
 /// ten tai khoan vao `LoggedOut` con rong; loi khac giu nguyen.
 fn with_account(e: DolaError, account: &str) -> DolaError {
@@ -317,17 +316,19 @@ pub async fn submit(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<Conversa
 /// 1. [`precheck_duration`] (thuan, truoc moi I/O);
 /// 2. [`open_new_chat`]: URL da la `chat_url` -> 1 s, khong thi `goto` + 5 s; `assert_logged_in`;
 /// 3. `known = recent_conv_ids()` (`:2472`) — bo `_preflight_balance` (`:2473`, R7);
-/// 4. `select_mode(target_mode(mode))` (`:2475-2485`; cookie banner nam trong `select_mode`);
-/// 5. re nhanh theo `mode` (`:2486-2490`): Fast -> [`submit_fast`]; con lai -> `MODE_UNAVAILABLE`
-///    (Task 12);
-/// 6. [`after_submit`] (`:2491-2494`).
+/// 4. `select_mode(target_mode(mode))` (`:2475-2485`; cookie banner nam trong `select_mode`); MOI
+///    loi cua `select_mode` khi `mode == Agent` chi `warn` roi di tiep (`:2481-2483` — TUT Agent go
+///    thang vao chatbox, khong bat buoc nut che do khop); mode khac -> lan ra (`:2484-2485`);
+/// 5. re nhanh theo `mode` (`:2499-2506`): Agent -> [`skill::submit_agent`]; `ProMax` ->
+///    [`skill::submit_pro_max`]; Pro -> [`skill::submit_pro`]; Fast -> [`submit_fast`];
+/// 6. [`after_submit`] (`:2507-2510`).
 ///
 /// Moi `LoggedOut` co `account` rong (tu `compose`/`refs`) duoc dien `req.account`.
 ///
 /// # Errors
 /// `DurationUnavailable` (buoc 1, 15/30 khong chon/hook duoc), `LoggedOut`, `ModeUnavailable`,
-/// `ModeSwitch`, `RatioUnavailable`, `RefUpload`, `RiskControl` (captcha), `NoConversation`,
-/// `Browser` (CDP/timeout).
+/// `ModeSwitch` (khong phai Agent), `RatioUnavailable`, `RefUpload`, `RiskControl` (captcha),
+/// `NoConversation`, `Browser` (CDP/timeout).
 pub async fn submit_at(
     ctx: &SubmitCtx<'_>,
     req: &SubmitRequest,
@@ -360,16 +361,31 @@ async fn submit_inner(
     // :2472 — nho cac chat DANG CO truoc khi gui de sau khi gui khong nhan nham chat cu
     let known: HashSet<String> = session::recent_conv_ids(page).await?.into_iter().collect();
     tracing::debug!(account, known = known.len(), "chat gan day truoc khi gui");
-    // :2475-2485 — pro_max/agent dung chung nut プロ; chi Agent moi nuot loi (Task 12)
+    // :2475-2485 — pro_max/agent dung chung nut プロ; chi Agent moi nuot loi (`except Exception`
+    // :2480 — MOI loi, ke ca LoggedOut/Browser, nhu Python; loi that se lo lai o buoc gui/poll)
     let target = compose::target_mode(req.mode);
-    let label = compose::select_mode(page, target).await?;
-    tracing::info!(account, label = %label, mode = req.mode.as_str(), "Dola mode");
-    // :2486-2490
-    match req.mode {
-        Mode::Fast => submit_fast(ctx, req).await?,
-        Mode::Pro | Mode::ProMax | Mode::Agent => return Err(unsupported_mode(req.mode)),
+    match compose::select_mode(page, target).await {
+        Ok(label) => {
+            tracing::info!(account, label = %label, mode = req.mode.as_str(), "Dola mode");
+        }
+        Err(e) if req.mode == Mode::Agent => {
+            // :2481-2483 — TUT Agent: go prompt truc tiep vao chatbox, khong bat buoc nut che do match
+            tracing::warn!(
+                account,
+                error = %with_account(e, account),
+                "[agent] Mode switch warning, continuing directly to chat"
+            );
+        }
+        Err(e) => return Err(e), // :2484-2485
     }
-    // :2491-2494
+    // :2499-2506
+    match req.mode {
+        Mode::Agent => skill::submit_agent(ctx, req).await?,
+        Mode::ProMax => skill::submit_pro_max(ctx, req).await?,
+        Mode::Pro => skill::submit_pro(ctx, req).await?,
+        Mode::Fast => submit_fast(ctx, req).await?,
+    }
+    // :2507-2510
     after_submit(ctx, account, &known, chat_url).await
 }
 
@@ -404,25 +420,8 @@ pub async fn submit_fast(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(),
     let page = ctx.page;
     let account = req.account.as_str();
     compose::open_video_composer_fast(page).await?; // :2267
-    // :2268 — anh dinh kem cu con trong composer -> nhan doi / gui nham
-    let removed = compose::clear_composer_attachments(page).await?;
-    if removed > 0 {
-        tracing::info!(account, removed, "đã xoá ảnh đính kèm cũ trong composer");
-    }
-    // :2269 `_attach_refs` -> `attach_reference_images` (:1688-1689) — SAU khi mo composer
-    if !req.reference_images.is_empty() {
-        let timeout = Duration::from_secs(u64::from(ctx.limits.reference_upload_timeout_s));
-        let out = refs::attach_reference_images(page, &req.reference_images, timeout).await?;
-        tracing::info!(
-            account,
-            expected = out.expected,
-            tos = out.tos,
-            thumbs = out.thumbs,
-            way = ?out.way,
-            extra_uploads = out.extra_uploads,
-            "ảnh tham chiếu đã đính"
-        );
-    }
+    clear_old_attachments(page, account).await?; // :2268
+    attach_refs(ctx, req).await?; // :2269
     compose::select_model(page, req.model).await?; // :2270
     compose::close_open_menus(page).await?; // :2271
     if let Some(ratio) = req.ratio {
@@ -447,6 +446,45 @@ pub async fn submit_fast(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(),
         account,
         prompt_chars = req.prompt.chars().count(),
         "UI submitted prompt"
+    );
+    Ok(())
+}
+
+/// `_clear_composer_attachments(page, account)` (`:2268` Nhanh, `:2307` pro, `:2319` `pro_max`, `:2377`
+/// agent): anh dinh kem cu con trong composer (Dola giu nhap) -> nhan doi / gui nham; tra so the da
+/// xoa (log khi > 0).
+///
+/// # Errors
+/// `Browser` (CDP o lan dem cuoi — xem [`compose::clear_composer_attachments`]).
+pub async fn clear_old_attachments(page: &Page, account: &str) -> Result<usize, DolaError> {
+    let removed = compose::clear_composer_attachments(page).await?;
+    if removed > 0 {
+        tracing::info!(account, removed, "đã xoá ảnh đính kèm cũ trong composer");
+    }
+    Ok(removed)
+}
+
+/// Port `_attach_refs` (`:1682-1689`) nhanh file (`:1688-1689`): co anh ->
+/// `attach_reference_images` (timeout `Limits::reference_upload_timeout_s`); khong -> khong lam gi.
+/// Nhanh `add_ref_src` (nguoi that, `:1684-1687`) khong port o P2. Goi SAU khi mo composer/skill
+/// (pro/agent khong co `input[type=file]` -> `refs` tu roi sang PASTE).
+///
+/// # Errors
+/// `RefUpload`, `LoggedOut` (account rong — [`submit_at`] dien), `Browser`.
+pub async fn attach_refs(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(), DolaError> {
+    if req.reference_images.is_empty() {
+        return Ok(());
+    }
+    let timeout = Duration::from_secs(u64::from(ctx.limits.reference_upload_timeout_s));
+    let out = refs::attach_reference_images(ctx.page, &req.reference_images, timeout).await?;
+    tracing::info!(
+        account = req.account.as_str(),
+        expected = out.expected,
+        tos = out.tos,
+        thumbs = out.thumbs,
+        way = ?out.way,
+        extra_uploads = out.extra_uploads,
+        "ảnh tham chiếu đã đính"
     );
     Ok(())
 }
@@ -858,20 +896,6 @@ mod tests {
         let ticks: Vec<u32> = (0..30).filter(|i| is_recent_tick(*i)).collect();
         assert_eq!(&ticks[..5], &[2, 5, 8, 11, 14]);
         assert_eq!(ticks.len(), 10);
-    }
-
-    /// Che do ngoai Fast (Task 12) -> `MODE_UNAVAILABLE`, thong diep noi ro.
-    #[test]
-    fn unsupported_mode_bao_mode_unavailable() {
-        let e = unsupported_mode(Mode::ProMax);
-        assert_eq!(
-            e.to_string(),
-            "MODE_UNAVAILABLE: mode pro_max chưa hỗ trợ (Task 12)"
-        );
-        assert_eq!(
-            e.failure_code(),
-            Some(lvc_core::FailureCode::ModeUnavailable)
-        );
     }
 
     /// `SubmitCtx::new` mac dinh `logs_dir = "logs"` (Python `Path("logs")` `:2591`).

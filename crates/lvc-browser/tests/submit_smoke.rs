@@ -7,6 +7,7 @@
 //! `send "<text>"` + fetch `/chat/completion` (duration 10) roi tuy query: `pushState('/chat/<id>')`
 //! sau 1 s (mac dinh), `?captcha=1|late|jump` (iframe bdcaptcha.html), `?noconv=1`, `?login_after=1`,
 //! `?jump=1` (chat CU + `recent_conv` tra chat moi tu lan goi 2), `?dur=none`, `?nofetch=1`.
+//! Che do Pro / Pro Max / Agent (Task 12) qua cung `submit_at`: xem `tests/skill_smoke.rs`.
 
 mod common;
 
@@ -438,29 +439,6 @@ async fn submit_khong_sessionid_bao_logged_out_truoc_khi_gui() {
     let log = fx.log().await;
     assert_eq!(count(&log, "send \""), 0, "{log}");
     assert_eq!(count(&log, "click create-btn"), 0, "{log}");
-    fx.close().await;
-}
-
-/// Che do Pro/ProMax/Agent la Task 12: hien tai `MODE_UNAVAILABLE` SAU khi chon nut プロ (nhu thu tu
-/// Python `:2476` roi `:2486`), chua go/gui gi.
-#[tokio::test]
-#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test submit_smoke -- --ignored"]
-async fn submit_pro_chua_ho_tro_bao_mode_unavailable() {
-    let fx = Fx::open("chat").await;
-    let p = fx.page();
-    set_fake_dola_sessionid(p).await;
-    let limits = Limits::default();
-    let ctx = SubmitCtx::new(p, &limits);
-    let err = submit_at(&ctx, &req(Mode::ProMax, 10, None), &fx.url("chat"))
-        .await
-        .unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "MODE_UNAVAILABLE: mode pro_max chưa hỗ trợ (Task 12)"
-    );
-    let log = fx.log().await;
-    assert!(log.contains("mode プロ"), "pro_max dung nut プロ: {log}");
-    assert_eq!(count(&log, "send \""), 0, "{log}");
     fx.close().await;
 }
 

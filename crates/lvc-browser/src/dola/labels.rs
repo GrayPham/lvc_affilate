@@ -527,6 +527,17 @@ pub fn finder_composer() -> &'static str {
     r#"document.querySelector('textarea, [contenteditable="true"]')"#
 }
 
+/// `video_worker_ui.py:1256` (`_send_chat_message`) — chu con trong o soan sau Enter:
+/// `box.input_value()` neu `<textarea>`, khong thi `box.inner_text()`; khong co o soan -> `''`
+/// (Python nem -> `except: pass`, cung ket cuc: khong bam nut gui).
+pub const COMPOSER_TEXT_JS: &str = r#"(() => { const e = document.querySelector('textarea, [contenteditable="true"]'); if (!e) return ''; return e.tagName.toLowerCase() === 'textarea' ? (e.value || '') : (e.innerText || ''); })()"#;
+
+/// `video_worker_ui.py:1258` — nut gui: `button[aria-label*="Gửi" i], button[aria-label*="Send" i],
+/// button[aria-label*="送信" i], button:has(svg)` `.last` = nut CUOI theo thu tu DOM thoa MOT trong
+/// bon dieu kien. `*="…" i` (CSS: chuoi con, khong phan biet hoa/thuong) -> `toLowerCase().includes`;
+/// `:has(svg)` -> `b.querySelector('svg')`. Tra `null` khi khong co (caller kiem visible).
+pub const SEND_BTN_FINDER: &str = "(() => { const has = (b, s) => (b.getAttribute('aria-label') || '').toLowerCase().includes(s); const all = [...document.querySelectorAll('button')].filter(b => has(b, 'gửi') || has(b, 'send') || has(b, '送信') || !!b.querySelector('svg')); return all.length ? all[all.length - 1] : null; })()";
+
 #[cfg(test)]
 mod tests {
     use super::*;

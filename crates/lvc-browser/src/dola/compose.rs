@@ -315,7 +315,7 @@ async fn exists(page: &Page, finder: &str) -> Result<bool, BrowserError> {
     eval_bool(page, &js_exists(finder)).await
 }
 
-async fn is_visible(page: &Page, finder: &str) -> Result<bool, BrowserError> {
+pub(crate) async fn is_visible(page: &Page, finder: &str) -> Result<bool, BrowserError> {
     eval_bool(page, &js_visible(finder)).await
 }
 
@@ -353,7 +353,8 @@ async fn inner_text_wait(
 
 /// Playwright `locator.click(timeout)`: cho phan tu VISIBLE (rect != 0) toi da `timeout` roi bam
 /// chuot that (`ops::click_js`); het gio -> `Timeout`. KHONG kiem enabled/stable/che khuat (Task 5 M-1).
-async fn click_wait(
+/// `pub(crate)`: `skill` (Task 12) dung cho nut スキル/option/nut gui.
+pub(crate) async fn click_wait(
     page: &Page,
     finder: &str,
     timeout: Duration,
@@ -455,8 +456,8 @@ async fn clear_draft(page: &Page) -> Result<(), BrowserError> {
 }
 
 /// [`clear_ability_tag`] nhung loi -> `"error"` nhu Python `_clear_ability_tag` (`:2365-2367`) —
-/// `select_mode` chi so sanh `!= "none"`.
-async fn clear_ability_tag_lenient(page: &Page) -> String {
+/// `select_mode` chi so sanh `!= "none"`; `skill::submit_agent` (`:2376`) cung nuot loi nhu Python.
+pub(crate) async fn clear_ability_tag_lenient(page: &Page) -> String {
     match clear_ability_tag(page).await {
         Ok(s) => s,
         Err(e) => {

@@ -54,8 +54,7 @@
 //! - **`LINK_PREVIEW_ASK`**: `config.py:298` mac dinh `"0"` (tat) — khong port nhanh xin preview
 //!   `:1414-1425` (toi uu hoa, can gui chat); hang [`LINK_PREVIEW_ASK`] = `false` ghi lai quyet dinh.
 //! - **Gui tra loi xac nhan**: Python `_send_chat_message` (`:1242-1262`) = go + Enter + bam nut gui neu
-//!   con chu. Task 12 se co `send_chat_message`; tam thoi [`PollPage::send_reply`] cua `Page` goi
-//!   [`compose::type_and_send`] (`append = false`) — `// TODO Task 12: send_chat_message`.
+//!   con chu — [`PollPage::send_reply`] cua `Page` goi [`skill::send_chat_message`] (Task 12).
 //! - **`fetch_raw_video` `Err`** (loi mang/timeout) coi nhu `None` + `warn` (Python nuot moi loi
 //!   `unwatermark.py:239`), thu `fallback_api` ke tiep (≤ 3). Cong tac `DOLA_RAW_UNWATERMARK` (`:245`)
 //!   khong port — luon bat.
@@ -89,10 +88,10 @@ use lvc_core::{
 };
 use tracing::{debug, info, warn};
 
-use super::compose;
 use super::error::DolaError;
 use super::http::{DolaHttp, FETCH_TIMEOUT, POLL_URL, output_path, url_host_path};
 use super::labels::DOM_TAIL_JS;
+use super::skill;
 use super::submit::{ConversationId, captcha_error, has_captcha};
 use crate::BrowserError;
 use crate::ops;
@@ -226,9 +225,8 @@ impl PollPage for Page {
     }
 
     async fn send_reply(&self, text: &str) -> Result<(), BrowserError> {
-        // TODO Task 12: send_chat_message (`_send_chat_message` `:1242-1262` = type_and_send + bam
-        // nut gui neu Enter khong gui duoc). Tam thoi go + Enter.
-        compose::type_and_send(self, text, false).await
+        // `_send_chat_message` `:1242-1262` (Task 12): go + Enter, con chu thi bam nut gui cuoi.
+        skill::send_chat_message(self, text).await
     }
 }
 
