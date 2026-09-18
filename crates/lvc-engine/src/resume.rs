@@ -25,6 +25,14 @@
 //! | Loi -> [`Engine::mark_dola_error`] (dung lai) nhung KHONG `claim`/KHONG xoay | `except` `:1192-1237` tru phan claim luc Timeout | |
 //! | `EngineError::NotResumable` | — (moi, P3) | row thieu `conversation_id`/`account` -> khong the resume; `failure_code` tai su dung `NoConversation` (khong them ma Dola moi) |
 //!
+//! **Fix-round 1 (review task-6-review.md):** C1 (Critical) — probe `Unknown` (trang chua tai xong,
+//! `lvc_core::classify_session` noi ro "caller khong duoc ket luan") KHONG con bi coi la logged-out;
+//! them cho on dinh + doc lai co gioi han (xem [`PROBE_SETTLE`]/[`PROBE_RETRY_TRIES`]). I1 —
+//! `Timeout` ghi `last_used_at` (KHONG claim). I2 — nhanh loi cung ghi `finished_at` (best-effort).
+//! I3 — tai khoan khong con trong `accounts_meta` -> `NotResumable` (khong phai
+//! `PreferredUnavailable`, do la loi TAM THOI trong crate nay). M2 — chi doc dong task MOT LAN. M3 —
+//! loi `goto` di qua CUNG bang dong/giu voi cac loi Dola khac (khong dong vo dieu kien nua).
+//!
 //! **Khong log prompt/cookie/URL co chu ky** (giong `generate.rs`).
 
 use std::collections::HashSet;
@@ -46,6 +54,40 @@ use crate::generate::{
     SessionAction, clip, now_unix, stage_writer,
 };
 use crate::pool::Lease;
+
+/// C1 (fix-round 1): `video_worker_ui.py:1815-1817` cho trang on dinh 3 s (phien tai dung phien am)
+/// / 5 s (phien moi mo) TRUOC khi doc dang nhap. O day KHONG phan biet duoc fresh/reused (`Engine::
+/// open_session` — tai su dung tu `generate.rs`, khong sua trong dot nay — chi tra `D::Session`,
+/// khong co co) nen dung MOT moc (ngan hon, phia an toan); bu lai bang vong doc lai o duoi khi con
+/// `Unknown` (`PROBE_RETRY_TRIES`/`PROBE_RETRY_DELAY`). `#[cfg(test)]` = 0 de test KHONG phai cho
+/// that (khong `sleep` trong test).
+#[cfg(not(test))]
+const PROBE_SETTLE: Duration = Duration::from_secs(3);
+#[cfg(test)]
+const PROBE_SETTLE: Duration = Duration::from_secs(0);
+
+/// C1: so lan doc lai `probe_session` toi da khi con `SessionState::Unknown` — CO GIOI HAN (khac
+/// `eval_retry` cua `dola::session::assert_logged_in`, do la trong luc GUI; o day chi la buoc kiem
+/// truoc `poll_and_download`, ban than no se nem `LoggedOut` neu that su mat phien qua HTTP 401/403).
+const PROBE_RETRY_TRIES: u32 = 3;
+#[cfg(not(test))]
+const PROBE_RETRY_DELAY: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const PROBE_RETRY_DELAY: Duration = Duration::from_secs(0);
+
+/// C1: cho `dur` (bo qua sleep khi `dur` = 0, vd trong test) roi doc lai probe — cancel-aware (uu
+/// tien token, cung mau `tokio::select!` nhu cac cho khac trong file nay) roi VAN `eh.check(..)`
+/// mot lan nua (bat `hooks.inner.should_cancel()` cua caller neu vua bao huy dung luc sleep xong).
+async fn probe_settle(eh: &EngineHooks<'_>, dur: Duration) -> Result<(), EngineError> {
+    if !dur.is_zero() {
+        tokio::select! {
+            biased;
+            () = eh.cancel_token().cancelled() => return Err(EngineError::Dola(DolaError::Cancelled)),
+            () = tokio::time::sleep(dur) => {}
+        }
+    }
+    eh.check("cho on dinh truoc probe")
+}
 
 /// Ket qua [`Engine::requeue_on_start`] (Task 9 Tauri command tra ve JSON cho UI). `Serialize`
 /// `camelCase` (khop quy uoc cac kieu huong Tauri khac cua workspace, vd `lvc_core::graph::plan`).
@@ -132,9 +174,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     ) -> Result<GenerateOutcome, EngineError> {
         // R4: dang ky token TRUOC moi viec khac (nhu generate_video) — cua so "huy bi lo" nho nhat.
         let (token, _guard) = self.cancels().register_guarded(task_id);
-        if self.tasks.get(task_id).await?.is_none() {
+        // M2 (fix-round 1): doc dong MOT LAN o day, truyen xuong `resume_run` — truoc doc 2 lan
+        // (kiem ton tai o day, doc lai du lieu o `resume_run`).
+        let Some(row) = self.tasks.get(task_id).await? else {
             return Err(EngineError::TaskNotFound(task_id.to_string()));
-        }
+        };
         let (stage_tx, stage_rx) = mpsc::unbounded_channel::<String>();
         let writer = tokio::spawn(stage_writer(
             self.tasks.clone(),
@@ -143,7 +187,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         ));
         let eh = EngineHooks::new(task_id, token, self.events(), hooks, stage_tx);
 
-        let res = self.resume_run(task_id, &eh).await;
+        let res = self.resume_run(task_id, &row, &eh).await;
         match &res {
             Ok(out) => {
                 info!(
@@ -164,6 +208,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     .await
                 {
                     warn!(task_id, error = %se, "resume: khong ghi duoc trang thai failed");
+                }
+                // I2 (fix-round 1): server.py:846-851 ghi `finished_at` tren CA HAI nhanh except —
+                // best-effort, giong het cach ghi `failed` phia tren (loi chi warn, khong chan tra ve).
+                if let Err(se) = self.tasks.set_finished(task_id, now_unix()).await {
+                    warn!(task_id, error = %se, "resume: khong ghi duoc finished_at");
                 }
             }
         }
@@ -190,21 +239,18 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     }
 
     /// Than `resume` (tach de `resume` giu nguyen phan dang ky token/kenh stage/ghi dong task o MOT
-    /// CHO, nhu `generate_video`/`run`): doc lai row -> validate -> slot -> lease DUNG tai khoan ->
-    /// `set_status(Processing)`/`set_started` -> mo phien + goto + probe
-    /// ([`Engine::resume_open`]) -> `poll_and_download` -> Ok (khong claim) hoac Err (qua
-    /// [`Engine::fail_dola_session`], cung khong claim/khong xoay).
+    /// CHO, nhu `generate_video`/`run`): validate `row` (da doc MOT LAN o `resume`, review M2) ->
+    /// slot -> lease DUNG tai khoan -> `set_status(Processing)`/`set_started` -> mo phien + goto +
+    /// probe ([`Engine::resume_open`]) -> `poll_and_download` -> Ok (khong claim) hoac Err (Timeout
+    /// -> `touch_last_used` TRUOC, review I1; roi qua [`Engine::fail_dola_session`], cung khong
+    /// claim/khong xoay).
     async fn resume_run(
         &self,
         task_id: &str,
+        row: &TaskRow,
         eh: &EngineHooks<'_>,
     ) -> Result<GenerateOutcome, EngineError> {
-        let row = self
-            .tasks
-            .get(task_id)
-            .await?
-            .ok_or_else(|| EngineError::TaskNotFound(task_id.to_string()))?;
-        let (conv_id, name, mode, duration, has_refs) = resume_fields(task_id, &row)?;
+        let (conv_id, name, mode, duration, has_refs) = resume_fields(task_id, row)?;
 
         // browser_pool.py:1105 slot — nhu `run` (R4 #1: uu tien token khi cho vo thoi han).
         let _slot = tokio::select! {
@@ -215,9 +261,17 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         eh.check("sau slot")?;
 
         // Dung DUNG tai khoan trong row de lay proxy — KHONG candidates_for/pick_account.
-        let acc_row = self.pool().account_row(&name).await?.ok_or_else(|| {
-            EngineError::PreferredUnavailable(format!("account '{name}' does not exist"))
-        })?;
+        // I3 (fix-round 1): tai khoan khong con trong accounts_meta -> KHONG the resume (khac
+        // `PreferredUnavailable`, ma trong crate nay nghia la "tam thoi", vd dang ban/rate-limited —
+        // xem `pool.rs::lease_wait`); dung `NotResumable` giong het thieu conversation_id/account.
+        let acc_row =
+            self.pool()
+                .account_row(&name)
+                .await?
+                .ok_or_else(|| EngineError::NotResumable {
+                    task_id: task_id.to_string(),
+                    why: format!("account '{name}' khong con trong accounts_meta"),
+                })?;
         // browser_pool.py:1133-1136 (REQ-004): tai khoan chi dinh dang ban -> CHO, khong xoay.
         let lease = tokio::select! {
             biased;
@@ -276,7 +330,14 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     mode_used: mode,
                 })
             }
-            Err(e) => Err(self.fail_dola_session(&name, mode, e, session).await),
+            Err(e) => {
+                // I1 (fix-round 1): browser_pool.py:1083-1087 ghi last_used_at tren Timeout (Dola
+                // van dang tao video du minh mat ket noi) — TRUOC khi xu ly loi, KHONG claim.
+                if matches!(e, DolaError::Timeout(_)) {
+                    self.pool().touch_last_used(&name, now_unix()).await?;
+                }
+                Err(self.fail_dola_session(&name, mode, e, session).await)
+            }
         }
     }
 
@@ -311,28 +372,64 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         eh.check("truoc goto")?;
         let url = format!("{DOLA_CHAT_URL}/{conv_id}");
         if let Err(e) = self.driver.goto(&session, &url).await {
-            self.close(name, session).await;
-            return Err(e.into());
-        }
-        let probe = match self.driver.probe_session(&session).await {
-            Ok(p) => p,
-            Err(e) => {
-                self.close(name, session).await;
-                return Err(e.into());
-            }
-        };
-        if probe.state != SessionState::LoggedIn {
-            let why = format!("khong dang nhap (probe state={})", probe.state.as_str());
-            let logged_out = DolaError::LoggedOut {
-                account: name.to_string(),
-                why,
-                revoked: false,
-            };
+            // M3 (fix-round 1): di qua CUNG bang dong/giu voi moi loi Dola khac (khong dong vo dieu
+            // kien nua) — vd loi mang tam thoi (khong phai proxy chet) thi GIU phien nhu Python
+            // `release(close=False)`.
             return Err(self
-                .fail_dola_session(name, mode, logged_out, session)
+                .fail_dola_session(name, mode, DolaError::Browser(e), session)
                 .await);
         }
-        Ok(session)
+
+        // C1 (fix-round 1): video_worker_ui.py:1815-1817 cho trang on dinh TRUOC khi doc dang nhap;
+        // roi doc lai co gioi han neu con `Unknown` thay vi ket luan ngay (xem doc [`PROBE_SETTLE`]).
+        probe_settle(eh, PROBE_SETTLE).await?;
+        let mut probe = match self.driver.probe_session(&session).await {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(self
+                    .fail_dola_session(name, mode, DolaError::Browser(e), session)
+                    .await);
+            }
+        };
+        let mut tries = 0u32;
+        while probe.state == SessionState::Unknown && tries < PROBE_RETRY_TRIES {
+            probe_settle(eh, PROBE_RETRY_DELAY).await?;
+            probe = match self.driver.probe_session(&session).await {
+                Ok(p) => p,
+                Err(e) => {
+                    return Err(self
+                        .fail_dola_session(name, mode, DolaError::Browser(e), session)
+                        .await);
+                }
+            };
+            tries += 1;
+        }
+        match probe.state {
+            SessionState::LoggedIn => Ok(session),
+            // lvc_core::classify_session: "Unknown" = trang CHUA TAI XONG, caller KHONG duoc ket
+            // luan da mat phien (day chinh la loi Critical C1 truoc khi sua — coi Unknown = logged
+            // out lam `mark_logged_out` oan tai khoan con dung tot). `poll_and_download` tu no se
+            // nem `LoggedOut` neu that su mat phien qua HTTP 401/403, nen o day cu tiep tuc poll.
+            SessionState::Unknown => {
+                warn!(
+                    account = name,
+                    tries = PROBE_RETRY_TRIES,
+                    "probe chua ket luan duoc dang nhap sau khi doc lai -> tiep tuc poll"
+                );
+                Ok(session)
+            }
+            SessionState::LoggedOut => {
+                let why = format!("khong dang nhap (probe state={})", probe.state.as_str());
+                let logged_out = DolaError::LoggedOut {
+                    account: name.to_string(),
+                    why,
+                    revoked: false,
+                };
+                Err(self
+                    .fail_dola_session(name, mode, logged_out, session)
+                    .await)
+            }
+        }
     }
 
     /// Loi Dola sau khi da co phien (probe khong dang nhap, hoac `poll_and_download` loi): phan loai
@@ -367,12 +464,13 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use lvc_browser::dola::NoopHooks;
-    use lvc_browser::{DolaError, FakeStep};
-    use lvc_core::{FailureCode, Mode, TaskStatus};
+    use lvc_browser::{DolaError, FakeSession, FakeStep};
+    use lvc_core::{FailureCode, Mode, SessionState, TaskStatus};
 
     use super::*;
     use crate::generate::tests::{
         Fx, StageHooks, artifact, assert_cancelled, assert_row_cancelled, drain, fx, poll, scene,
+        stages_of,
     };
 
     /// Chuyen mot task vua tao (`queued`) thanh "dang xu ly co `conversation_id`" — mo phong task bi
@@ -418,11 +516,22 @@ mod tests {
         assert_eq!(row.conversation_id.as_deref(), Some("999"));
         assert_eq!(f.used("a", Mode::Fast).await, 0, "resume KHONG claim");
         assert!(row.started_at.is_some());
+        assert_eq!(row.stage, "done");
+        // I1 (fix-round 1): nhanh Ok da luon `touch_last_used` — pin no o day (I1 tap trung vao
+        // nhanh Timeout, nhung nhanh thanh cong phai giu dung hanh vi cu nay).
+        assert!(f.account("a").await.last_used_at > 0.0);
+        // review M6: RAII go token khoi registry sau khi resume xong.
+        assert!(f.engine.cancels().is_empty());
 
+        // M6: chuoi stage DUNG THU TU (launching -> generating/downloading cua FakeDriver::poll ->
+        // done) va `TaskDone` la su kien CUOI (phat SAU khi DB da ghi, xem `Engine::resume`).
         let evs = drain(&mut rx);
+        assert_eq!(
+            stages_of(&evs),
+            vec!["launching", "generating", "downloading", "done"]
+        );
         assert!(
-            evs.iter()
-                .any(|e| matches!(e, EngineEvent::TaskDone { task_id, .. } if task_id == "t1")),
+            matches!(evs.last(), Some(EngineEvent::TaskDone { task_id, .. }) if task_id == "t1"),
             "{evs:?}"
         );
     }
@@ -433,6 +542,7 @@ mod tests {
     async fn resume_thieu_conversation_id_bao_not_resumable() {
         let f = fx(&["a"], vec![]).await;
         f.task("t1", &scene()).await;
+        let mut rx = f.engine.events().subscribe();
 
         let e = f.engine.resume("t1", &NoopHooks).await.unwrap_err();
         assert!(matches!(e, EngineError::NotResumable { .. }), "{e:?}");
@@ -442,6 +552,19 @@ mod tests {
         assert_eq!(row.status, TaskStatus::Failed);
         assert_eq!(row.failure_code, Some(FailureCode::NoConversation));
         assert!(f.calls().is_empty(), "khong duoc dung browser");
+        // I2 (fix-round 1): nhanh loi cung ghi finished_at (best-effort), nhu nhanh thanh cong.
+        assert!(row.finished_at.is_some());
+
+        // M6: TaskFailed voi ma NO_CONVERSATION (tai su dung, khong them ma Dola moi).
+        let evs = drain(&mut rx);
+        assert!(
+            matches!(
+                evs.last(),
+                Some(EngineEvent::TaskFailed { task_id, code, .. })
+                    if task_id == "t1" && code.as_deref() == Some("NO_CONVERSATION")
+            ),
+            "{evs:?}"
+        );
     }
 
     /// (3) `task_id` khong ton tai -> `TaskNotFound`, khong co dong nao de ghi nen khong panic.
@@ -524,6 +647,8 @@ mod tests {
             vec!["a".to_string()],
             "phien tra cache"
         );
+        // I2 (fix-round 1): huy cung la mot nhanh loi -> finished_at duoc ghi.
+        assert!(row.finished_at.is_some());
     }
 
     /// (6) `poll_and_download` -> `Timeout`: KHONG claim (khac `generate_video`, ruling BUG-003),
@@ -561,6 +686,120 @@ mod tests {
             f.engine.cache().names().await,
             vec!["a".to_string()],
             "phien giu (Keep, giong bang after_dola_error)"
+        );
+        // I1 (fix-round 1): browser_pool.py:1083-1087 — Timeout van ghi last_used_at (khong claim).
+        assert!(f.account("a").await.last_used_at > 0.0);
+        // I2 (fix-round 1): finished_at duoc ghi tren nhanh loi.
+        assert!(row.finished_at.is_some());
+    }
+
+    /// (7) I3 (fix-round 1): tai khoan trong row khong con trong `accounts_meta` (chua tung tao) ->
+    /// `NotResumable` (KHONG phai `PreferredUnavailable`, ma trong crate nay nghia la "tam thoi"),
+    /// row `Failed` + ma tai su dung `NO_CONVERSATION`, KHONG dung toi trinh duyet.
+    #[tokio::test]
+    async fn resume_account_khong_ton_tai_bao_not_resumable() {
+        let f = fx(&["a"], vec![]).await;
+        f.task("t1", &scene()).await;
+        make_processing(&f, "t1", "ghost", "1").await;
+
+        let e = f.engine.resume("t1", &NoopHooks).await.unwrap_err();
+        assert!(matches!(e, EngineError::NotResumable { .. }), "{e:?}");
+        assert_eq!(e.failure_code(), Some(FailureCode::NoConversation));
+        assert!(f.calls().is_empty(), "khong duoc dung browser");
+
+        let row = f.row("t1").await;
+        assert_eq!(row.status, TaskStatus::Failed);
+        assert_eq!(row.failure_code, Some(FailureCode::NoConversation));
+    }
+
+    /// C1 (fix-round 1, Critical): phien am san co trong cache voi `probe_state: LoggedOut` — resume
+    /// tai dung phien (KHONG `Launch`), `probe_session` bao logged-out -> danh dau + dong phien +
+    /// row `Failed` + `LOGGED_OUT`, KHONG claim.
+    #[tokio::test]
+    async fn resume_probe_logged_out_mark_va_dong_phien() {
+        let f = fx(&["a"], vec![]).await;
+        f.task("t1", &scene()).await;
+        make_processing(&f, "t1", "a", "555").await;
+        f.engine
+            .cache()
+            .put(
+                "a",
+                FakeSession {
+                    account: "a".into(),
+                    probe_state: SessionState::LoggedOut,
+                    seq: 0,
+                    connected: true,
+                },
+            )
+            .await;
+
+        let e = f.engine.resume("t1", &NoopHooks).await.unwrap_err();
+        assert!(
+            matches!(e, EngineError::Dola(DolaError::LoggedOut { .. })),
+            "{e:?}"
+        );
+        assert_eq!(e.failure_code(), Some(FailureCode::LoggedOut));
+        assert_eq!(
+            f.calls(),
+            vec![lvc_browser::FakeCall::Close],
+            "chi Close — tai dung phien tu cache, khong Launch"
+        );
+
+        let row = f.row("t1").await;
+        assert_eq!(row.status, TaskStatus::Failed);
+        assert_eq!(row.failure_code, Some(FailureCode::LoggedOut));
+        assert!(!f.account("a").await.login_ok, "phai mark_logged_out");
+        assert!(f.engine.cache().names().await.is_empty(), "phien phai dong");
+        assert_eq!(f.used("a", Mode::Fast).await, 0, "khong claim");
+    }
+
+    /// C1 (fix-round 1, Critical — day chinh la loi truoc khi sua): phien am san co trong cache voi
+    /// `probe_state: Unknown` ("trang chua tai xong", `lvc_core::classify_session`) — resume PHAI
+    /// tiep tuc poll (KHONG duoc `mark_logged_out`/dong phien oan mot tai khoan con dung tot).
+    #[tokio::test]
+    async fn resume_probe_unknown_van_poll() {
+        let f = fx(&["a"], vec![FakeStep::Poll(Ok(artifact("a", "556")))]).await;
+        f.task("t1", &scene()).await;
+        make_processing(&f, "t1", "a", "556").await;
+        f.engine
+            .cache()
+            .put(
+                "a",
+                FakeSession {
+                    account: "a".into(),
+                    probe_state: SessionState::Unknown,
+                    seq: 0,
+                    connected: true,
+                },
+            )
+            .await;
+
+        let out = f.engine.resume("t1", &NoopHooks).await.unwrap();
+        assert_eq!(out.account, "a");
+        assert_eq!(
+            f.calls(),
+            vec![poll("a", "556")],
+            "tai dung phien, van poll"
+        );
+
+        let row = f.row("t1").await;
+        assert_eq!(row.status, TaskStatus::Completed);
+        assert!(
+            f.account("a").await.login_ok,
+            "Unknown KHONG duoc mark_logged_out (day la loi C1 truoc khi sua)"
+        );
+    }
+
+    /// M5 (fix-round 1): pin JSON `camelCase` cua `RequeueReport` (quy uoc Task 5).
+    #[test]
+    fn requeue_report_serde_camel_case() {
+        let r = RequeueReport {
+            requeued: vec!["a1".to_string()],
+            resumable: vec!["b1".to_string(), "c1".to_string()],
+        };
+        assert_eq!(
+            serde_json::to_value(&r).unwrap(),
+            serde_json::json!({"requeued": ["a1"], "resumable": ["b1", "c1"]})
         );
     }
 }
