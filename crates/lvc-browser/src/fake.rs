@@ -27,11 +27,18 @@
 //! P3 Task 4 fix-round (Minor M2/M3, review task-4-review.md finding 3): chuoi stage tren PHAI khop
 //! `driver::SUBMIT_STAGES`/`POLL_STAGES` (danh sach dong dung chung voi `ChromiumDriver`) — truoc ban
 //! sua nay `submit()` bo qua `composer`/`refs` nen engine test pin sai chuoi so voi driver that.
+//!
+//! P3 Task 12a: [`FakeDriver::endless_ok`] — "che do gia lap" dev (LVC_FAKE_DRIVER=1, xem
+//! `lvc-app::bootstrap`) KHONG ton credit. Khac voi kich ban (`FakeDriver::new`), driver nay bat dau
+//! voi kich ban RONG va khong bao gio panic khi kich ban het — moi ham vong doi tra ve mac dinh
+//! "luon Ok" (xem doc ham `endless_ok`). Muc dich la de UI (Task 11) thu duoc TOAN BO luong
+//! submit -> poll -> tai video ma khong can Dola that.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use lvc_core::{BrowserKind, Cookie, Limits, Mode, SessionState};
@@ -50,7 +57,18 @@ use crate::error::BrowserError;
 /// phan biet voi UA that trong log/assert cua test.
 pub const FAKE_USER_AGENT: &str = "FakeUA/1";
 /// Nhip hoi `should_cancel()` cua [`FakeStep::PollUntilCancelled`].
-pub const POLL_UNTIL_CANCELLED_TICK: std::time::Duration = std::time::Duration::from_millis(10);
+pub const POLL_UNTIL_CANCELLED_TICK: Duration = Duration::from_millis(10);
+/// Task 12a: nhip hoi `should_cancel()` trong `poll_and_download` cua che do
+/// [`FakeDriver::endless_ok`] (khac hang tren — day la mo phong "vong poll that", khong phai
+/// "cho huy giua chung" cua `PollUntilCancelled`).
+pub const ENDLESS_POLL_TICK: Duration = Duration::from_millis(100);
+/// Task 12a: noi dung file placeholder [`FakeDriver::endless_ok`] ghi ra khi "tai video" xong —
+/// VAI BYTE, TUYET DOI KHONG PHAI VIDEO THAT (khong trinh phat nao doc duoc) — chi de UI co file
+/// ton tai tren dia de mo/hien thi trong luc thu luong khong ton credit.
+const ENDLESS_PLACEHOLDER_MP4: &[u8] = b"LVC_FAKE_DRIVER_PLACEHOLDER_KHONG_PHAI_VIDEO_THAT";
+/// Task 12a: `VideoArtifact::note` khi video den tu che do [`FakeDriver::endless_ok`] (khac
+/// `NOTE_RAW`/`NOTE_UNWATERMARKED`/`NOTE_LINK` cua vong poll that — day la video GIA).
+pub const NOTE_FAKE_DRIVER: &str = " (FakeDriver endless_ok, khong phai video that)";
 
 /// Mot buoc kich ban. Chi 3 loai — xem doc module ve ly do cac ham con lai khong can buoc rieng.
 #[derive(Debug)]
@@ -104,12 +122,26 @@ pub struct FakeSession {
     pub connected: bool,
 }
 
+/// Task 12a: trang thai rieng cua che do [`FakeDriver::endless_ok`] — xem doc ham do.
+struct EndlessOk {
+    /// Thoi gian `poll_and_download` "cho" (tick [`ENDLESS_POLL_TICK`], kiem `should_cancel()`
+    /// moi tick) truoc khi tra video gia.
+    poll_delay: Duration,
+    /// Dem tang dan de sinh `ConversationId` DUY NHAT (`"fake-<seq>"`) cho MOI lan `submit()`
+    /// khi kich ban rong.
+    next_conv_seq: AtomicU64,
+}
+
 /// Bo doi `BrowserDriver` dieu khien bang kich ban. Xem doc module.
 pub struct FakeDriver {
     script: Mutex<VecDeque<FakeStep>>,
     /// Moi loi goi trait, THEO THU TU. `pub` de test doc truc tiep (`driver.calls.lock().unwrap()`).
     pub calls: Mutex<Vec<FakeCall>>,
     next_seq: AtomicU64,
+    /// Task 12a: `Some` khi tao bang [`FakeDriver::endless_ok`] — het kich ban (`script` rong)
+    /// KHONG con panic ma tra ve mac dinh "luon Ok" (xem doc ham do). `None` (tao bang
+    /// [`FakeDriver::new`]) giu nguyen hanh vi cu: het kich ban la LOI TEST, panic ngay (doc module).
+    endless: Option<EndlessOk>,
 }
 
 impl FakeDriver {
@@ -120,6 +152,37 @@ impl FakeDriver {
             script: Mutex::new(steps.into()),
             calls: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
+            endless: None,
+        }
+    }
+
+    /// Task 12a (P3, dev khong ton credit): "che do gia lap" — `LVC_FAKE_DRIVER=1` qua cargo
+    /// feature `fake-driver` (`lvc-app::bootstrap::make_driver`) dung ham nay thay vi
+    /// `FakeDriver::new(vec![])`. Kich ban bat dau RONG; khi mot ham vong doi
+    /// (`launch`/`submit`/`poll_and_download`) can buoc ke tiep ma kich ban da het, KHONG panic —
+    /// tra ve mac dinh:
+    /// - `launch` -> phien moi (nhu `Launch(Ok(()))`).
+    /// - `submit` -> `Ok(ConversationId("fake-<seq>"))` (seq tang dan, DUY NHAT tren driver nay).
+    /// - `poll_and_download` -> cho `poll_delay` (tick [`ENDLESS_POLL_TICK`], kiem
+    ///   `should_cancel()` moi tick -> `DolaError::Cancelled` neu nguoi dung bam Dung), roi ghi
+    ///   file placeholder VAI BYTE (KHONG PHAI VIDEO THAT, xem [`ENDLESS_PLACEHOLDER_MP4`]) tai
+    ///   `<out_dir>/<account>_<conv>.mp4` va tra `Ok(VideoArtifact { .. })`.
+    /// - `probe_session`/`close`/`user_agent`/... giu nguyen hanh vi mac dinh san co (khong tieu
+    ///   thu kich ban — xem doc module).
+    ///
+    /// Neu can gia lap LOI (vd `LoggedOut`/`Credit`) o mot buoc cu the, dung [`FakeDriver::new`]
+    /// voi kich ban nhu binh thuong — che do nay chi danh cho "moi thu deu Ok" (thu luong UI
+    /// day du, khong ton credit).
+    #[must_use]
+    pub fn endless_ok(poll_delay: Duration) -> Self {
+        Self {
+            script: Mutex::new(VecDeque::new()),
+            calls: Mutex::new(Vec::new()),
+            next_seq: AtomicU64::new(0),
+            endless: Some(EndlessOk {
+                poll_delay,
+                next_conv_seq: AtomicU64::new(0),
+            }),
         }
     }
 
@@ -140,6 +203,57 @@ impl FakeDriver {
             .iter()
             .map(|s| format!("{s:?}"))
             .collect()
+    }
+
+    /// Phien moi voi `seq` tang dan tren driver nay — dung chung boi nhanh kich ban
+    /// (`Launch(Ok(()))`) va nhanh [`FakeDriver::endless_ok`] cua `launch()`.
+    fn next_session(&self, opts: &LaunchOpts) -> FakeSession {
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        FakeSession {
+            account: account_from_profile_dir(&opts.profile_dir),
+            probe_state: SessionState::LoggedIn,
+            seq,
+            connected: true,
+        }
+    }
+
+    /// Task 12a: nhanh "het kich ban NHUNG dang `endless_ok`" cua `poll_and_download` (xem doc
+    /// [`FakeDriver::endless_ok`]) — cho `poll_delay` (tick [`ENDLESS_POLL_TICK`], kiem
+    /// `should_cancel()` moi tick), roi ghi file placeholder va tra `VideoArtifact` gia.
+    async fn poll_endless_ok(
+        &self,
+        account: &str,
+        conv: &ConversationId,
+        out_dir: &Path,
+        endless: &EndlessOk,
+        hooks: &dyn PollHooks,
+    ) -> Result<VideoArtifact, DolaError> {
+        hooks.on_stage(STAGE_GENERATING);
+        let mut waited = Duration::ZERO;
+        while waited < endless.poll_delay {
+            if hooks.should_cancel() {
+                return Err(DolaError::Cancelled);
+            }
+            let tick = ENDLESS_POLL_TICK.min(endless.poll_delay.saturating_sub(waited));
+            tokio::time::sleep(tick).await;
+            waited += tick;
+        }
+        if hooks.should_cancel() {
+            return Err(DolaError::Cancelled);
+        }
+        std::fs::create_dir_all(out_dir).map_err(BrowserError::Io)?;
+        let local_path = out_dir.join(format!("{account}_{}.mp4", conv.0));
+        std::fs::write(&local_path, ENDLESS_PLACEHOLDER_MP4).map_err(BrowserError::Io)?;
+        hooks.on_stage(STAGE_DOWNLOADING);
+        Ok(VideoArtifact {
+            video_url: format!("fake://{}", conv.0),
+            local_path,
+            conversation_id: conv.clone(),
+            account: account.to_string(),
+            watermarked: false,
+            bytes: ENDLESS_PLACEHOLDER_MP4.len() as u64,
+            note: NOTE_FAKE_DRIVER,
+        })
     }
 }
 
@@ -162,21 +276,17 @@ impl BrowserDriver for FakeDriver {
             browser: opts.browser,
         });
         match self.pop() {
-            Some(FakeStep::Launch(res)) => res.map(|()| {
-                let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
-                FakeSession {
-                    account: account_from_profile_dir(&opts.profile_dir),
-                    probe_state: SessionState::LoggedIn,
-                    seq,
-                    connected: true,
-                }
-            }),
+            Some(FakeStep::Launch(res)) => res.map(|()| self.next_session(opts)),
             Some(other) => panic!(
                 "FakeDriver::launch: buoc kich ban ke tiep la {other:?}, khong phai Launch(..) \
                  — kich ban con lai: {:?}",
                 self.remaining_debug()
             ),
-            None => panic!("FakeDriver::launch: kich ban da het truoc khi goi launch()"),
+            // Task 12a: che do endless_ok — kich ban rong khong con la loi, tra phien moi.
+            None => match &self.endless {
+                Some(_) => Ok(self.next_session(opts)),
+                None => panic!("FakeDriver::launch: kich ban da het truoc khi goi launch()"),
+            },
         }
     }
 
@@ -233,7 +343,14 @@ impl BrowserDriver for FakeDriver {
                  — kich ban con lai: {:?}",
                 self.remaining_debug()
             ),
-            None => panic!("FakeDriver::submit: kich ban da het truoc khi goi submit()"),
+            // Task 12a: che do endless_ok — kich ban rong khong con la loi, sinh id DUY NHAT.
+            None => match &self.endless {
+                Some(endless) => {
+                    let seq = endless.next_conv_seq.fetch_add(1, Ordering::Relaxed);
+                    Ok(ConversationId(format!("fake-{seq}")))
+                }
+                None => panic!("FakeDriver::submit: kich ban da het truoc khi goi submit()"),
+            },
         };
         // P3 Task 4: cung diem kiem/stage nhu `dola::submit` (R4: truoc page, truoc prompt).
         if hooks.should_cancel() {
@@ -299,9 +416,17 @@ impl BrowserDriver for FakeDriver {
                  Poll(..) — kich ban con lai: {:?}",
                 self.remaining_debug()
             ),
-            None => panic!(
-                "FakeDriver::poll_and_download: kich ban da het truoc khi goi poll_and_download()"
-            ),
+            // Task 12a: che do endless_ok — kich ban rong khong con la loi, cho roi tra video gia.
+            None => match &self.endless {
+                Some(endless) => {
+                    self.poll_endless_ok(account, conv, out_dir, endless, hooks)
+                        .await
+                }
+                None => panic!(
+                    "FakeDriver::poll_and_download: kich ban da het truoc khi goi \
+                     poll_and_download()"
+                ),
+            },
         }
     }
 
@@ -841,6 +966,144 @@ mod tests {
                 "stage '{stage}' khong nam trong SUBMIT_STAGES/POLL_STAGES: {seen:?}"
             );
         }
+    }
+
+    /// Task 12a: `endless_ok` — kich ban RONG, hai job submit/poll LIEN TIEP tren CUNG driver deu
+    /// thanh cong voi `ConversationId` KHAC NHAU (dev thu 2 video lien tiep khong bi trung
+    /// id/file); moi job ghi file placeholder rieng, `note` bao ro day la `FakeDriver`.
+    #[tokio::test]
+    async fn endless_ok_hai_job_lien_tiep_id_khac_nhau() {
+        let dir = tempfile::tempdir().unwrap();
+        let driver = FakeDriver::endless_ok(Duration::from_millis(5));
+        let limits = Limits::default();
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+
+        let hooks1 = RecHooks::default();
+        let conv1 = driver
+            .submit(&s, &req("acc1"), &limits, &hooks1)
+            .await
+            .unwrap();
+        let art1 = driver
+            .poll_and_download(&s, "acc1", &conv1, dir.path(), &popts(), &limits, &hooks1)
+            .await
+            .unwrap();
+        assert_eq!(art1.conversation_id, conv1);
+        assert!(
+            art1.local_path.is_file(),
+            "phai ghi file placeholder: {:?}",
+            art1.local_path
+        );
+        assert_eq!(art1.note, NOTE_FAKE_DRIVER);
+        assert!(!art1.watermarked);
+
+        let hooks2 = RecHooks::default();
+        let conv2 = driver
+            .submit(&s, &req("acc1"), &limits, &hooks2)
+            .await
+            .unwrap();
+        let art2 = driver
+            .poll_and_download(&s, "acc1", &conv2, dir.path(), &popts(), &limits, &hooks2)
+            .await
+            .unwrap();
+
+        assert_ne!(
+            conv1, conv2,
+            "hai lan submit lien tiep phai sinh id KHAC nhau"
+        );
+        assert_ne!(
+            art1.local_path, art2.local_path,
+            "moi job phai co file rieng"
+        );
+    }
+
+    /// Task 12a: `endless_ok` — huy (`should_cancel()` true) GIUA vong cho poll phai tra
+    /// `Cancelled` NHANH (vai tick [`ENDLESS_POLL_TICK`]), KHONG cho het `poll_delay`; KHONG ghi
+    /// file placeholder khi bi huy giua chung.
+    #[tokio::test]
+    async fn endless_ok_huy_giua_poll_tra_cancelled_nhanh() {
+        let dir = tempfile::tempdir().unwrap();
+        let driver = FakeDriver::endless_ok(Duration::from_secs(5));
+        let limits = Limits::default();
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let submit_hooks = RecHooks::default();
+        let conv = driver
+            .submit(&s, &req("acc1"), &limits, &submit_hooks)
+            .await
+            .unwrap();
+
+        let hooks = Arc::new(RecHooks::default());
+        let h2 = Arc::clone(&hooks);
+        let flip = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            h2.cancel.store(true, Ordering::SeqCst);
+        });
+        let t0 = std::time::Instant::now();
+        let err = driver
+            .poll_and_download(
+                &s,
+                "acc1",
+                &conv,
+                dir.path(),
+                &popts(),
+                &limits,
+                hooks.as_ref(),
+            )
+            .await
+            .unwrap_err();
+        flip.await.unwrap();
+        assert!(matches!(err, DolaError::Cancelled), "{err:?}");
+        assert!(
+            t0.elapsed() < Duration::from_secs(1),
+            "phai huy NHANH (~150ms), khong cho het poll_delay (5s): {:?}",
+            t0.elapsed()
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            0,
+            "khong duoc ghi file khi bi huy giua chung"
+        );
+    }
+
+    /// Task 12a (tuong tu `stage_phat_ra_nam_trong_danh_sach_dong`): stage che do `endless_ok`
+    /// phat ra (submit CO anh tham chieu + poll) deu nam trong `driver::SUBMIT_STAGES`/
+    /// `POLL_STAGES` — che do gia lap KHONG duoc "troi" ten stage rieng so voi driver that/kich
+    /// ban, va phai DUNG THU TU nhu kich ban that (`submit_va_poll_phat_stage_dung_thu_tu`).
+    #[tokio::test]
+    async fn endless_ok_stage_phat_ra_nam_trong_danh_sach_dong() {
+        let dir = tempfile::tempdir().unwrap();
+        let driver = FakeDriver::endless_ok(Duration::from_millis(5));
+        let limits = Limits::default();
+        let hooks = RecHooks::default();
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let mut r = req("acc1");
+        r.reference_images.push(PathBuf::from("ref.png")); // kich hoat stage `refs`
+        let conv = driver.submit(&s, &r, &limits, &hooks).await.unwrap();
+        driver
+            .poll_and_download(&s, "acc1", &conv, dir.path(), &popts(), &limits, &hooks)
+            .await
+            .unwrap();
+        let seen = hooks.stages();
+        for stage in &seen {
+            assert!(
+                crate::driver::SUBMIT_STAGES.contains(&stage.as_str())
+                    || crate::driver::POLL_STAGES.contains(&stage.as_str()),
+                "stage '{stage}' khong nam trong SUBMIT_STAGES/POLL_STAGES: {seen:?}"
+            );
+        }
+        assert_eq!(
+            seen,
+            vec![
+                "page",
+                "mode",
+                "composer",
+                "refs",
+                "prompt",
+                "sending",
+                "generating",
+                "generating",
+                "downloading"
+            ]
+        );
     }
 
     /// Kiem tra an toan doi tuong (object safety) cua `BrowserDriver` — cung la dieu kien de

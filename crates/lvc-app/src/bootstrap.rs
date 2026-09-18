@@ -1,13 +1,21 @@
 //! Khoi dong tang duoi TRUOC khi Tauri quan ly state (P3 Task 8). [`build_engine`] la ham THUAN
 //! async, generic tren `D: BrowserDriver` — test duoc bang `lvc_browser::FakeDriver` + thu muc tam
 //! (khong can Chrome that, khong can runtime Tauri). [`run_bootstrap`] la lop mong goi no voi
-//! `ChromiumDriver` that + `AppHandle`, roi `app.manage(AppState)` — khong test duoc o day.
+//! [`AppDriver`] that (kieu cfg-switch theo feature `fake-driver`, xem `state.rs`) + `AppHandle`,
+//! roi `app.manage(AppState)` — khong test duoc o day.
+//!
+//! Task 12a (P3, dev khong ton credit): [`make_driver`] khoi tao [`AppDriver`] — ban thuong
+//! (`ChromiumDriver`, TON CREDIT that) hoac, khi crate nay build voi
+//! `cargo tauri dev --features fake-driver`, `lvc_browser::fake::FakeDriver::endless_ok` (kich ban
+//! "moi submit Ok, poll Ok sau [`FAKE_DRIVER_POLL_DELAY`]"). `run_bootstrap` log mot dong
+//! `tracing::warn!` THAT to khi feature bat, de KHONG ai nham tuong dang goi Dola that.
 
 use std::path::Path;
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use lvc_browser::BrowserDriver;
+#[cfg(not(feature = "fake-driver"))]
 use lvc_browser::chromium::ChromiumDriver;
 use lvc_core::{AppSettings, Limits};
 use lvc_engine::{Engine, EngineConfig, EngineError, LimiterHandle, RequeueReport, now_unix};
@@ -17,7 +25,26 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 use crate::paths::{db_path, downloads_dir, logs_dir};
-use crate::state::AppState;
+use crate::state::{AppDriver, AppState};
+
+/// Task 12a: `poll_and_download` cua che do gia lap (feature `fake-driver`) "cho" chung nay
+/// truoc khi tra video gia — khop kich ban ruling ("poll Ok sau 3 s"). Ban that (`ChromiumDriver`)
+/// khong dung hang nay.
+#[cfg(feature = "fake-driver")]
+const FAKE_DRIVER_POLL_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Task 12a: khoi tao [`AppDriver`] that su — cfg-switch theo feature `fake-driver` cua crate
+/// nay (bien dich, KHONG phai co/tat luc chay). Xem doc dau module.
+#[cfg(feature = "fake-driver")]
+fn make_driver() -> AppDriver {
+    lvc_browser::fake::FakeDriver::endless_ok(FAKE_DRIVER_POLL_DELAY)
+}
+
+/// Xem doc ban `#[cfg(feature = "fake-driver")]` o tren — day la nhanh mac dinh (ban that).
+#[cfg(not(feature = "fake-driver"))]
+fn make_driver() -> AppDriver {
+    ChromiumDriver
+}
 
 /// Loi khoi dong tang duoi (`build_engine`).
 #[derive(Debug, thiserror::Error)]
@@ -96,14 +123,19 @@ pub enum RunBootstrapError {
 }
 
 /// Lop mong (khong test duoc o day — can `AppHandle` that): goi [`build_engine`] voi
-/// `ChromiumDriver` that va thu muc du lieu Tauri, log canh bao cai dat/ket qua requeue, roi
-/// `app.manage(AppState { .. })`. Goi tu `lib.rs` trong `.setup()`.
+/// [`AppDriver`] tu [`make_driver`] (that hoac gia lap tuy feature `fake-driver`) va thu muc du
+/// lieu Tauri, log canh bao cai dat/ket qua requeue, roi `app.manage(AppState { .. })`. Goi tu
+/// `lib.rs` trong `.setup()`.
 ///
 /// # Errors
 /// Xem [`RunBootstrapError`].
 pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapError> {
     let base = crate::paths::app_data_dir(app)?;
-    let driver = Arc::new(ChromiumDriver);
+    // Task 12a: canh bao THAT TO ngay dau log khi dang o che do gia lap — de khong ai nham
+    // tuong ung dung dang goi Dola that (dev, khong ton credit).
+    #[cfg(feature = "fake-driver")]
+    tracing::warn!("CHE DO GIA LAP — FakeDriver, khong goi Dola");
+    let driver = Arc::new(make_driver());
     let Bootstrapped {
         engine,
         handle,

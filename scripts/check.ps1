@@ -20,6 +20,9 @@ function Invoke-Gate([string]$Label, [scriptblock]$Cmd) {
 
 Invoke-Gate "fmt"    { cargo fmt --all -- --check }
 Invoke-Gate "clippy" { cargo clippy --workspace --all-targets -- -D warnings }
+# Task 12a: che do dev "FakeDriver" (khong ton credit) la mot cargo feature rieng cua lvc-app —
+# clippy mac dinh o tren KHONG bien dich no, nen kiem rieng de feature khong bi moc (rot).
+Invoke-Gate "clippy (fake-driver)" { cargo clippy -p lvc-app --features fake-driver --all-targets -- -D warnings }
 Invoke-Gate "test"   { cargo test --workspace }
 
 Write-Host "== rang buoc: lvc-core phai thuan ==" -ForegroundColor Cyan

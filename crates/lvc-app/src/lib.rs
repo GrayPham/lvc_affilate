@@ -4,6 +4,16 @@
 //! (`events.rs`), chinh sach log (`log.rs`). Task 9: lenh workflow/run/task/cai dat (`commands/`)
 //! dang ky vao `invoke_handler` duoi day; Task 10 them lenh tai khoan (xem `commands/mod.rs`); Task
 //! 11 la giao dien React trong `app/` (build ra `app/dist`, xem `build.rs`).
+//!
+//! **Task 12a (P3) — che do dev khong ton credit:** `cargo tauri dev --features fake-driver`
+//! (chay tu `crates/lvc-app`) doi driver trinh duyet sang `lvc_browser::fake::FakeDriver::endless_ok`
+//! (xem `state::AppDriver` / `bootstrap::make_driver`) — moi submit/poll deu Ok, video "tai xong"
+//! sau vai giay (file placeholder VAI BYTE, KHONG PHAI VIDEO THAT), KHONG bao gio goi Dola. Log se
+//! co dong `tracing::warn!` "CHE DO GIA LAP" ngay dau `logs/app.log` de nhan biet. Can it nhat MOT
+//! tai khoan de engine chon (`FakeDriver` khong tu bia tai khoan) — tao bang tab Tai khoan (import
+//! cookie bat ky, vi `FakeDriver::probe_session` luon tra `LoggedIn`) hoac thu cong
+//! `mkdir accounts/<ten>` + mot dong trong bang `accounts`. Ban release KHONG bao gio bat feature
+//! nay (`fake-driver` tat mac dinh trong `Cargo.toml`).
 
 mod bootstrap;
 mod commands;
