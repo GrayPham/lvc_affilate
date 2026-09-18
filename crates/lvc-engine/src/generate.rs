@@ -139,12 +139,17 @@ pub struct GenerateOutcome {
 /// Bo dieu phoi (brief Task 17). Dung chung qua `Arc` giua cac task; moi `generate_video` la mot
 /// job doc lap (cung `&self`).
 pub struct Engine<D: BrowserDriver + 'static> {
-    driver: Arc<D>,
+    // pub(crate): Task 6 (P3) `resume.rs` can goi thang `driver.goto`/`probe_session` — hai ham
+    // resume dung ma `generate_video` khong dung toi (khong nam trong `open_session`/`attempt`).
+    pub(crate) driver: Arc<D>,
     pool: Arc<AccountPool>,
     limiter: Arc<DynamicLimiter>,
     cache: Arc<SessionCache<D::Session>>,
-    tasks: TaskRepo,
-    limits: Limits,
+    // pub(crate): Task 6 (P3) `resume.rs` doc/ghi dong task truc tiep (get/set_status/set_started/
+    // set_result/set_finished) — resume khong di qua `run`/`attempt` cua generate_video.
+    pub(crate) tasks: TaskRepo,
+    // pub(crate): Task 6 (P3) `resume.rs` can tinh `video_timeout(mode, duration, has_refs, &limits)`.
+    pub(crate) limits: Limits,
     // pub(crate): Task 5 (P3) can doc tu `crate::settings::Engine::apply_settings` (module khac,
     // impl block rieng de generate.rs khong phinh to — xem settings.rs).
     pub(crate) cfg: EngineConfig,
@@ -162,7 +167,10 @@ pub struct Engine<D: BrowserDriver + 'static> {
 /// [`SubmitHooks`]: stage → `EngineEvent::TaskStage` (+ cot `tasks.stage` qua kenh `stage_tx`, ghi
 /// tuan tu boi task nen — hook la ham dong bo) + chuyen tiep cho hooks cua caller; `should_cancel`
 /// = token da huy HOAC hooks cua caller bao huy.
-struct EngineHooks<'a> {
+// pub(crate): Task 6 (P3) `resume.rs` dung LAI struct nay nguyen ven (dang ky token + kenh stage +
+// diem kiem huy) thay vi chep logic — xay dung qua `EngineHooks::new` giong het cach `generate_video`
+// lam (xem `Engine::generate_video`), roi goi `stage`/`check`/`cancel_token` nhu o day.
+pub(crate) struct EngineHooks<'a> {
     task_id: &'a str,
     token: CancellationToken,
     events: &'a EngineEvents,
@@ -173,7 +181,32 @@ struct EngineHooks<'a> {
     stage_tx: mpsc::UnboundedSender<String>,
 }
 
-impl EngineHooks<'_> {
+impl<'a> EngineHooks<'a> {
+    /// P3 Task 6: constructor `pub(crate)` de `resume.rs` dung lai DUNG cach `generate_video` xay
+    /// dung hooks (xem `Engine::generate_video`) — khong lo ra tung truong (con lai private).
+    pub(crate) fn new(
+        task_id: &'a str,
+        token: CancellationToken,
+        events: &'a EngineEvents,
+        inner: &'a dyn PollHooks,
+        stage_tx: mpsc::UnboundedSender<String>,
+    ) -> Self {
+        Self {
+            task_id,
+            token,
+            events,
+            started: Instant::now(),
+            inner,
+            stage_tx,
+        }
+    }
+
+    /// P3 Task 6: `resume.rs` can token de tu viet `tokio::select!` bam Dung uu tien khi cho slot/
+    /// lease (giong `run`/`run_mode`), khong the di qua `check` (chi kiem, khong `.await` duoc).
+    pub(crate) fn cancel_token(&self) -> &CancellationToken {
+        &self.token
+    }
+
     fn elapsed_ms(&self) -> u64 {
         u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
@@ -185,7 +218,7 @@ impl EngineHooks<'_> {
     /// HANG (mpsc khong bounded, `stage_writer` ghi `TaskRepo::set_stage` tuan tu o task nen rieng,
     /// KHONG `await` o day duoc vi ham nay dong bo). Nghia la ke nhan su kien `TaskStage` co the doc
     /// lai dong `tasks` ngay sau do va con thay cot `stage` CU — xem doc [`EngineEvent::TaskStage`].
-    fn stage(&self, stage: &str, detail: Option<&str>) {
+    pub(crate) fn stage(&self, stage: &str, detail: Option<&str>) {
         self.events.emit(EngineEvent::TaskStage {
             task_id: self.task_id.to_string(),
             stage: stage.to_string(),
@@ -202,7 +235,7 @@ impl EngineHooks<'_> {
     }
 
     /// Diem kiem huy cua engine: `Err(Dola(Cancelled))` khi da huy (`at` chi de log).
-    fn check(&self, at: &str) -> Result<(), EngineError> {
+    pub(crate) fn check(&self, at: &str) -> Result<(), EngineError> {
         if self.cancelled() {
             info!(task_id = self.task_id, at, "nguoi dung huy");
             return Err(EngineError::Dola(DolaError::Cancelled));
@@ -244,15 +277,18 @@ enum Attempt {
     Rotate(Option<EngineError>),
 }
 
-/// Ket qua mo phien cho mot tai khoan ([`Engine::open_session`]).
-enum Opened<D: BrowserDriver> {
+/// Ket qua mo phien cho mot tai khoan ([`Engine::open_session`]). `pub(crate)`: Task 6 `resume.rs`
+/// dung lai `open_session` nguyen ven (mo/tai dung phien + phan loai loi launch) — `Rotate` o do
+/// duoc doc nhu loi CUOI CUNG (resume khong co tai khoan ke tiep de xoay sang).
+pub(crate) enum Opened<D: BrowserDriver> {
     Session(D::Session),
     /// Nhu [`Attempt::Rotate`].
     Rotate(Option<EngineError>),
 }
 
-/// `s.chars().take(max)` — cat theo ky tu (Python cat str theo code point).
-fn clip(s: &str, max: usize) -> String {
+/// `s.chars().take(max)` — cat theo ky tu (Python cat str theo code point). `pub(crate)`: Task 6
+/// `resume.rs` dung lai (cung can cat `error[:500]` truoc khi ghi cot `tasks.error`).
+pub(crate) fn clip(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
 }
 
@@ -697,7 +733,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
 
     /// `warm_browser_manager.acquire` (`:190-227`) + `proxy_precheck` (`:1146-1149`): phien am
     /// hoac mo Chrome moi cho `row`. `Err` = loi khong xoay; `Ok(Rotate)` = thu tai khoan ke tiep.
-    async fn open_session(
+    ///
+    /// `pub(crate)`: Task 6 `resume.rs` dung lai HAM NAY nguyen ven (khong chep logic mo/tai dung
+    /// phien) — resume chi co MOT tai khoan (khong `candidates_for`) nen doc `Opened::Rotate(_)` nhu
+    /// loi CUOI CUNG thay vi "thu tai khoan ke tiep".
+    pub(crate) async fn open_session(
         &self,
         row: &AccountRow,
         lease: &Lease,
@@ -887,6 +927,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// | `Timeout` `:1230-1237` | `claim` (Dola van chay, khong gui lai) | giu | loi |
     /// | `Cancelled` (P3 R4, `:614-616`) | — (KHONG claim, KHONG danh dau) | giu (tra cache) | loi (khong xoay, khong doi mode) |
     /// | khac (`:1240-1256` raise) | — | giu neu con ket noi | loi |
+    ///
+    /// Phan loai (danh dau `AccountPool` + dong/giu phien) tach sang [`Engine::mark_dola_error`] —
+    /// Task 6 (P3) `resume.rs` dung LAI ham do (resume cung gap loi Dola sau poll nhung KHONG BAO
+    /// GIO claim/xoay, kha ca khi Timeout — khac o day). O day CHI con: goi phan loai, dong/giu
+    /// phien theo ket qua, roi quyet dinh `Attempt::Rotate` (tiep tuc vong `run_mode`) hay `Err`
+    /// (dung lai) + rieng `claim` cho Timeout (HANH VI RIENG cua `generate_video`).
     async fn after_dola_error(
         &self,
         name: &str,
@@ -895,68 +941,34 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         session: D::Session,
     ) -> Result<Attempt, EngineError> {
         let now = now_unix();
-        let reason = e.to_string();
+        match self.mark_dola_error(name, mode, &e, now).await? {
+            SessionAction::Close => self.close(name, session).await,
+            SessionAction::Keep => self.stash(name, session).await,
+        }
         match &e {
-            DolaError::LoggedOut { revoked, .. } => {
-                warn!(account = name, revoked, error = %reason, "logged out, rotating");
-                self.pool
-                    .mark_logged_out(name, &reason, *revoked, now)
-                    .await?;
-                self.close(name, session).await;
-                Ok(Attempt::Rotate(Some(e.into())))
+            // Da co conversation_id → Dola van tao; tru luot de khong gui lai (mat 2 credit). CHI
+            // generate_video lam vay — resume KHONG claim (ruling BUG-003, xem `resume::resume`).
+            DolaError::Timeout(_) => {
+                warn!(account = name, error = %e, "timeout sau khi da gui -> van tru luot");
+                self.pool.claim(name, mode, now).await?;
+                Err(e.into())
             }
-            DolaError::Credit(_) => {
-                warn!(account = name, error = %reason, "insufficient points, skipping");
-                self.pool.mark_quota_blocked(name, &reason, now).await?;
-                self.stash(name, session).await;
-                Ok(Attempt::Rotate(Some(e.into())))
-            }
-            DolaError::AccountLimited(_) => {
-                warn!(account = name, error = %reason, "reached daily limit, rotating");
-                self.pool.mark_daily_limit(name, mode, &reason, now).await?;
-                self.close(name, session).await;
-                Ok(Attempt::Rotate(Some(e.into())))
-            }
-            DolaError::RiskControl(_) => {
-                warn!(account = name, error = %reason, "risk control (30m cooldown), rotating");
-                self.pool
-                    .mark_cooldown(name, COOLDOWN_RISK_CONTROL, now)
-                    .await?;
-                self.close(name, session).await;
-                Ok(Attempt::Rotate(Some(e.into())))
-            }
-            DolaError::Browser(BrowserError::ProfileBusy(_)) => {
-                warn!(account = name, error = %reason, "profile busy, cooldown, rotating");
-                self.pool
-                    .mark_cooldown(name, COOLDOWN_PROFILE_BUSY, now)
-                    .await?;
-                self.close(name, session).await;
-                Ok(Attempt::Rotate(Some(e.into())))
+            DolaError::LoggedOut { .. }
+            | DolaError::Credit(_)
+            | DolaError::AccountLimited(_)
+            | DolaError::RiskControl(_)
+            | DolaError::Browser(BrowserError::ProfileBusy(_)) => {
+                Ok(Attempt::Rotate(Some(EngineError::from_dola(name, e))))
             }
             DolaError::Browser(b) if b.is_proxy_down() => {
-                warn!(account = name, error = %reason, "proxy chet -> xoay");
-                self.close(name, session).await;
-                Ok(Attempt::Rotate(Some(EngineError::ProxyDown {
-                    account: name.to_string(),
-                    why: reason,
-                })))
+                Ok(Attempt::Rotate(Some(EngineError::from_dola(name, e))))
             }
-            DolaError::Timeout(_) => {
-                // Da co conversation_id → Dola van tao; tru luot de khong gui lai (mat 2 credit).
-                warn!(account = name, error = %reason, "timeout sau khi da gui -> van tru luot");
-                self.pool.claim(name, mode, now).await?;
-                self.stash(name, session).await;
-                Err(e.into())
-            }
-            _ => {
-                self.stash(name, session).await;
-                Err(e.into())
-            }
+            _ => Err(e.into()),
         }
     }
 
     /// Tra phien ve cache neu con ket noi, khong thi dong (`release(close=False)`).
-    async fn stash(&self, name: &str, session: D::Session) {
+    pub(crate) async fn stash(&self, name: &str, session: D::Session) {
         if self.driver.is_connected(&session) {
             if let Some(old) = self.cache.put(name, session).await {
                 warn!(
@@ -971,17 +983,88 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     }
 
     /// `close_session` best-effort (loi chi `warn`).
-    async fn close(&self, name: &str, session: D::Session) {
+    pub(crate) async fn close(&self, name: &str, session: D::Session) {
         if let Err(e) = self.driver.close(session).await {
             warn!(account = name, error = %e, "dong trinh duyet loi (bo qua)");
         }
     }
+
+    /// P3 Task 6: phan loai MOT `DolaError` sau khi da co `conversation_id` (submit/poll da thanh
+    /// cong mot lan) — danh dau `AccountPool` (`mark_logged_out`/`mark_quota_blocked`/`mark_daily_
+    /// limit`/`mark_cooldown`) + tra ve phien nen dong hay giu (`video_worker_ui.py:2507-2511`).
+    /// KHONG dung luot (`claim`) o day — do la hanh vi RIENG cua tung noi goi ([`Engine::
+    /// after_dola_error`] claim khi Timeout vi Dola van dang tao video; `resume::resume` KHONG BAO
+    /// GIO claim, ruling BUG-003 "resume khong tang usage").
+    ///
+    /// # Errors
+    /// `Store` khi ghi DB loi.
+    pub(crate) async fn mark_dola_error(
+        &self,
+        name: &str,
+        mode: Mode,
+        e: &DolaError,
+        now: f64,
+    ) -> Result<SessionAction, EngineError> {
+        let reason = e.to_string();
+        match e {
+            DolaError::LoggedOut { revoked, .. } => {
+                warn!(account = name, revoked, error = %reason, "logged out");
+                self.pool
+                    .mark_logged_out(name, &reason, *revoked, now)
+                    .await?;
+                Ok(SessionAction::Close)
+            }
+            DolaError::Credit(_) => {
+                warn!(account = name, error = %reason, "insufficient points");
+                self.pool.mark_quota_blocked(name, &reason, now).await?;
+                Ok(SessionAction::Keep)
+            }
+            DolaError::AccountLimited(_) => {
+                warn!(account = name, error = %reason, "reached daily limit");
+                self.pool.mark_daily_limit(name, mode, &reason, now).await?;
+                Ok(SessionAction::Close)
+            }
+            DolaError::RiskControl(_) => {
+                warn!(account = name, error = %reason, "risk control (30m cooldown)");
+                self.pool
+                    .mark_cooldown(name, COOLDOWN_RISK_CONTROL, now)
+                    .await?;
+                Ok(SessionAction::Close)
+            }
+            DolaError::Browser(BrowserError::ProfileBusy(_)) => {
+                warn!(account = name, error = %reason, "profile busy, cooldown");
+                self.pool
+                    .mark_cooldown(name, COOLDOWN_PROFILE_BUSY, now)
+                    .await?;
+                Ok(SessionAction::Close)
+            }
+            DolaError::Browser(b) if b.is_proxy_down() => {
+                warn!(account = name, error = %reason, "proxy chet");
+                Ok(SessionAction::Close)
+            }
+            // Timeout + con lai (NoConversation/AgentNoVideo/Cancelled/...): khong danh dau tai
+            // khoan, giu phien (con dung duoc — chi CDP/timeout, khong phai loi tai khoan).
+            _ => Ok(SessionAction::Keep),
+        }
+    }
+}
+
+/// Ket qua [`Engine::mark_dola_error`]: phien am nen dong hay giu lai (tra cache).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionAction {
+    Close,
+    Keep,
 }
 
 /// P3 Task 4: task nen ghi cot `tasks.stage` theo thu tu nhan (Python `task_stage.set_stage` chi
 /// giu trong bo nho; P3 luu DB de UI mo lai van thay buoc cuoi). Loi ghi chi `warn` (khong anh
-/// huong luong tao video).
-async fn stage_writer(tasks: TaskRepo, task_id: String, mut rx: mpsc::UnboundedReceiver<String>) {
+/// huong luong tao video). `pub(crate)`: Task 6 `resume.rs` dung lai (cung co kenh `stage_tx` qua
+/// [`EngineHooks::new`]).
+pub(crate) async fn stage_writer(
+    tasks: TaskRepo,
+    task_id: String,
+    mut rx: mpsc::UnboundedReceiver<String>,
+) {
     while let Some(stage) = rx.recv().await {
         if let Err(e) = tasks.set_stage(&task_id, &stage).await {
             warn!(task_id, stage, error = %e, "khong ghi duoc cot stage");
@@ -998,7 +1081,9 @@ impl<D: BrowserDriver + 'static> Drop for Engine<D> {
 }
 
 #[cfg(test)]
-mod tests {
+// pub(crate): Task 6 (P3) `resume.rs` dung lai `Fx`/`fx`/`fx_with`/... (khong dung lai SQLite +
+// FakeDriver tu dau) — xem tung `pub(crate)` duoi day.
+pub(crate) mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1017,40 +1102,40 @@ mod tests {
     use crate::events::{EngineEvent, next_event};
     use crate::pool::{COOLDOWN_PROFILE_BUSY, COOLDOWN_RISK_CONTROL};
 
-    struct Fx {
-        dir: tempfile::TempDir,
-        driver: Arc<FakeDriver>,
-        engine: Engine<FakeDriver>,
-        tasks: TaskRepo,
-        accounts: AccountRepo,
+    pub(crate) struct Fx {
+        pub(crate) dir: tempfile::TempDir,
+        pub(crate) driver: Arc<FakeDriver>,
+        pub(crate) engine: Engine<FakeDriver>,
+        pub(crate) tasks: TaskRepo,
+        pub(crate) accounts: AccountRepo,
     }
 
     impl Fx {
-        fn accounts_dir(&self) -> PathBuf {
+        pub(crate) fn accounts_dir(&self) -> PathBuf {
             self.dir.path().join("accounts")
         }
-        fn calls(&self) -> Vec<FakeCall> {
+        pub(crate) fn calls(&self) -> Vec<FakeCall> {
             self.driver.calls.lock().unwrap().clone()
         }
-        fn launch(&self, name: &str) -> FakeCall {
+        pub(crate) fn launch(&self, name: &str) -> FakeCall {
             FakeCall::Launch {
                 profile_dir: self.accounts_dir().join(name),
                 browser: BrowserKind::Chromium,
             }
         }
-        async fn task(&self, id: &str, scene: &Scene) {
+        pub(crate) async fn task(&self, id: &str, scene: &Scene) {
             self.tasks.create(id, scene, None).await.unwrap();
         }
-        async fn row(&self, id: &str) -> lvc_store::TaskRow {
+        pub(crate) async fn row(&self, id: &str) -> lvc_store::TaskRow {
             self.tasks.get(id).await.unwrap().expect("task phai co")
         }
-        async fn used(&self, name: &str, mode: Mode) -> i64 {
+        pub(crate) async fn used(&self, name: &str, mode: Mode) -> i64 {
             self.accounts
                 .used_today(name, &tokyo_day(now_unix()), mode)
                 .await
                 .unwrap()
         }
-        async fn account(&self, name: &str) -> lvc_store::AccountRow {
+        pub(crate) async fn account(&self, name: &str) -> lvc_store::AccountRow {
             self.accounts.get(name).await.unwrap().unwrap()
         }
         async fn run(
@@ -1065,7 +1150,7 @@ mod tests {
         }
     }
 
-    async fn fx_with(
+    pub(crate) async fn fx_with(
         names: &[&str],
         steps: Vec<FakeStep>,
         limits: Limits,
@@ -1095,12 +1180,12 @@ mod tests {
         }
     }
 
-    async fn fx(names: &[&str], steps: Vec<FakeStep>) -> Fx {
+    pub(crate) async fn fx(names: &[&str], steps: Vec<FakeStep>) -> Fx {
         fx_with(names, steps, Limits::default(), |_| {}).await
     }
 
     /// 9:16, 10 s, seedance-2.0, fast, khong anh, khong chi dinh tai khoan.
-    fn scene() -> Scene {
+    pub(crate) fn scene() -> Scene {
         Scene::normalize(
             &RawScene {
                 prompt: Some("con meo di bo".into()),
@@ -1112,11 +1197,11 @@ mod tests {
         .unwrap()
     }
 
-    fn conv(id: &str) -> ConversationId {
+    pub(crate) fn conv(id: &str) -> ConversationId {
         ConversationId(id.to_string())
     }
 
-    fn artifact(account: &str, conv_id: &str) -> VideoArtifact {
+    pub(crate) fn artifact(account: &str, conv_id: &str) -> VideoArtifact {
         VideoArtifact {
             video_url: format!("https://v.example/{account}.mp4"),
             local_path: PathBuf::from("downloads").join(format!("{account}.mp4")),
@@ -1144,7 +1229,7 @@ mod tests {
         }
     }
 
-    fn poll(account: &str, conv_id: &str) -> FakeCall {
+    pub(crate) fn poll(account: &str, conv_id: &str) -> FakeCall {
         FakeCall::Poll {
             account: account.into(),
             conv: conv(conv_id),
@@ -1167,7 +1252,7 @@ mod tests {
     // ---- P3 Task 4: huy + su kien ----
 
     /// Rut het su kien dang co trong receiver (khong cho).
-    fn drain(rx: &mut broadcast::Receiver<EngineEvent>) -> Vec<EngineEvent> {
+    pub(crate) fn drain(rx: &mut broadcast::Receiver<EngineEvent>) -> Vec<EngineEvent> {
         let mut out = Vec::new();
         while let Ok(ev) = rx.try_recv() {
             out.push(ev);
@@ -1175,7 +1260,7 @@ mod tests {
         out
     }
 
-    fn stages_of(events: &[EngineEvent]) -> Vec<String> {
+    pub(crate) fn stages_of(events: &[EngineEvent]) -> Vec<String> {
         events
             .iter()
             .filter_map(|e| match e {
@@ -1188,14 +1273,14 @@ mod tests {
     /// Hooks cua caller: ghi stage nhin thay; `cancel_at` = thay stage do thi `should_cancel` = true
     /// (mo phong nguoi dung bam Dung dung luc do — engine gop `token || inner.should_cancel()`).
     #[derive(Default)]
-    struct StageHooks {
+    pub(crate) struct StageHooks {
         seen: std::sync::Mutex<Vec<String>>,
         cancel: AtomicBool,
-        cancel_at: Option<&'static str>,
+        pub(crate) cancel_at: Option<&'static str>,
     }
 
     impl StageHooks {
-        fn seen(&self) -> Vec<String> {
+        pub(crate) fn seen(&self) -> Vec<String> {
             self.seen.lock().unwrap().clone()
         }
     }
@@ -1212,7 +1297,7 @@ mod tests {
         }
     }
 
-    fn assert_cancelled(e: &EngineError) {
+    pub(crate) fn assert_cancelled(e: &EngineError) {
         assert!(
             matches!(e, EngineError::Dola(DolaError::Cancelled)),
             "{e:?}"
@@ -1221,7 +1306,7 @@ mod tests {
         assert_eq!(e.to_string(), "cancelled");
     }
 
-    fn assert_row_cancelled(row: &lvc_store::TaskRow) {
+    pub(crate) fn assert_row_cancelled(row: &lvc_store::TaskRow) {
         assert_eq!(row.status, TaskStatus::Failed);
         assert_eq!(row.failure_code, Some(FailureCode::Cancelled));
         assert_eq!(row.error.as_deref(), Some("cancelled"));

@@ -36,6 +36,12 @@ pub enum EngineError {
     /// chay browser (tranh tieu credit ma khong co dong nao de ghi ket qua).
     #[error("TASK_NOT_FOUND: {0}")]
     TaskNotFound(String),
+    /// P3 Task 6 (`resume::resume`): dong `task_id` TON TAI nhung thieu `conversation_id` va/hoac
+    /// `account` — khong biet mo lai chat nao/tai khoan nao (`video_worker_ui.py:1787-1842` can ca
+    /// hai). Khac [`Self::TaskNotFound`]: o day dong VAN duoc ghi `Failed` + `failure_code` (ruling
+    /// controller task-6) vi day la ket qua "khong resume duoc", khong phai loi truy van.
+    #[error("NOT_RESUMABLE: {task_id}: {why}")]
+    NotResumable { task_id: String, why: String },
 }
 
 impl EngineError {
@@ -67,7 +73,28 @@ impl EngineError {
             Self::AllAccountsLimited { .. } => Some(FailureCode::RateLimited),
             Self::PreferredUnavailable(_) => Some(FailureCode::AccountUnavailable),
             Self::ProxyDown { .. } => Some(FailureCode::ProxyDown),
+            // P3 Task 6 (ruling): khong them ma Dola moi — tai su dung NO_CONVERSATION (gan nghia
+            // nhat: khong the resume vi thieu du lieu de mo lai hoi thoai).
+            Self::NotResumable { .. } => Some(FailureCode::NoConversation),
         }
+    }
+
+    /// P3 Task 6: `DolaError` -> `EngineError` dung CHUNG boi `generate::after_dola_error` va
+    /// `resume::resume` — giong `#[from]` cho MOI bien the, TRU loi trinh duyet la proxy chet
+    /// (`BrowserError::is_proxy_down`): khi do doi sang [`Self::ProxyDown`] (mang ten tai khoan,
+    /// dung `failure_code` `PROXY_DOWN` giong `browser_pool.py` `proxy_precheck`) thay vi boc nguyen
+    /// `Dola(Browser(..))` (se ra `failure_code = None`).
+    #[must_use]
+    pub(crate) fn from_dola(name: &str, e: DolaError) -> Self {
+        if let DolaError::Browser(b) = &e {
+            if b.is_proxy_down() {
+                return Self::ProxyDown {
+                    account: name.to_string(),
+                    why: e.to_string(),
+                };
+            }
+        }
+        Self::from(e)
     }
 }
 
@@ -102,6 +129,14 @@ mod tests {
             .to_string(),
             "PROXY_DOWN: acc1: het thoi gian cho"
         );
+        assert_eq!(
+            EngineError::NotResumable {
+                task_id: "t1".into(),
+                why: "thieu conversation_id".into(),
+            }
+            .to_string(),
+            "NOT_RESUMABLE: t1: thieu conversation_id"
+        );
     }
 
     /// `#[error(transparent)]` giu nguyen thong diep cua loi tang duoi + `?` chuyen doi duoc.
@@ -114,6 +149,26 @@ mod tests {
         let e = f().unwrap_err();
         assert!(matches!(e, EngineError::Dola(DolaError::Timeout(_))));
         assert_eq!(e.to_string(), "TIMEOUT: t");
+    }
+
+    /// P3 Task 6: `from_dola` boc nguyen tru proxy chet (doi sang `ProxyDown` mang ten tai khoan).
+    #[test]
+    fn from_dola_boc_nguyen_tru_proxy_chet() {
+        let e = EngineError::from_dola("acc1", DolaError::Timeout("t".into()));
+        assert!(matches!(e, EngineError::Dola(DolaError::Timeout(_))));
+
+        let proxy_err = DolaError::Browser(BrowserError::Navigation {
+            url_host_path: "https://www.dola.com/chat".into(),
+            net_error: "net::ERR_PROXY_CONNECTION_FAILED".into(),
+        });
+        let e = EngineError::from_dola("acc1", proxy_err);
+        match e {
+            EngineError::ProxyDown { account, why } => {
+                assert_eq!(account, "acc1");
+                assert!(why.contains("ERR_PROXY_CONNECTION_FAILED"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     /// Bang anh xa `failure_code` (ruling Task 15): moi bien the trong 1 dong.
@@ -181,8 +236,16 @@ mod tests {
                 },
                 Some(FailureCode::ProxyDown),
             ),
+            // P3 Task 6: NotResumable -> tai su dung NO_CONVERSATION (khong them ma Dola moi)
+            (
+                EngineError::NotResumable {
+                    task_id: "t1".into(),
+                    why: "thieu conversation_id".into(),
+                },
+                Some(FailureCode::NoConversation),
+            ),
         ];
-        assert_eq!(rows.len(), 14);
+        assert_eq!(rows.len(), 15);
         for (e, want) in rows {
             assert_eq!(e.failure_code(), want, "{e}");
         }

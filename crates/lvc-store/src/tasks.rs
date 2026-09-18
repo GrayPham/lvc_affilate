@@ -47,6 +47,13 @@ pub struct TaskRow {
     /// Task 3 (P3): bước hiện tại trong node (vd "uploading"/"polling") — hiển thị
     /// tiến độ chi tiết hơn `status`.
     pub stage: String,
+    /// Task 6 (P3) — `0001_init.sql` `started_at REAL` (không `NOT NULL`, `TaskRepo::create` không
+    /// ghi cột này → `NULL` cho tới lần `set_started` đầu tiên): `resume()` đọc để biết có nên gọi
+    /// [`TaskRepo::set_started`] hay không (`None` = chưa từng chạy). Cột có từ Task 3 nhưng
+    /// `row_to_task` trước đây chưa đọc lại (chỉ `set_started`/`set_finished` mới ghi).
+    pub started_at: Option<f64>,
+    /// Task 6 (P3): xem [`TaskRow::started_at`].
+    pub finished_at: Option<f64>,
 }
 
 fn now() -> f64 {
@@ -90,6 +97,8 @@ fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Result<TaskRow, StoreError> {
         run_id: row.try_get("run_id")?,
         node_id: row.try_get("node_id")?,
         stage: row.try_get("stage")?,
+        started_at: row.try_get("started_at")?,
+        finished_at: row.try_get("finished_at")?,
     })
 }
 

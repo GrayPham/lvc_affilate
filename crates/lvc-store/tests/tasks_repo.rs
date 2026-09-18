@@ -238,16 +238,28 @@ async fn set_stage_ghi_dung_cot() {
 
 #[tokio::test]
 async fn set_started_va_finished_ghi_moc() {
-    // TaskRow chua phoi 2 cot nay (P0/P1 chua can) — kiem qua SQL tho.
     let db = Db::open_memory().await.unwrap();
     let repo = TaskRepo::new(&db);
     repo.create("video_j", &scene("x"), None).await.unwrap();
+    // Task 6 (P3): TaskRow gio phoi lai 2 cot nay — chua tung `set_started`/`set_finished` -> None
+    // (0001_init.sql khong `NOT NULL`, `create` khong ghi cot nay).
+    let got = repo.get("video_j").await.unwrap().unwrap();
+    assert_eq!(got.started_at, None);
+    assert_eq!(got.finished_at, None);
 
     assert!(repo.set_started("video_j", 111.0).await.unwrap());
     assert!((col_f64(&db, "video_j", "started_at").await - 111.0).abs() < f64::EPSILON);
+    assert_eq!(
+        repo.get("video_j").await.unwrap().unwrap().started_at,
+        Some(111.0)
+    );
 
     assert!(repo.set_finished("video_j", 222.0).await.unwrap());
     assert!((col_f64(&db, "video_j", "finished_at").await - 222.0).abs() < f64::EPSILON);
+    assert_eq!(
+        repo.get("video_j").await.unwrap().unwrap().finished_at,
+        Some(222.0)
+    );
 
     assert!(!repo.set_started("ghost", 1.0).await.unwrap());
     assert!(!repo.set_finished("ghost", 1.0).await.unwrap());

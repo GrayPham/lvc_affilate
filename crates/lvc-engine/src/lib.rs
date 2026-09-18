@@ -11,6 +11,9 @@
 //! [`events::EngineEvents`] (`EngineEvent` qua broadcast, R5) — `Engine::cancel`, `Engine::events`.
 //! P3 Task 5: [`settings`] — `EngineConfig::from_settings` + `Engine::apply_settings`, cau hinh tu
 //! `AppSettings` (bang `settings`, `lvc-store::settings`).
+//! P3 Task 6: [`resume`] — `Engine::resume` (tiep tuc task da co `conversation_id` sau khi khoi
+//! dong lai, KHONG gui lai prompt/KHONG claim) va `Engine::requeue_on_start` (chia orphan thanh
+//! requeue-ngay vs ung-vien-resume, khong tu chay).
 
 pub mod cancel;
 pub mod cli;
@@ -19,6 +22,7 @@ pub mod events;
 pub mod generate;
 pub mod limiter;
 pub mod pool;
+pub mod resume;
 pub mod session_cache;
 pub mod settings;
 
@@ -28,4 +32,5 @@ pub use events::{EVENT_CAPACITY, EngineEvent, EngineEvents, next_event};
 pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};
 pub use limiter::{DynamicLimiter, LimiterHandle, Permit};
 pub use pool::{AccountPool, Lease};
+pub use resume::RequeueReport;
 pub use session_cache::SessionCache;

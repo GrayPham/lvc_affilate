@@ -486,6 +486,27 @@ impl AccountPool {
         Ok(())
     }
 
+    /// P3 Task 6 (`resume::resume`, ruling BUG-003 "resume KHONG claim"): CHI ghi `last_used_at`,
+    /// KHONG dung luot — khac [`AccountPool::claim`] o cho khong `bump_usage`.
+    ///
+    /// # Errors
+    /// `Store` khi ghi DB loi.
+    pub(crate) async fn touch_last_used(&self, name: &str, now: f64) -> Result<(), EngineError> {
+        self.repo.touch_last_used(name, now).await?;
+        Ok(())
+    }
+
+    /// P3 Task 6 (`resume::resume`): doc dong `accounts_meta` cua DUNG tai khoan da luu trong task
+    /// (`row.account`) de lay `proxy` cho `try_lease`/`lease_wait` — KHONG di qua `candidates_for`/
+    /// `pick_account` (resume khong xoay, khong chon tai khoan khac). `None` khi tai khoan da bi xoa
+    /// khoi `accounts_meta` (hiem — van con trong `tasks.account`).
+    ///
+    /// # Errors
+    /// `Store` khi doc DB loi.
+    pub(crate) async fn account_row(&self, name: &str) -> Result<Option<AccountRow>, EngineError> {
+        Ok(self.repo.get(name).await?)
+    }
+
     /// browser_pool.py:643-666 `mark_logged_out` (REQ-002): `login_ok = 0` + `logged_out_at` →
     /// bi loai khoi lich toi khi Verify / dang nhap lai. `revoked` (2026-09-17: Dola tu choi
     /// 710022002 roi tu dang xuat): `auto_verify_state = 'revoked'`, khong auto-verify.
