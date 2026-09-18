@@ -34,6 +34,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use dashmap::DashMap;
 use lvc_browser::dola::{
     ConversationId, PollHooks, PollOpts, SubmitHooks, SubmitRequest, VideoArtifact,
 };
@@ -42,7 +43,7 @@ use lvc_core::{
     BrowserKind, FailureCode, Limits, Mode, Scene, TaskStatus, fit_duration_to_mode,
     mode_fallback_chain, video_timeout,
 };
-use lvc_store::{AccountRow, Db, TaskRepo};
+use lvc_store::{AccountRow, Db, RunRepo, TaskRepo};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -161,6 +162,13 @@ pub struct Engine<D: BrowserDriver + 'static> {
     events: EngineEvents,
     /// P3 Task 4 (R4): token huy theo `task_id`.
     cancels: CancelRegistry,
+    // pub(crate): Task 7 (P3) `dag.rs` doc/ghi truc tiep (cung ly do voi driver/tasks/limits/cfg
+    // o tren) — repo cac lan chay workflow (`runs`).
+    pub(crate) run_repo: RunRepo,
+    // pub(crate): Task 7 (P3) `dag.rs`: token huy THEO RUN (khac `cancels` — theo `task_id`);
+    // `Engine::run_graph` dang ky, `Engine::cancel_run` huy, xoa khi run ket thuc. Moi job video
+    // cua run nhan token nay qua hooks rieng (`dag::RunCancelHooks`) — xem doc `dag.rs`.
+    pub(crate) run_tokens: DashMap<String, CancellationToken>,
 }
 
 /// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
@@ -333,6 +341,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             reaper: Mutex::new(Some(reaper)),
             events: EngineEvents::new(),
             cancels: CancelRegistry::new(),
+            run_repo: RunRepo::new(&db),
+            run_tokens: DashMap::new(),
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))

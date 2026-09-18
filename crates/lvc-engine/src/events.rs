@@ -56,14 +56,18 @@ pub enum EngineEvent {
         code: Option<String>,
         message: String,
     },
-    /// Task 7: trang thai mot node trong run (`queued`/`running`/`done`/`failed`...), `done`/`total`
-    /// = so job con da xong / tong.
+    /// Task 7: trang thai mot node trong run (`queued`/`running`/`done`/`failed`), `done`/`total`
+    /// = so job con da xong (thanh cong + that bai) / tong; `ok`/`failed` tach rieng so job thanh
+    /// cong va that bai trong `done` do (them sau, additive — review task-7: UI can biet ngay bao
+    /// nhieu canh loi ma khong phai doi chieu voi `TaskRow` rieng).
     NodeState {
         run_id: String,
         node_id: String,
         state: String,
         done: u32,
         total: u32,
+        ok: u32,
+        failed: u32,
     },
     /// Task 7: run ket thuc (`status` = `completed`/`failed`/`cancelled`).
     RunDone { run_id: String, status: String },
@@ -197,8 +201,10 @@ mod tests {
                     state: "running".into(),
                     done: 1,
                     total: 3,
+                    ok: 1,
+                    failed: 0,
                 },
-                json!({"type":"node_state","runId":"r1","nodeId":"n1","state":"running","done":1,"total":3}),
+                json!({"type":"node_state","runId":"r1","nodeId":"n1","state":"running","done":1,"total":3,"ok":1,"failed":0}),
             ),
             (
                 EngineEvent::RunDone {

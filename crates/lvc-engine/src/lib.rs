@@ -14,9 +14,12 @@
 //! P3 Task 6: [`resume`] — `Engine::resume` (tiep tuc task da co `conversation_id` sau khi khoi
 //! dong lai, KHONG gui lai prompt/KHONG claim) va `Engine::requeue_on_start` (chia orphan thanh
 //! requeue-ngay vs ung-vien-resume, khong tu chay).
+//! P3 Task 7: [`dag`] — `Engine::run_graph` (chay ca do thi: fan-out video qua `DynamicLimiter`,
+//! gom ket qua, Save, phat `NodeState`/`RunDone`, ghi `runs`) va `Engine::cancel_run`.
 
 pub mod cancel;
 pub mod cli;
+pub mod dag;
 pub mod error;
 pub mod events;
 pub mod generate;
@@ -27,6 +30,7 @@ pub mod session_cache;
 pub mod settings;
 
 pub use cancel::{CancelGuard, CancelRegistry};
+pub use dag::{HooksFactory, NodeOutputs, RunHandle, noop_hooks_factory};
 pub use error::EngineError;
 pub use events::{EVENT_CAPACITY, EngineEvent, EngineEvents, next_event};
 pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};

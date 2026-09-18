@@ -22,6 +22,9 @@ thiserror.workspace = true
 serde.workspace = true
 # cli.rs (Task 18): JSON tong ket cua gen_one (stdout).
 serde_json.workspace = true
+# dag.rs (P3 Task 7): id cho run/task (uuid v4) — da la dependency workspace (lvc-browser dung
+# cho web_tab_id/sequence_id), o day chi khai bao them cho lvc-engine.
+uuid.workspace = true
 
 [dev-dependencies]
 # pool.rs (Task 16): accounts_dir gia (thu muc profile phai ton tai — browser_pool.py:405-411).

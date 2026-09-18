@@ -6,7 +6,7 @@
 //! them nhanh `Browser(Navigation)` voi `is_proxy_down()` -> `ProxyDown`.
 
 use lvc_browser::{BrowserError, DolaError};
-use lvc_core::{FailureCode, Mode};
+use lvc_core::{FailureCode, GraphError, Mode};
 use lvc_store::StoreError;
 
 /// Loi cua scheduler (`lvc-engine`). Ba bien the dau boc nguyen loi tang duoi (`#[error(transparent)]`
@@ -42,6 +42,19 @@ pub enum EngineError {
     /// controller task-6) vi day la ket qua "khong resume duoc", khong phai loi truy van.
     #[error("NOT_RESUMABLE: {task_id}: {why}")]
     NotResumable { task_id: String, why: String },
+    /// P3 Task 7 (`dag::Engine::run_graph`): do thi khong hop le hoac loi lap ke hoach
+    /// (`lvc_core::graph::plan`, da gom ca `validate`) — tra `Err` NGAY, KHONG tao dong `runs`
+    /// (ruling task-7-brief.md). Khong dung `#[from]`: `Vec<GraphError>` khong `impl
+    /// std::error::Error` (thiserror doi hoi de lam `source()`) — viet tay `impl From` ben duoi
+    /// thay vi boc `Box<dyn Error>` chi de thoa man rang buoc do.
+    #[error("do thi khong hop le: {} loi", .0.len())]
+    Graph(Vec<GraphError>),
+}
+
+impl From<Vec<GraphError>> for EngineError {
+    fn from(errs: Vec<GraphError>) -> Self {
+        Self::Graph(errs)
+    }
 }
 
 impl EngineError {
@@ -68,8 +81,9 @@ impl EngineError {
                 Some(FailureCode::ProfileBusy)
             }
             Self::Browser(e) if e.is_proxy_down() => Some(FailureCode::ProxyDown),
-            // TaskNotFound: loi nguoi goi, khong co dong tasks de ghi ma -> None nhu Store.
-            Self::Browser(_) | Self::Store(_) | Self::TaskNotFound(_) => None,
+            // TaskNotFound: loi nguoi goi, khong co dong tasks de ghi ma -> None nhu Store. P3
+            // Task 7 (Graph): khong tao dong task nao ca (khong co run) -> cung None.
+            Self::Browser(_) | Self::Store(_) | Self::TaskNotFound(_) | Self::Graph(_) => None,
             Self::AllAccountsLimited { .. } => Some(FailureCode::RateLimited),
             Self::PreferredUnavailable(_) => Some(FailureCode::AccountUnavailable),
             Self::ProxyDown { .. } => Some(FailureCode::ProxyDown),
@@ -136,6 +150,14 @@ mod tests {
             }
             .to_string(),
             "NOT_RESUMABLE: t1: thieu conversation_id"
+        );
+        assert_eq!(
+            EngineError::Graph(vec![
+                GraphError::Empty,
+                GraphError::DuplicateNodeId { id: "n1".into() }
+            ])
+            .to_string(),
+            "do thi khong hop le: 2 loi"
         );
     }
 
@@ -244,8 +266,10 @@ mod tests {
                 },
                 Some(FailureCode::NoConversation),
             ),
+            // P3 Task 7: khong co dong task nao de ghi ma -> None (giong Store/TaskNotFound).
+            (EngineError::Graph(vec![GraphError::Empty]), None),
         ];
-        assert_eq!(rows.len(), 15);
+        assert_eq!(rows.len(), 16);
         for (e, want) in rows {
             assert_eq!(e.failure_code(), want, "{e}");
         }
