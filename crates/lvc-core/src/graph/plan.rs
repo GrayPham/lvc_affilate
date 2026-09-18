@@ -18,7 +18,10 @@ type RawPiece = (String, Option<usize>, RawScene);
 
 /// Một job tạo video: đúng 1 cảnh của node Tạo video `node_id` — đã gộp mặc định node +
 /// override TXT theo dòng + ảnh tham chiếu (cổng `refs` ∪ TXT `refs=`, spec §4.3).
+/// `rename_all = "camelCase"` — cùng quy ước với `GraphError` (fix round 1 Task 1): camelCase
+/// ngay tại nguồn để Task 9 (Tauri IPC) không cần thêm lớp DTO chỉ để đổi cách viết hoa.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoJob {
     pub node_id: String,
     /// 1-based; đánh lại LIÊN TỤC theo thứ tự gộp khi 1 node Tạo video nhận nhiều node
@@ -28,7 +31,9 @@ pub struct VideoJob {
 }
 
 /// Một job lưu — khớp đúng 1 cạnh nối vào cổng `video`/`image` của node Lưu.
+/// `rename_all = "camelCase"` — xem lý do ở `VideoJob`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SaveJob {
     pub node_id: String,
     pub out_dir: String,
@@ -36,8 +41,17 @@ pub struct SaveJob {
 }
 
 /// Một bước của kế hoạch chạy, theo đúng thứ tự topo của node sinh ra nó (spec §4.3).
+/// `rename_all_fields = "camelCase"` áp cho field bên trong CÁC STRUCT-VARIANT (`Prompt`,
+/// `ImageUpload`, `Video`) — cùng quy ước `GraphError` (fix round 1 Task 1). Biến thể
+/// newtype `Save(SaveJob)` không có field riêng để đổi ở đây (không phải struct-variant),
+/// nhưng field bên trong `SaveJob` vẫn ra camelCase nhờ `#[serde(rename_all = "camelCase")]`
+/// khai báo NGAY TRÊN `SaveJob` — không phụ thuộc cách nó được bọc ở đây.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Step {
     Prompt {
         node_id: String,
@@ -55,7 +69,9 @@ pub enum Step {
 }
 
 /// Kế hoạch chạy đầy đủ: dãy bước theo topo + tổng số video job (Task 7 dùng tính %).
+/// `rename_all = "camelCase"` — xem lý do ở `VideoJob`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunPlan {
     pub steps: Vec<Step>,
     pub video_total: u32,
@@ -65,6 +81,17 @@ pub struct RunPlan {
 /// của node Prompt là 1 cảnh; mỗi cảnh thuộc node Tạo video là 1 `VideoJob` (`scene_index`
 /// 1-based); ảnh từ node Tải ảnh lên thượng nguồn (cổng `refs`) gắn vào MỌI cảnh của node
 /// Tạo video đó; node Lưu sinh 1 `SaveJob` cho mỗi cạnh nối vào.
+///
+/// Bất biến (ghim ở test `so_canh_prompt_bang_so_job_video_khi_co_dong_comment_va_dong_trong`,
+/// review Task 2 vòng 1, Important #2): với một node Prompt nối THẲNG vào một node Tạo
+/// video (không lỗi), `Step::Prompt.scenes.len()` của node Prompt đó LUÔN bằng số
+/// `VideoJob` mà nó đóng góp cho `Step::Video`. Đúng vì `step_prompt` (dùng `parse_txt`)
+/// và `collect_prompt_pieces` (dùng `parse_lines_raw`) cùng gọi chung `scene_txt::parse_line`
+/// cho từng dòng và bỏ dòng trống/`#` theo ĐÚNG MỘT quy tắc — hai hàm chỉ khác nhau ở việc
+/// `parse_txt` chuẩn hoá luôn bằng mặc định chung, còn `parse_lines_raw` hoãn chuẩn hoá tới
+/// khi biết mặc định của node Tạo video. Bất biến này SẼ VỠ nếu quy tắc bỏ dòng của một
+/// trong hai hàm đổi mà hàm kia không đổi theo — không có gì trong kiểu dữ liệu ép hai bên
+/// phải khớp, chỉ có test này canh.
 ///
 /// # Errors
 /// `validate(g)` không đạt → trả nguyên vẹn `Vec<GraphError>` của nó (không trộn lỗi lập kế
@@ -83,7 +110,15 @@ pub fn plan(g: &Graph, limits: &Limits) -> Result<RunPlan, Vec<GraphError>> {
     let mut video_total: u32 = 0;
 
     for node_id in &order {
-        let node = by_id[node_id.as_str()];
+        // topo_order() tra id tu chinh g.nodes da dung de dung by_id nen luon tra Some —
+        // van .get() + bao loi thay vi index [] panic, de khong sup do neu bat bien nay
+        // lech trong tuong lai (vi du validate()/topo_order() sua sai).
+        let Some(node) = by_id.get(node_id.as_str()).copied() else {
+            errors.push(GraphError::UnknownNode {
+                id: node_id.clone(),
+            });
+            continue;
+        };
         match &node.kind {
             NodeKind::Prompt { text } => step_prompt(node, text, limits, &mut steps, &mut errors),
             NodeKind::ImageUpload { paths } => steps.push(Step::ImageUpload {
@@ -762,5 +797,86 @@ mod tests {
             errs.iter()
                 .any(|e| matches!(e, GraphError::Scene { node, .. } if node == "n2"))
         );
+    }
+
+    #[test]
+    fn so_canh_prompt_bang_so_job_video_khi_co_dong_comment_va_dong_trong() {
+        // Fix round 1 (review Important #2): ghim bat bien noi trong doc comment cua plan()
+        // — parse_txt (Step::Prompt) va parse_lines_raw (Step::Video) dung chung parse_line
+        // va cung bo qua dong trong/`#`, nen 3 dong tho (1 canh that + 1 comment + 1 dong
+        // trong) phai cho ra CUNG so luong o ca hai ben (o day: 1).
+        let g = fixture("canh that\n# ghi chu\n   \n");
+        let rp = plan(&g, &Limits::default()).unwrap();
+
+        let prompt_len = rp
+            .steps
+            .iter()
+            .find_map(|s| match s {
+                Step::Prompt { scenes, .. } => Some(scenes.len()),
+                _ => None,
+            })
+            .unwrap();
+        let video_len = rp
+            .steps
+            .iter()
+            .find_map(|s| match s {
+                Step::Video { jobs, .. } => Some(jobs.len()),
+                _ => None,
+            })
+            .unwrap();
+
+        assert_eq!(
+            prompt_len, video_len,
+            "Step::Prompt va Step::Video phai dem cung so canh cho cung 1 node Prompt"
+        );
+        assert_eq!(
+            prompt_len, 1,
+            "chi 1 dong that, comment/dong trong bi bo qua"
+        );
+    }
+
+    #[test]
+    fn json_dung_camelcase_khop_quy_uoc_graph_error() {
+        // I1 (review Important #1): RunPlan/Step/VideoJob/SaveJob phai cung quy uoc
+        // camelCase voi GraphError (fix round 1 Task 1) de Task 9 (Tauri IPC) khong can
+        // them lop DTO. Dung plan() that tren fixture 1 Prompt/1 Video/1 Save de ghim ca
+        // 3 buoc trong cung 1 JSON, khop dung field ten nhieu tu: videoTotal, sceneIndex,
+        // nodeId, outDir, fromNode; tag "type" van snake_case (khop NodeKind."kind").
+        let g = fixture("canh 1");
+        let rp = plan(&g, &Limits::default()).unwrap();
+        let value = serde_json::to_value(&rp).unwrap();
+
+        assert!(value.get("videoTotal").is_some(), "{value:?}");
+        assert!(value.get("video_total").is_none(), "{value:?}");
+
+        let steps = value
+            .get("steps")
+            .and_then(serde_json::Value::as_array)
+            .unwrap();
+        let tags: Vec<&str> = steps
+            .iter()
+            .map(|s| s.get("type").and_then(serde_json::Value::as_str).unwrap())
+            .collect();
+        assert_eq!(tags, vec!["prompt", "video", "save"]);
+
+        let prompt_step = &steps[0];
+        assert!(prompt_step.get("nodeId").is_some(), "{prompt_step:?}");
+        assert!(prompt_step.get("node_id").is_none(), "{prompt_step:?}");
+
+        let video_step = &steps[1];
+        let job = &video_step
+            .get("jobs")
+            .and_then(serde_json::Value::as_array)
+            .unwrap()[0];
+        assert!(job.get("nodeId").is_some(), "{job:?}");
+        assert!(job.get("sceneIndex").is_some(), "{job:?}");
+        assert!(job.get("scene_index").is_none(), "{job:?}");
+
+        let save_step = &steps[2];
+        assert!(save_step.get("nodeId").is_some(), "{save_step:?}");
+        assert!(save_step.get("outDir").is_some(), "{save_step:?}");
+        assert!(save_step.get("fromNode").is_some(), "{save_step:?}");
+        assert!(save_step.get("out_dir").is_none(), "{save_step:?}");
+        assert!(save_step.get("from_node").is_none(), "{save_step:?}");
     }
 }
