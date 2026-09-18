@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lvc-core", "crates/lvc-store", "crates/lvc-browser", "crates/lvc-engine"]
+members = ["crates/lvc-core", "crates/lvc-store", "crates/lvc-browser", "crates/lvc-engine", "crates/lvc-app"]
 
 [workspace.package]
 edition = "2024"
