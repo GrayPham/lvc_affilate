@@ -18,5 +18,9 @@ tracing.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 
+[dev-dependencies]
+# pool.rs (Task 16): accounts_dir gia (thu muc profile phai ton tai — browser_pool.py:405-411).
+tempfile = "3"
+
 [lints]
 workspace = true

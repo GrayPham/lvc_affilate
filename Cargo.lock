@@ -1251,6 +1251,7 @@ dependencies = [
  "lvc-core",
  "lvc-store",
  "serde",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

@@ -16,6 +16,10 @@ pub struct Limits {
     pub daily_limit_pro: u32,
     pub daily_limit_pro_max: u32,
     pub daily_limit_agent: u32,
+    /// config.py:160 `VIDEO_REQUIRED_POINTS` — số credit tối thiểu để tạo 1 video; số dư đã đọc
+    /// (`credit_balance`) thấp hơn mức này thì tài khoản bị chặn mềm (`browser_pool.py:927-933
+    /// _credit_blocks`, Task 16 `AccountPool`).
+    pub video_required_points: u32,
     /// Cờ bật/tắt chế độ — dùng bởi `mode_fallback_chain`.
     pub pro_enabled: bool,
     pub pro_max_enabled: bool,
@@ -68,6 +72,7 @@ impl Default for Limits {
             daily_limit_pro: 10,
             daily_limit_pro_max: 10,
             daily_limit_agent: 30,
+            video_required_points: 2,
             pro_enabled: true,
             pro_max_enabled: true,
             agent_enabled: true,
@@ -138,6 +143,10 @@ mod tests {
         assert_eq!(
             l.agent_video_style, "",
             "config.py:304 AGENT_VIDEO_STYLE (DOLA_AGENT_VIDEO_STYLE, mac dinh rong)"
+        );
+        assert_eq!(
+            l.video_required_points, 2,
+            "config.py:160 VIDEO_REQUIRED_POINTS (browser_pool.py:927-933 _credit_blocks: bal < 2)"
         );
     }
 }

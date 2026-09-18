@@ -44,7 +44,9 @@ pub use progress::{BatchProgress, TaskStatus, batch_progress};
 pub use proxy::{DIRECT, ProxySpec, effective_proxy, parse_proxy};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
-pub use scheduling::{fit_duration_to_mode, mode_fallback_chain};
+pub use scheduling::{
+    LIMIT_RESET_TZ_OFFSET_S, fit_duration_to_mode, mode_fallback_chain, next_limit_reset, tokyo_day,
+};
 pub use session::{
     DOLA_REGION_RESTRICTED, REVOKED_HINT, SESSION_PROBE_JS, SessionState, classify_session,
     dola_self_logout, has_login_marker, is_region_restricted,
