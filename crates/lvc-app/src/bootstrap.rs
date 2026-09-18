@@ -127,7 +127,7 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
         handle,
         db,
         settings: RwLock::new(settings),
-        runs: DashMap::new(),
+        runs: Arc::new(DashMap::new()),
     });
     Ok(())
 }

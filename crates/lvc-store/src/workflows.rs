@@ -4,7 +4,7 @@
 //! workflow) — DAG executor (Task 7), resume (Task 6) và Tauri commands
 //! (Task 9) dùng hai repo này.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 use crate::{Db, StoreError};
@@ -23,8 +23,10 @@ pub struct WorkflowRow {
 /// liệt kê workflow không cần tải cả đồ thị).
 ///
 /// Task 9 (P3, additive): `Serialize` camelCase — lệnh IPC `workflow_list`/`workflow_save` trả
-/// thẳng kiểu này cho frontend, không cần lớp DTO riêng chỉ để đổi cách viết hoa.
-#[derive(Debug, Clone, Serialize)]
+/// thẳng kiểu này cho frontend, không cần lớp DTO riêng chỉ để đổi cách viết hoa. `Deserialize`
+/// (fix-round 1, M4) — brief đòi mọi kiểu IPC là `Serialize + Deserialize`; cho phép Rust (test/
+/// `WorkflowDoc`) đọc lại fixture JSON, không chỉ ghi.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowMeta {
     pub id: String,
@@ -130,7 +132,9 @@ impl WorkflowRepo {
 ///
 /// Task 9 (P3, additive): `Serialize` — lệnh IPC `run_list` trả thẳng `RunRow` (mang `RunStatus`)
 /// cho frontend; wire string khớp `RunStatus::as_str` (khớp `EngineEvent::RunDone.status`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+/// `Deserialize` (fix-round 1, M4) — xem doc [`WorkflowMeta`]; test [`tests::run_status_serde_wire_string_khop_as_str`]
+/// ghim hai nguồn (derive serde + `as_str` viết tay) LUÔN đồng bộ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RunStatus {
     Running,
@@ -166,7 +170,8 @@ impl RunStatus {
 /// chạy; resume Task 6 đọc lại sau khi khởi động lại app).
 ///
 /// Task 9 (P3, additive): `Serialize` camelCase — lệnh IPC `run_list` trả thẳng kiểu này.
-#[derive(Debug, Clone, Serialize)]
+/// `Deserialize` (fix-round 1, M4) — xem doc [`WorkflowMeta`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRow {
     pub id: String,
@@ -276,5 +281,29 @@ impl RunRepo {
             .fetch_all(self.db.pool())
             .await?;
         rows.iter().map(row_to_run).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunStatus;
+
+    /// Fix-round 1 (M4): ghim wire string cua `RunStatus` (derive serde, dung boi lenh IPC
+    /// `run_list`) KHOP dung `as_str()` (dung boi `RunRepo` khi ghi cot `status`) — hai nguon PHAI
+    /// dong bo, test nay bat neu mot ben doi ma ben kia quen sua.
+    #[test]
+    fn run_status_serde_wire_string_khop_as_str() {
+        for s in [
+            RunStatus::Running,
+            RunStatus::Completed,
+            RunStatus::Failed,
+            RunStatus::Cancelled,
+        ] {
+            assert_eq!(
+                serde_json::to_value(s).unwrap(),
+                serde_json::json!(s.as_str()),
+                "{s:?}"
+            );
+        }
     }
 }

@@ -388,6 +388,15 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         &self.cfg
     }
 
+    /// P3 Task 9 (`lvc-app`, fix-round 1, M8, additive): gioi han (`Limits`) engine dang dung —
+    /// `Tauri` command `workflow_validate` can DUNG CHUNG mot nguon voi `run_graph` (goi ngay ben
+    /// duoi, `dag.rs`, tu dung `self.limits` khi lap ke hoach) thay vi lenh do tu `hardcode` rieng
+    /// mot ban `Limits::default()` co the troi khoi engine that ve sau.
+    #[must_use]
+    pub fn limits(&self) -> &Limits {
+        &self.limits
+    }
+
     /// Dem lai so tai khoan bat lich VA co thu muc profile ([`AccountPool::scheduling_count`] —
     /// cung bo loc voi `candidates_for`, review T17 M7) va bao cho limiter
     /// (`LimiterHandle::set_accounts`) — goi sau khi UI bat/tat lich mot tai khoan. Tra so vua dem.

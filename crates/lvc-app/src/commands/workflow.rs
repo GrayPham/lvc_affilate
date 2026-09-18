@@ -2,12 +2,15 @@
 //! do thi (`Engine::run_graph`/`cancel_run`, Task 7), liet ke run gan day (bang `runs`). Xem quy
 //! uoc `xxx_impl`/`xxx` o dau `commands/mod.rs`.
 
+use std::sync::Arc;
+
 use lvc_browser::BrowserDriver;
 use lvc_core::Limits;
 use lvc_core::graph::{Graph, plan};
-use lvc_engine::noop_hooks_factory;
+use lvc_engine::{EngineError, RunHandle, noop_hooks_factory};
 use lvc_store::{RunRepo, RunRow, WorkflowMeta, WorkflowRepo};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use uuid::Uuid;
 
 use super::{Ctx, IpcError};
@@ -30,33 +33,31 @@ pub struct RunInfo {
 }
 
 /// Ket qua `workflow_get` — `WorkflowRepo::get` chi tra `WorkflowRow.json` dang CHUOI THO; UI (Task
-/// 11) can `Graph` da parse san de dua vao React Flow ngay. Chi `Serialize` — `WorkflowMeta`
-/// (`lvc-store`) chua co `Deserialize`/`PartialEq` (them additive tren do la `Serialize` mac dinh,
-/// xem brief Task 9), nen kieu boc no cung khong the co hai derive do.
-#[derive(Debug, Clone, Serialize)]
+/// 11) can `Graph` da parse san de dua vao React Flow ngay.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowDoc {
     pub meta: WorkflowMeta,
     pub graph: Graph,
 }
 
-/// Than logic `workflow_validate` — THUAN (khong dung `Ctx`/DB/engine): `lvc_core::graph::plan`
-/// (gom ca `validate`) voi `Limits::default()` (P3 chua co cai dat gioi han rieng qua Tauri).
+/// Than logic `workflow_validate` — THUAN (khong dung `Ctx`/DB/engine truc tiep, chi nhan `limits`
+/// tu ben ngoai): `lvc_core::graph::plan` (gom ca `validate`). `limits` do lenh Tauri (duoi)
+/// truyen vao tu `Engine::limits()` — CUNG mot nguon voi `run_start` (`Engine::run_graph` tu goi
+/// `plan(graph, &self.limits)` ben trong), tranh hai noi tu hardcode `Limits::default()` rieng roi
+/// troi nhau ve sau (fix-round 1, M8).
 ///
 /// # Errors
-/// `IpcError` ma `GRAPH_INVALID`, `details` = `Vec<GraphError>` da serialize, khi do thi khong hop
-/// le hoac loi lap ke hoach (vd cu phap TXT trong node Prompt).
-pub fn workflow_validate_impl(graph: &Graph) -> Result<PlanSummary, IpcError> {
-    match plan(graph, &Limits::default()) {
+/// `IpcError` ma `GRAPH_INVALID`, `details` = `Vec<GraphError>` da serialize (dung LAI cung mot
+/// anh xa voi moi loi `EngineError::Graph` khac trong crate — `IpcError::from`, fix-round 1 M8),
+/// khi do thi khong hop le hoac loi lap ke hoach (vd cu phap TXT trong node Prompt).
+pub fn workflow_validate_impl(graph: &Graph, limits: &Limits) -> Result<PlanSummary, IpcError> {
+    match plan(graph, limits) {
         Ok(run_plan) => Ok(PlanSummary {
             video_total: run_plan.video_total,
             warnings: Vec::new(),
         }),
-        Err(errs) => {
-            let msg = format!("do thi khong hop le: {} loi", errs.len());
-            let details = serde_json::to_value(&errs).unwrap_or(serde_json::Value::Null);
-            Err(IpcError::new("GRAPH_INVALID", msg).with_details(details))
-        }
+        Err(errs) => Err(IpcError::from(EngineError::Graph(errs))),
     }
 }
 
@@ -65,8 +66,11 @@ pub fn workflow_validate_impl(graph: &Graph) -> Result<PlanSummary, IpcError> {
     reason = "giu async dong bo voi moi lenh IPC khac (quy uoc brief Task 9); than logic thuan"
 )]
 #[tauri::command]
-pub async fn workflow_validate(graph: Graph) -> Result<PlanSummary, IpcError> {
-    workflow_validate_impl(&graph)
+pub async fn workflow_validate(
+    state: tauri::State<'_, AppState>,
+    graph: Graph,
+) -> Result<PlanSummary, IpcError> {
+    workflow_validate_impl(&graph, state.engine.limits())
 }
 
 /// Than logic `workflow_save` — `id = None` sinh `uuid v4` moi (workflow moi tao trong UI).
@@ -179,6 +183,13 @@ pub async fn workflow_delete(
 /// logic kiem tra kep lech nhau). `hooks_factory` = [`noop_hooks_factory`] — engine da tu phat
 /// `TaskStage`/`NodeState`/`RunDone` qua `EngineEvents` (bridge Task 8), UI khong can hooks rieng.
 ///
+/// Fix-round 1 (I1): `ctx.runs` CHI giu `CancellationToken` (huy nhanh, khong doc lai duoc trang
+/// thai tu do) — `Engine` da tu quan ly `RunHandle`/`JoinHandle` that su qua `run_tokens` rieng
+/// (`dag.rs`), giu ca hai ban se trung lap ma khong them gia tri. Spawn MOT task NEN "reaper" doi
+/// `join` roi don map — chay tren CA HAI duong ket thuc (hoan tat tu nhien LAN bi huy), khong chi
+/// khi ai do goi `run_cancel`; panic cua than vong chay (hiem — da bat trong o `run_graph_task`
+/// nen day chi la phong thu kep) duoc log `warn` thay vi nuot lang le.
+///
 /// # Errors
 /// `IpcError` ma `GRAPH_INVALID` (kem `details`) khi do thi khong hop le.
 pub async fn run_start_impl<D: BrowserDriver + 'static>(
@@ -186,12 +197,25 @@ pub async fn run_start_impl<D: BrowserDriver + 'static>(
     workflow_id: &str,
     graph: &Graph,
 ) -> Result<RunInfo, IpcError> {
-    let handle = ctx
+    let RunHandle {
+        run_id,
+        token,
+        join,
+    } = ctx
         .engine
         .run_graph(workflow_id, graph, noop_hooks_factory())
         .await?;
-    let run_id = handle.run_id.clone();
-    ctx.runs.insert(run_id.clone(), handle);
+    ctx.runs.insert(run_id.clone(), token);
+
+    let runs = Arc::clone(&ctx.runs);
+    let reaper_id = run_id.clone();
+    tokio::spawn(async move {
+        if let Err(e) = join.await {
+            warn!(run_id = %reaper_id, error = %e, "run task ket thuc bat thuong (panic) - van don khoi map");
+        }
+        runs.remove(&reaper_id);
+    });
+
     Ok(RunInfo { run_id })
 }
 
@@ -208,18 +232,14 @@ pub async fn run_start(
     run_start_impl(&state, &workflow_id, &graph).await
 }
 
-/// Than logic `run_cancel`: `Engine::cancel_run` (dong bo, xem doc do) roi lay [`lvc_engine::RunHandle`]
-/// ra khoi `ctx.runs` (neu con) va spawn MOT task NEN doi `join` (khong chan lenh nay — huy chi bao
-/// token, chua chac run da THUC SU dung ngay khi ham nay tra ve, xem doc `Engine::cancel_run`).
+/// Than logic `run_cancel` — boc thang `Engine::cancel_run` (dong bo, xem doc do). Huy chi bao
+/// token; chua chac run da THUC SU dung ngay khi ham nay tra ve (buoc dang chay chay tiep den diem
+/// kiem huy ke tiep). Fix-round 1 (I1): KHONG con dong gi vao `ctx.runs` o day nua — task "reaper"
+/// spawn tu `run_start_impl` da tu don map tren CA HAI duong ket thuc (hoan tat tu nhien lan bi
+/// huy), nen `run_cancel` khong can biet gi ve map ca.
 #[must_use = "gia tri tra ve la co biet duoc run_id nay hay khong (false = khong biet)"]
 pub fn run_cancel_impl<D: BrowserDriver + 'static>(ctx: &Ctx<D>, run_id: &str) -> bool {
-    let cancelled = ctx.engine.cancel_run(run_id);
-    if let Some((_, handle)) = ctx.runs.remove(run_id) {
-        tokio::spawn(async move {
-            let _ = handle.join.await;
-        });
-    }
-    cancelled
+    ctx.engine.cancel_run(run_id)
 }
 
 #[allow(
@@ -353,7 +373,7 @@ mod tests {
             )],
             edges: vec![edge("e1", "pr", "out", "khong-ton-tai", "prompt")],
         };
-        let err = workflow_validate_impl(&g).unwrap_err();
+        let err = workflow_validate_impl(&g, &Limits::default()).unwrap_err();
         assert_eq!(err.code, "GRAPH_INVALID");
         let details = err.details.expect("phai co details");
         let errs: Vec<GraphError> = serde_json::from_value(details).unwrap();
@@ -369,7 +389,7 @@ mod tests {
     fn workflow_validate_do_thi_3_canh_video_total_3() {
         let dir = tempfile::tempdir().unwrap();
         let g = three_scene_graph(&dir.path().join("out"));
-        let summary = workflow_validate_impl(&g).unwrap();
+        let summary = workflow_validate_impl(&g, &Limits::default()).unwrap();
         assert_eq!(summary.video_total, 3);
         assert!(summary.warnings.is_empty());
     }
@@ -454,6 +474,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(tasks.len(), 3);
+
+        // I1 (fix-round 1): run hoan tat TU NHIEN (khong ai goi run_cancel) van phai duoc "reaper"
+        // don khoi ctx.runs — doi ngan vi task nen co the chay tre mot nhip sau khi run_list da
+        // thay trang thai cuoi (ca hai deu phu thuoc `join` nhung reaper con phai duoc lich lai).
+        for _ in 0..200 {
+            if !ctx.runs.contains_key(&info.run_id) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            !ctx.runs.contains_key(&info.run_id),
+            "reaper phai don run da hoan tat tu nhien khoi map"
+        );
     }
 
     #[tokio::test]
@@ -495,10 +529,6 @@ mod tests {
 
         let cancelled = run_cancel_impl(&ctx, &info.run_id);
         assert!(cancelled);
-        assert!(
-            !ctx.runs.contains_key(&info.run_id),
-            "run_cancel phai lay RunHandle ra khoi map ngay"
-        );
 
         for _ in 0..200 {
             let rows = run_list_impl(&ctx, 10).await.unwrap();
@@ -513,6 +543,19 @@ mod tests {
         let rows = run_list_impl(&ctx, 10).await.unwrap();
         let row = rows.iter().find(|r| r.id == info.run_id).unwrap();
         assert_eq!(row.status, RunStatus::Cancelled, "{row:?}");
+
+        // I1 (fix-round 1): `run_cancel_impl` KHONG con dong gi vao map — cho "reaper" (spawn tu
+        // `run_start_impl`) don sau khi `join` xong, doi ngan giong test hoan tat tu nhien o tren.
+        for _ in 0..200 {
+            if !ctx.runs.contains_key(&info.run_id) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            !ctx.runs.contains_key(&info.run_id),
+            "reaper phai don run da bi huy khoi map"
+        );
     }
 
     #[tokio::test]

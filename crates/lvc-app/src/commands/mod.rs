@@ -17,6 +17,12 @@
 //!
 //! `AppState` (`state.rs`) la alias `Ctx<ChromiumDriver>` — moi `xxx_impl` deu chay dung tren
 //! `AppState` do (deref tu `tauri::State`).
+//!
+//! **Ten tham so IPC (M2, fix-round 1)**: khong `#[tauri::command]` nao o day dung `rename_all` —
+//! Tauri 2 TU DOI ten tham so Rust (`snake_case`) sang camelCase cho phia JS (vd `run_start(workflow_id,
+//! graph)` goi tu JS la `invoke("run_start", { workflowId, graph })`); `settings_set`'s tham so `s`
+//! (khong doi ten `settings` — Task 11 dang mirror `{ s }`, xem review fix-round 1 M2) van goi la
+//! `invoke("settings_set", { s })`. Ten LENH (command) thi giu nguyen `snake_case`, khong doi.
 
 pub mod settings;
 pub mod tasks;
@@ -30,14 +36,14 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use lvc_browser::BrowserDriver;
 use lvc_core::AppSettings;
-use lvc_engine::{Engine, EngineError, LimiterHandle, RunHandle};
+use lvc_engine::{Engine, EngineError, LimiterHandle};
 use lvc_store::{Db, StoreError};
 use serde::Serialize;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
-/// Loi tra ve cho MOI lenh IPC. `Serialize` camelCase (`details` bo qua khi `None` de JSON gon —
-/// KHONG, brief doi field co mat luon de frontend khong phai kiem `"details" in err`; giu
-/// `Option<Value>` tuong minh, khong `skip_serializing_if`).
+/// Loi tra ve cho MOI lenh IPC. `Serialize` camelCase — `details` LUON co mat trong JSON (`null`
+/// khi khong co, KHONG `skip_serializing_if`) de frontend khong phai kiem `"details" in err`.
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
 #[serde(rename_all = "camelCase")]
 #[error("{code}: {message}")]
@@ -65,21 +71,25 @@ impl IpcError {
 }
 
 /// `EngineError::Graph(errs)` -> ma `GRAPH_INVALID`, `details` = `errs` da serialize (UI React Flow
-/// to node/canh loi tu day, Task 11). `TaskNotFound` -> `TASK_NOT_FOUND`. Con lai -> `failure_code()`
+/// to node/canh loi tu day, Task 11). `TaskNotFound` -> `TASK_NOT_FOUND`. `Store` -> `STORE` (M1,
+/// fix-round 1 — CUNG loi ha tang, KHONG duoc ra ma khac tuy no di qua `EngineError` hay
+/// `StoreError` truc tiep, dung LAI `From<StoreError>` thay vi tu ghi lai). Con lai -> `failure_code()`
 /// khi co (vd `PROXY_DOWN`, `429`), khong thi ma chung `ENGINE`.
 impl From<EngineError> for IpcError {
     fn from(e: EngineError) -> Self {
-        match &e {
+        let msg = e.to_string();
+        match e {
             EngineError::Graph(errs) => {
-                let details = serde_json::to_value(errs).unwrap_or(serde_json::Value::Null);
-                Self::new("GRAPH_INVALID", e.to_string()).with_details(details)
+                let details = serde_json::to_value(&errs).unwrap_or(serde_json::Value::Null);
+                Self::new("GRAPH_INVALID", msg).with_details(details)
             }
-            EngineError::TaskNotFound(_) => Self::new("TASK_NOT_FOUND", e.to_string()),
-            _ => {
-                let code = e
+            EngineError::TaskNotFound(_) => Self::new("TASK_NOT_FOUND", msg),
+            EngineError::Store(store_err) => Self::from(store_err),
+            other => {
+                let code = other
                     .failure_code()
                     .map_or_else(|| "ENGINE".to_string(), |c| c.as_str().to_string());
-                Self::new(code, e.to_string())
+                Self::new(code, msg)
             }
         }
     }
@@ -94,11 +104,14 @@ impl From<StoreError> for IpcError {
 }
 
 /// Phan cua `AppState` (Task 8) ma cac lenh IPC doc/ghi — xem doc dau module ve ly do generic tren
-/// `D`. `runs`: `run_id` -> [`RunHandle`] (Task 7) cua lan chay dang co — `run_start` chen vao,
-/// `run_cancel` lay ra (`remove`) roi spawn mot task NEN doi `join` (khong chan lenh) thay vi giu
-/// mai; run hoan tat KHONG bi huy (khong ai goi `run_cancel`) hien KHONG tu don khoi map nay — chap
-/// nhan duoc trong pham vi Task 9 (moi `RunHandle` chi la `String` + `CancellationToken` +
-/// `JoinHandle`, xem bao cao "concerns").
+/// `D`. `runs`: `run_id` -> `CancellationToken` (fix-round 1, I1) cua lan chay dang co — CHI de
+/// `run_cancel` huy nhanh; KHONG giu `JoinHandle`/`RunHandle` day du nua (`Engine` da tu quan ly
+/// dieu do qua `run_tokens` rieng cua no, xem `lvc_engine::dag`) de tranh trung lap trang thai.
+/// `run_start` chen token vao roi spawn MOT task "reaper" doi `join` cua `RunHandle` (Task 7) roi
+/// tu `remove` khoi map nay — chay tren CA HAI duong ket thuc (hoan tat tu nhien LAN bi huy), nen
+/// map luon rong lai sau khi mot run xong, khong can `run_cancel` dong gi ca (xem
+/// `workflow::run_start_impl`/`workflow::run_cancel_impl`). Boc `Arc` vi task "reaper" can giu
+/// tham chieu 'static toi map nay ma khong the muon `&Ctx`.
 pub struct Ctx<D: BrowserDriver + 'static> {
     pub engine: Arc<Engine<D>>,
     /// Ban sao `LimiterHandle` (`Clone`, cung mot `watch::Sender` voi ban Engine giu noi bo) — Task
@@ -114,7 +127,7 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     /// Cai dat hien hanh, cache trong bo nho (dong bo boi `settings::settings_set_impl` khi luu) —
     /// tranh doc lai DB moi lan UI can hien thi.
     pub settings: RwLock<AppSettings>,
-    pub runs: DashMap<String, RunHandle>,
+    pub runs: Arc<DashMap<String, CancellationToken>>,
 }
 
 /// Ho tro dung chung cho test cac lenh (`workflow.rs`/`tasks.rs`/`settings.rs`) — dung
@@ -154,7 +167,7 @@ pub(crate) mod test_support {
             handle: boot.handle,
             db: boot.db,
             settings: RwLock::new(boot.settings),
-            runs: DashMap::new(),
+            runs: Arc::new(DashMap::new()),
         };
         (dir, ctx, driver)
     }
@@ -162,6 +175,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    use lvc_browser::BrowserError;
     use lvc_core::graph::GraphError;
     use lvc_engine::EngineError;
     use lvc_store::StoreError;
@@ -207,9 +221,17 @@ mod tests {
         assert_eq!(e.code, "PROFILE_BUSY");
     }
 
+    /// M1 (fix-round 1): `EngineError::Store` phai ra CUNG ma `STORE` voi `StoreError` truc tiep
+    /// (test `store_error_ra_ma_chung_store` duoi day) — truoc do bi roi vao nhanh mac dinh `ENGINE`.
+    #[test]
+    fn engine_error_store_ra_ma_chung_store() {
+        let e: IpcError = EngineError::Store(StoreError::BadPath("x".to_string())).into();
+        assert_eq!(e.code, "STORE");
+    }
+
     #[test]
     fn engine_error_khong_failure_code_ra_ma_chung_engine() {
-        let e: IpcError = EngineError::Store(StoreError::BadPath("x".to_string())).into();
+        let e: IpcError = EngineError::Browser(BrowserError::Timeout("t".to_string())).into();
         assert_eq!(e.code, "ENGINE");
     }
 

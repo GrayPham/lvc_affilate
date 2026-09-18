@@ -12,27 +12,30 @@ name = "lvc_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = "2"
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 lvc-core.workspace = true
 lvc-store.workspace = true
 lvc-browser.workspace = true
 lvc-engine.workspace = true
-tauri = "2"
+tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 # log.rs: ghi logs/app.log xoay theo ngay (chinh sach log, khong bao gio in cookie/prompt/proxy).
 tracing-appender = "0.2.5"
-# state.rs: AppState.runs (run_id -> token huy) — Task 7 (dag::RunHandle) chua co trong cay nay.
+# commands/mod.rs: Ctx.runs (run_id -> CancellationToken huy nhanh, fix-round 1 I1).
 dashmap = "6"
+# commands/mod.rs (fix-round 1, I1): CancellationToken luu trong Ctx.runs.
 tokio-util = "0.7"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-# sync: AppState.settings dung tokio::sync::RwLock (giu qua diem await trong Tauri command Task 9/10).
-tokio = { workspace = true, features = ["sync"] }
+# sync: Ctx.settings dung tokio::sync::RwLock (giu qua diem await trong Tauri command Task 9/10);
+# rt: commands/*.rs goi `tokio::spawn`/`#[tokio::test]` — ghi tuong minh thay vi trong cay vao hop
+# nhat tinh nang tu workspace (M7, fix-round 1 review).
+tokio = { workspace = true, features = ["sync", "rt"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # commands/workflow.rs (Task 9): id workflow moi khi workflow_save khong truyen id (uuid v4).
 uuid.workspace = true

@@ -37,6 +37,12 @@ pub async fn settings_get(state: tauri::State<'_, AppState>) -> Result<AppSettin
 /// lai lan sau). `Engine::apply_settings` da tu goi `LimiterHandle::set_threads` (xem
 /// `lvc_engine::settings`) nen o day KHONG goi rieng nua.
 ///
+/// Fix-round 1 (M5): khoa GHI (`ctx.settings.write().await`) duoc lay TRUOC `set_many` va GIU qua
+/// ca luc ghi cache — hai lan goi `settings_set` DONG THOI (nguoi dung bam Luu hai lan lien tiep,
+/// hoac hai cua so) truoc day co the dan xen: A ghi DB, B ghi DB, cache=B, cache=A (cache CUOI
+/// cung khong khop DB toi khi khoi dong lai app doc lai). `tokio::sync::RwLock` an toan giu qua
+/// diem `.await` (khac `std::sync::RwLock`).
+///
 /// # Errors
 /// `IpcError` ma `STORE` khi ghi bang `settings` that bai.
 pub async fn settings_set_impl<D: BrowserDriver + 'static>(
@@ -46,8 +52,12 @@ pub async fn settings_set_impl<D: BrowserDriver + 'static>(
     let (normalized, warnings) = AppSettings::from_map(&s.to_map());
     let map = normalized.to_map();
     let pairs: Vec<(&str, &str)> = map.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+
+    let mut guard = ctx.settings.write().await;
     SettingsRepo::new(&ctx.db).set_many(&pairs).await?;
-    *ctx.settings.write().await = normalized.clone();
+    *guard = normalized.clone();
+    drop(guard);
+
     ctx.engine.apply_settings(&normalized);
     Ok(warnings)
 }

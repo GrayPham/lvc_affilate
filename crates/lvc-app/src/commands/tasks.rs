@@ -7,9 +7,11 @@ use std::sync::Arc;
 
 use lvc_browser::BrowserDriver;
 use lvc_browser::dola::NoopHooks;
+use lvc_core::TaskStatus;
 use lvc_store::{TaskRepo, TaskRow};
 use serde::{Deserialize, Serialize};
 use tauri_plugin_shell::ShellExt;
+use tracing::warn;
 
 use super::{Ctx, IpcError};
 use crate::state::AppState;
@@ -82,6 +84,12 @@ impl TaskDto {
 /// phan biet run); `run_id = Some` -> `TaskRepo::list_by_run` (khong co `limit` rieng trong repo —
 /// cat sau khi doc, cac run P3 chi vai chuc task nen khong dang lo hieu nang).
 ///
+/// **Thu tu KHAC nhau giua hai nhanh (M9, fix-round 1)** — Task 11 KHONG duoc gia dinh "moi nhat
+/// truoc" cho ca hai: nhanh `run_id = None` (`list_recent`) sap `created_at` GIAM DAN (moi nhat
+/// truoc); nhanh `run_id = Some` (`list_by_run`) sap `scene_index` roi `created_at` TANG DAN (canh
+/// 1 truoc), va `rows.truncate(limit)` (cat sau khi doc TOAN BO task cua run — repo chua co `LIMIT`
+/// rieng cho truy van nay) giu lai N canh DAU (chi so nho nhat), KHONG phai N canh moi nhat.
+///
 /// # Errors
 /// `IpcError` ma `STORE` khi truy van that bai.
 pub async fn task_list_impl<D: BrowserDriver + 'static>(
@@ -128,38 +136,80 @@ pub async fn task_cancel(state: tauri::State<'_, AppState>, id: String) -> Resul
     Ok(task_cancel_impl(&state, &id))
 }
 
-/// Ket qua `task_resume` — chi bao lai `task_id` da nhan (giong `RunInfo` cua `run_start`); lenh
-/// tra ve NGAY, khong doi video xong (xem doc [`task_resume_impl`]).
+/// Ket qua `task_resume` khi CHAP NHAN duoc yeu cau — chi bao lai `task_id` da nhan (giong
+/// `RunInfo` cua `run_start`); lenh tra ve NGAY sau khi kiem tra qua, khong doi video xong (xem
+/// doc [`task_resume_impl`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskResumeInfo {
     pub task_id: String,
 }
 
-/// Than logic `task_resume`: spawn `Engine::resume` chay NEN voi `NoopHooks` (engine da tu phat
+/// Than logic `task_resume`. Fix-round 1 (I2): `id` la tham so NGUOI DUNG UI go vao/lay tu danh
+/// sach CU (co the da het thoi han — task da xong, hoac dang `processing` trong MOT run KHAC dang
+/// chay that) nen KHONG duoc tin tuong mu quang truoc khi cham vao `Engine::resume`: goi `resume`
+/// tren mot task dang `processing` se chia se token huy voi job dang chay that qua
+/// `CancelRegistry::register_guarded` (get-or-insert), roi `CancelGuard::drop` cua LAN RESUME NAY
+/// se XOA MAT token do khi no ket thuc — huy nham job that con dang chay. Vi vay kiem tra o day,
+/// TRUOC khi spawn:
+/// 1. Doc dong task — khong co -> `TASK_NOT_FOUND`.
+/// 2. `status` phai la `Failed` hoac `Queued` (khac -> `Processing`/`Completed` -> `NOT_RESUMABLE`,
+///    thong diep neu ro trang thai hien tai).
+/// 3. Phai co `conversation_id` (khac rong) -> `NOT_RESUMABLE` khi khong (chua tung gui gi thi
+///    khong co gi de "tiep tuc" — `workflow_validate`/`run_start` la duong dung cho truong hop nay).
+///
+/// Qua duoc ca hai thi MOI spawn `Engine::resume` chay NEN voi `NoopHooks` (engine da tu phat
 /// `TaskStage`/`TaskDone`/`TaskFailed` qua `EngineEvents`, UI theo doi qua do) roi tra ve NGAY —
-/// KHONG doi video xong (co the mat vai phut). Loi resume (vd thieu `conversation_id`) khong tra ve
-/// tu ham nay — no la `TaskFailed` phia UI nhan qua kenh su kien (xem doc `Engine::resume`).
-pub fn task_resume_impl<D: BrowserDriver + 'static>(ctx: &Ctx<D>, id: &str) -> TaskResumeInfo {
+/// KHONG doi video xong (co the mat vai phut). Loi CUA CHINH LAN RESUME (vd `NotResumable` do
+/// `account` cung thieu, loi trinh duyet/Dola...) khong tra ve tu ham nay nua — no la `TaskFailed`
+/// phia UI nhan qua kenh su kien VA duoc log `warn` o day (KHONG `let _ =` nuot lang le — id sai/
+/// task het thoi han la loi nguoi dung co the xay ra thuong xuyen tu UI, can vet log de tra cuu).
+///
+/// # Errors
+/// `IpcError` ma `TASK_NOT_FOUND` (khong co dong khop `id`); `NOT_RESUMABLE` (trang thai khong
+/// phai `Failed`/`Queued`, hoac thieu `conversation_id`); `STORE` khi truy van that bai.
+pub async fn task_resume_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    id: &str,
+) -> Result<TaskResumeInfo, IpcError> {
+    let row = TaskRepo::new(&ctx.db)
+        .get(id)
+        .await?
+        .ok_or_else(|| IpcError::new("TASK_NOT_FOUND", format!("khong tim thay task {id}")))?;
+
+    if row.status != TaskStatus::Failed && row.status != TaskStatus::Queued {
+        return Err(IpcError::new(
+            "NOT_RESUMABLE",
+            format!(
+                "task {id} dang o trang thai {} - khong the tiep tuc",
+                row.status.as_str()
+            ),
+        ));
+    }
+    if !TaskDto::from_row(&row).has_conversation {
+        return Err(IpcError::new(
+            "NOT_RESUMABLE",
+            format!("task {id} khong co conversation_id - khong the mo lai hoi thoai"),
+        ));
+    }
+
     let engine = Arc::clone(&ctx.engine);
     let task_id = id.to_string();
     let spawn_id = task_id.clone();
     tokio::spawn(async move {
-        let _ = engine.resume(&spawn_id, &NoopHooks).await;
+        if let Err(e) = engine.resume(&spawn_id, &NoopHooks).await {
+            warn!(task_id = %spawn_id, error = %e, "task_resume: resume nen that bai");
+        }
     });
-    TaskResumeInfo { task_id }
+    Ok(TaskResumeInfo { task_id })
 }
 
-#[allow(
-    clippy::unused_async,
-    reason = "giu async dong bo voi moi lenh IPC khac (quy uoc brief Task 9); than logic dong bo"
-)]
 #[tauri::command]
 pub async fn task_resume(
     state: tauri::State<'_, AppState>,
     id: String,
 ) -> Result<TaskResumeInfo, IpcError> {
-    Ok(task_resume_impl(&state, &id))
+    task_resume_impl(&state, &id).await
 }
 
 /// Than logic `task_open_file` — THUAN, tach khoi phan Tauri thuc su mo he dieu hanh (`ShellExt`,
@@ -209,7 +259,7 @@ pub async fn task_open_file(
 
 #[cfg(test)]
 mod tests {
-    use lvc_core::{FailureCode, TaskStatus};
+    use lvc_core::FailureCode;
 
     use super::*;
     use crate::commands::test_support::ctx_with;
@@ -381,6 +431,111 @@ mod tests {
     async fn task_cancel_id_khong_biet_tra_false() {
         let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
         assert!(!task_cancel_impl(&ctx, "khong-ton-tai"));
+    }
+
+    /// 9:16, 10s, seedance-2.0, fast — canh toi thieu de tao task qua `TaskRepo::create` (giong
+    /// `bootstrap::tests::scene`, nhung dung rieng o day vi `pub(crate)` cua `lvc_core::Scene`
+    /// khong lo ra ngoai crate `lvc-core`).
+    fn scene() -> lvc_core::Scene {
+        lvc_core::Scene::normalize(
+            &lvc_core::RawScene {
+                prompt: Some("con meo di bo".into()),
+                ..lvc_core::RawScene::default()
+            },
+            &lvc_core::Limits::default(),
+            None,
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn task_resume_id_khong_ton_tai_tra_task_not_found() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let err = task_resume_impl(&ctx, "ghost").await.unwrap_err();
+        assert_eq!(err.code, "TASK_NOT_FOUND");
+    }
+
+    /// I2 (fix-round 1): task dang `processing` (trong MOT run khac dang chay that) phai bi chan
+    /// TRUOC khi spawn — resume no se chia se/xoa token huy cua job that dang chay (xem doc
+    /// `task_resume_impl`).
+    #[tokio::test]
+    async fn task_resume_task_dang_processing_tra_not_resumable() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let tasks = TaskRepo::new(&ctx.db);
+        tasks.create("t1", &scene(), None).await.unwrap();
+        tasks
+            .set_status("t1", TaskStatus::Processing, None, None)
+            .await
+            .unwrap();
+        tasks.set_conversation("t1", "conv1").await.unwrap();
+
+        let err = task_resume_impl(&ctx, "t1").await.unwrap_err();
+        assert_eq!(err.code, "NOT_RESUMABLE");
+    }
+
+    #[tokio::test]
+    async fn task_resume_failed_khong_co_conversation_tra_not_resumable() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let tasks = TaskRepo::new(&ctx.db);
+        tasks.create("t1", &scene(), None).await.unwrap();
+        tasks
+            .set_status("t1", TaskStatus::Failed, None, None)
+            .await
+            .unwrap();
+
+        let err = task_resume_impl(&ctx, "t1").await.unwrap_err();
+        assert_eq!(err.code, "NOT_RESUMABLE");
+    }
+
+    /// I2 (fix-round 1): task `Failed` + co `conversation_id`/`account` -> chap nhan, spawn
+    /// `Engine::resume` chay nen (`FakeStep::Launch` + `FakeStep::Poll`, khop dung kich ban
+    /// `resume.rs` dung — KHONG `Submit`, resume khong gui lai prompt) roi dong task chuyen
+    /// `Completed`.
+    #[tokio::test]
+    async fn task_resume_failed_voi_conversation_spawn_thanh_cong_row_chuyen_completed() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("src.mp4");
+        std::fs::write(&src, b"x").unwrap();
+
+        let (_dir, ctx, _driver) = ctx_with(
+            vec![
+                lvc_browser::FakeStep::Launch(Ok(())),
+                lvc_browser::FakeStep::Poll(Ok(lvc_browser::dola::poll::VideoArtifact {
+                    video_url: "https://v.example/x.mp4".into(),
+                    local_path: src.clone(),
+                    conversation_id: lvc_browser::dola::ConversationId("999".into()),
+                    account: String::new(),
+                    watermarked: false,
+                    bytes: 5,
+                    note: lvc_browser::dola::poll::NOTE_RAW,
+                })),
+            ],
+            &["a"],
+        )
+        .await;
+
+        let tasks = TaskRepo::new(&ctx.db);
+        tasks.create("t1", &scene(), None).await.unwrap();
+        tasks
+            .set_status("t1", TaskStatus::Failed, None, None)
+            .await
+            .unwrap();
+        tasks.set_account("t1", "a").await.unwrap();
+        tasks.set_conversation("t1", "999").await.unwrap();
+
+        let info = task_resume_impl(&ctx, "t1").await.unwrap();
+        assert_eq!(info.task_id, "t1");
+
+        // Cho task chuyen trang thai (spawn nen) — poll voi timeout ngan.
+        for _ in 0..500 {
+            let row = tasks.get("t1").await.unwrap().unwrap();
+            if row.status == TaskStatus::Completed {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let row = tasks.get("t1").await.unwrap().unwrap();
+        assert_eq!(row.status, TaskStatus::Completed, "{row:?}");
     }
 
     #[test]
