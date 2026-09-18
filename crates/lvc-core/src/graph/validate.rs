@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{Graph, Node, NodeKind, PortType};
 
@@ -14,14 +14,29 @@ type InCount<'g> = HashMap<(&'g str, &'g str), usize>;
 /// Tập (id node, tên cổng vào) đã có ít nhất 1 cạnh nối tới (bước 4: cổng bắt buộc).
 type ConnectedInputs<'g> = HashSet<(&'g str, &'g str)>;
 
-/// Lỗi đồ thị. `Serialize` để lộ ra UI (Tauri command trả `Vec<GraphError>` cho React Flow).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
-#[serde(tag = "type", rename_all = "snake_case")]
+/// Lỗi đồ thị. `Serialize`/`Deserialize` để lộ ra UI (Tauri command trả `Vec<GraphError>`
+/// cho React Flow). Mọi variant PHẢI là struct-variant (có tên trường, kể cả 1 trường) —
+/// dưới `#[serde(tag = "type")]` (internally tagged), serde chỉ gộp được tag vào biểu diễn
+/// JSON object; newtype variant (`Foo(String)`) serialize ra JSON string/array và LỖI khi
+/// serde cố gộp `"type"` vào đó (xem review Task 1 vòng 1, Critical #1 — từng có 3 variant
+/// kiểu này `DuplicateNodeId(String)`/`UnknownNode(String)`/`Cycle(Vec<String>)` không
+/// serialize được; `to_string()` trả `Err`). Variant đơn vị (`Empty`) thì không sao, vì
+/// không có dữ liệu bên trong cần gộp. `rename_all = "snake_case"` áp cho GIÁ TRỊ TAG
+/// (`"type"`) — khớp quy ước `NodeKind` (`"kind"`) đã dùng trong codebase.
+/// `rename_all_fields = "camelCase"` áp RIÊNG cho tên trường bên trong từng struct-variant
+/// (ví dụ `scene_index` → `sceneIndex`) — ruling: camelCase ngay tại nguồn để Task 9 (Tauri
+/// IPC) không cần thêm lớp DTO chỉ để đổi cách viết hoa.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum GraphError {
-    #[error("trung id node: {0}")]
-    DuplicateNodeId(String),
-    #[error("canh tham chieu node khong ton tai: {0}")]
-    UnknownNode(String),
+    #[error("trung id node: {id}")]
+    DuplicateNodeId { id: String },
+    #[error("canh tham chieu node khong ton tai: {id}")]
+    UnknownNode { id: String },
     #[error("node {node} khong co cong {port}")]
     UnknownPort { node: String, port: String },
     #[error("canh {edge} sai kieu: {from:?} -> {to:?}")]
@@ -32,8 +47,8 @@ pub enum GraphError {
     },
     #[error("node {node} thieu dau vao bat buoc o cong {port}")]
     MissingRequiredInput { node: String, port: String },
-    #[error("chu trinh: {0:?}")]
-    Cycle(Vec<String>),
+    #[error("chu trinh: {nodes:?}")]
+    Cycle { nodes: Vec<String> },
     #[error("node {node} (kind={kind}) chua ho tro o P3")]
     Unsupported { node: String, kind: String },
     #[error("do thi rong")]
@@ -89,8 +104,8 @@ pub fn validate(g: &Graph) -> Result<(), Vec<GraphError>> {
     check_multiple_inputs(g, &in_count, &mut errors);
     check_missing_required(g, &connected_inputs, &mut errors);
 
-    if let Err(GraphError::Cycle(ids)) = topo_order(g) {
-        errors.push(GraphError::Cycle(ids));
+    if let Err(GraphError::Cycle { nodes }) = topo_order(g) {
+        errors.push(GraphError::Cycle { nodes });
     }
 
     if errors.is_empty() {
@@ -105,7 +120,9 @@ fn check_nodes(g: &Graph, errors: &mut Vec<GraphError>) {
     let mut seen_ids: HashSet<&str> = HashSet::new();
     for node in &g.nodes {
         if !seen_ids.insert(node.id.as_str()) {
-            errors.push(GraphError::DuplicateNodeId(node.id.clone()));
+            errors.push(GraphError::DuplicateNodeId {
+                id: node.id.clone(),
+            });
         }
         if !node.kind.supported_in_p3() {
             errors.push(GraphError::Unsupported {
@@ -117,8 +134,15 @@ fn check_nodes(g: &Graph, errors: &mut Vec<GraphError>) {
 }
 
 /// Bước 2 — cạnh: node/cổng tồn tại, kiểu khớp (theo thứ tự cạnh). Trả về bảng đếm số
-/// cạnh vào mỗi cổng vào (dùng ở bước 3) và tập cổng vào "đã nối" (dùng ở bước 4) — một
-/// cổng được coi là "đã nối" khi tồn tại (bất kể phía nguồn có khớp kiểu hay không).
+/// cạnh vào mỗi cổng vào (dùng ở bước 3) và tập cổng vào "đã nối" (dùng ở bước 4).
+///
+/// Quy tắc cố ý (được ghim bởi test `text_sang_image_sai_kieu_bao_loi_va_khong_bao_them_missing_required`):
+/// một cổng vào được coi là "đã nối" ngay khi CÓ cạnh trỏ tới cổng đó (`to_port` tồn tại),
+/// bất kể phía nguồn (`from_port`) có khớp kiểu hay không. Vì vậy một cạnh sai kiểu vào
+/// cổng bắt buộc chỉ tạo ra `TypeMismatch` (nguyên nhân gốc), KHÔNG kèm thêm
+/// `MissingRequiredInput` cho cùng cổng đó — báo cả hai sẽ là lỗi kép gây hiểu lầm cho
+/// cùng một nguyên nhân, trong khi hướng sửa đúng là "đổi kiểu cạnh", không phải "nối
+/// thêm cạnh khác".
 fn check_edges<'g>(
     g: &'g Graph,
     by_id: &HashMap<&'g str, &'g Node>,
@@ -132,10 +156,14 @@ fn check_edges<'g>(
         let to_node = by_id.get(edge.to.as_str()).copied();
 
         if from_node.is_none() {
-            errors.push(GraphError::UnknownNode(edge.from.clone()));
+            errors.push(GraphError::UnknownNode {
+                id: edge.from.clone(),
+            });
         }
         if to_node.is_none() {
-            errors.push(GraphError::UnknownNode(edge.to.clone()));
+            errors.push(GraphError::UnknownNode {
+                id: edge.to.clone(),
+            });
         }
 
         let from_port =
@@ -273,12 +301,12 @@ pub fn topo_order(g: &Graph) -> Result<Vec<String>, GraphError> {
 
     let remaining: Vec<usize> = (0..n).filter(|&i| !removed[i]).collect();
     let cycle_indices = find_one_cycle(&remaining, &adj, &removed);
-    Err(GraphError::Cycle(
-        cycle_indices
+    Err(GraphError::Cycle {
+        nodes: cycle_indices
             .into_iter()
             .map(|i| g.nodes[i].id.clone())
             .collect(),
-    ))
+    })
 }
 
 /// Tìm một chu trình trong đồ thị con còn lại sau Kahn (`remaining` chắc chắn khác rỗng
@@ -429,7 +457,9 @@ mod tests {
             edges: vec![],
         };
         let errs = validate(&g).unwrap_err();
-        assert!(errs.contains(&GraphError::DuplicateNodeId("n1".to_string())));
+        assert!(errs.contains(&GraphError::DuplicateNodeId {
+            id: "n1".to_string()
+        }));
     }
 
     #[test]
@@ -440,7 +470,9 @@ mod tests {
             edges: vec![edge("e1", "n1", "out", "n2", "prompt")],
         };
         let errs = validate(&g).unwrap_err();
-        assert!(errs.contains(&GraphError::UnknownNode("n2".to_string())));
+        assert!(errs.contains(&GraphError::UnknownNode {
+            id: "n2".to_string()
+        }));
     }
 
     #[test]
@@ -458,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn text_sang_image_sai_kieu_bao_loi() {
+    fn text_sang_image_sai_kieu_bao_loi_va_khong_bao_them_missing_required() {
         let g = Graph {
             version: 1,
             nodes: vec![image_upload("n1"), video("n2")],
@@ -469,6 +501,14 @@ mod tests {
             edge: "e1".to_string(),
             from: PortType::Image,
             to: PortType::Text,
+        }));
+        // Quy tac (xem doc check_edges): cong "prompt" da co 1 canh toi (du sai kieu) nen
+        // van tinh la "da noi" — chi bao TypeMismatch (nguyen nhan goc: sai kieu), KHONG
+        // bao THEM MissingRequiredInput cho cung cong do (tranh loi kep gay nham lan ve
+        // cung 1 nguyen nhan; huong sua dung la "doi kieu canh", khong phai "noi them canh").
+        assert!(!errs.contains(&GraphError::MissingRequiredInput {
+            node: "n2".to_string(),
+            port: "prompt".to_string(),
         }));
     }
 
@@ -522,7 +562,9 @@ mod tests {
             ],
         };
         let errs = validate(&g).unwrap_err();
-        assert!(errs.contains(&GraphError::Cycle(vec!["n1".to_string(), "n2".to_string()])));
+        assert!(errs.contains(&GraphError::Cycle {
+            nodes: vec!["n1".to_string(), "n2".to_string()]
+        }));
     }
 
     #[test]
@@ -613,7 +655,120 @@ mod tests {
         };
         assert_eq!(
             topo_order(&g),
-            Err(GraphError::Cycle(vec!["n1".to_string(), "n2".to_string()]))
+            Err(GraphError::Cycle {
+                nodes: vec!["n1".to_string(), "n2".to_string()]
+            })
         );
+    }
+
+    #[test]
+    fn moi_variant_graph_error_deu_serialize_json_va_doc_lai_duoc() {
+        // Fix round 1 (review Critical #1): trước đây 3 variant newtype
+        // (DuplicateNodeId/UnknownNode/Cycle) serialize LỖI dưới #[serde(tag = "type")] —
+        // xem test cũ (đã xoá) từng ghim đúng lỗi này làm RED. Giờ MỌI variant đều là
+        // struct-variant nên serialize/deserialize object được; test này duyệt hết cả 11
+        // variant, ghim đúng chuỗi tag "type" của từng cái, và round-trip lại đúng giá trị.
+        let cases: Vec<(GraphError, &str)> = vec![
+            (
+                GraphError::DuplicateNodeId {
+                    id: "n1".to_string(),
+                },
+                "duplicate_node_id",
+            ),
+            (
+                GraphError::UnknownNode {
+                    id: "n2".to_string(),
+                },
+                "unknown_node",
+            ),
+            (
+                GraphError::UnknownPort {
+                    node: "n1".to_string(),
+                    port: "out".to_string(),
+                },
+                "unknown_port",
+            ),
+            (
+                GraphError::TypeMismatch {
+                    edge: "e1".to_string(),
+                    from: PortType::Text,
+                    to: PortType::Image,
+                },
+                "type_mismatch",
+            ),
+            (
+                GraphError::MissingRequiredInput {
+                    node: "n1".to_string(),
+                    port: "prompt".to_string(),
+                },
+                "missing_required_input",
+            ),
+            (
+                GraphError::Cycle {
+                    nodes: vec!["n1".to_string(), "n2".to_string()],
+                },
+                "cycle",
+            ),
+            (
+                GraphError::Unsupported {
+                    node: "n1".to_string(),
+                    kind: "concat".to_string(),
+                },
+                "unsupported",
+            ),
+            (GraphError::Empty, "empty"),
+            (
+                GraphError::MultipleInputsOnSinglePort {
+                    node: "n1".to_string(),
+                    port: "in".to_string(),
+                },
+                "multiple_inputs_on_single_port",
+            ),
+            (
+                GraphError::Scene {
+                    node: "n1".to_string(),
+                    line: Some(3),
+                    message: "prompt is empty".to_string(),
+                },
+                "scene",
+            ),
+            (
+                GraphError::TooManyRefs {
+                    node: "n1".to_string(),
+                    scene_index: 2,
+                    count: 5,
+                    max: 3,
+                },
+                "too_many_refs",
+            ),
+        ];
+
+        for (err, want_tag) in cases {
+            let value: serde_json::Value = serde_json::to_value(&err)
+                .unwrap_or_else(|e| panic!("{err:?} khong serialize duoc: {e}"));
+            assert_eq!(
+                value.get("type").and_then(serde_json::Value::as_str),
+                Some(want_tag),
+                "sai tag cho {err:?}"
+            );
+            let back: GraphError = serde_json::from_value(value)
+                .unwrap_or_else(|e| panic!("{want_tag} serialize ra roi khong doc lai duoc: {e}"));
+            assert_eq!(back, err, "round-trip sai cho tag {want_tag}");
+        }
+    }
+
+    #[test]
+    fn too_many_refs_scene_index_ra_camelcase_trong_json() {
+        // C1: rename_all_fields = "camelCase" — chi field ben trong struct-variant doi,
+        // tag "type" van snake_case (khop NodeKind."kind").
+        let err = GraphError::TooManyRefs {
+            node: "n1".to_string(),
+            scene_index: 7,
+            count: 5,
+            max: 3,
+        };
+        let value = serde_json::to_value(&err).unwrap();
+        assert!(value.get("sceneIndex").is_some(), "{value:?}");
+        assert!(value.get("scene_index").is_none(), "{value:?}");
     }
 }
