@@ -28,8 +28,11 @@
 //! `driver::SUBMIT_STAGES`/`POLL_STAGES` (danh sach dong dung chung voi `ChromiumDriver`) — truoc ban
 //! sua nay `submit()` bo qua `composer`/`refs` nen engine test pin sai chuoi so voi driver that.
 //!
-//! P3 Task 12a: [`FakeDriver::endless_ok`] — "che do gia lap" dev (LVC_FAKE_DRIVER=1, xem
-//! `lvc-app::bootstrap`) KHONG ton credit. Khac voi kich ban (`FakeDriver::new`), driver nay bat dau
+//! P3 Task 12a: [`FakeDriver::endless_ok`] — "che do gia lap" dev (bat bang cargo feature
+//! `fake-driver` cua `crates/lvc-app`, vd `cargo tauri dev --features fake-driver`, xem
+//! `lvc-app::bootstrap`; fix-round 1 final-review M2 — KHONG PHAI bien moi truong
+//! `LVC_FAKE_DRIVER=1`, ban truoc sua ghi nham) KHONG ton credit. Khac voi kich ban
+//! (`FakeDriver::new`), driver nay bat dau
 //! voi kich ban RONG va khong bao gio panic khi kich ban het — moi ham vong doi tra ve mac dinh
 //! "luon Ok" (xem doc ham `endless_ok`). Muc dich la de UI (Task 11) thu duoc TOAN BO luong
 //! submit -> poll -> tai video ma khong can Dola that.

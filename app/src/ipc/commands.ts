@@ -1,4 +1,4 @@
-// Mot ham boc typed cho MOI lenh Tauri cua `crates/lvc-app` (16 lenh, xem
+// Mot ham boc typed cho MOI lenh Tauri cua `crates/lvc-app` (23 lenh, xem
 // `commands::mod.rs`/`lib.rs::invoke_handler!`) — ten lenh dung HET SUC dung chuoi Rust
 // (snake_case), tham so JS dung camelCase (Tauri v2 tu doi snake_case -> camelCase cho tham so
 // lenh, xac nhan trong task-9-report.md). Ket qua luon di qua `.parse()` zod (khong `safeParse`)

@@ -140,10 +140,21 @@ export default function SettingsForm() {
         </label>
 
         <label className="flex items-center justify-between gap-2 text-sm">
-          <span>Chế độ im lặng (silent mode)</span>
+          <span>
+            Chế độ im lặng (silent mode)
+            <span className="ml-1 text-[10px] text-slate-400">(chưa hỗ trợ ở P3)</span>
+          </span>
           <input
             type="checkbox"
             checked={draft.silentMode}
+            // I4 (fix-round 1, final-review): `EngineConfig::from_settings_with`
+            // (crates/lvc-engine/src/settings.rs) chua doc `silent_mode` va `open_session`
+            // (generate.rs) dung `..LaunchOpts::default()` nen `window_offscreen` khong bao gio
+            // duoc bat qua duong nay — khoa o day de nguoi dung khong tuong da bat duoc tinh
+            // nang; gia tri VAN round-trip binh thuong qua settings_get/settings_set (chi UI
+            // khoa, server khong doi). P4: noi day dung that — `cfg.window_offscreen =
+            // s.silent_mode` roi truyen vao `open_session`, luc do moi mo khoa o day.
+            disabled
             onChange={(e) => setDraft({ silentMode: e.target.checked })}
           />
         </label>
