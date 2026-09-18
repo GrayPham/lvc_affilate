@@ -157,6 +157,12 @@ pub const MODE_BTN_JS: &str = "() => !![...document.querySelectorAll('button')].
 /// `video_worker_ui.py:1948` `_BUTTONS_JS` — 25 nhan nut dau tien (cho thong diep `MODE_UNAVAILABLE`).
 pub const BUTTONS_JS: &str = "() => [...document.querySelectorAll('button')].map(b => (b.innerText||'').trim()).filter(Boolean).slice(0, 25)";
 
+/// `video_worker_ui.py:1306` (inline trong `_handle_poll`, quet DOM buoc 4 — Task 11): 3000 ky tu
+/// cuoi cua `innerText` trong `<main>` (KHONG `body`: thanh ben co ten chat cu 'Nhắc nhở tín dụng
+/// video' khop credit oan — chu thich `:1303-1304`).
+pub const DOM_TAIL_JS: &str =
+    "() => ((document.querySelector('main') || document.body).innerText || '').slice(-3000)";
+
 /// `video_worker_ui.py:1087-1095` `SIDEBAR_LAST_LEAF_JS` — la cuoi cua `nav|aside` (hang tai khoan)
 /// cho duong Cai dat UI. R4: duong UI KHONG duoc port; giu hang de tham chieu/Task sau.
 pub const SIDEBAR_LAST_LEAF_JS: &str = r"() => {

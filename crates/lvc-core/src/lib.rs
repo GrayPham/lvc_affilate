@@ -31,9 +31,9 @@ pub use cookie::{
     validate_dola_cookies,
 };
 pub use dola_text::{
-    ConfirmKind, DolaTextClass, REFUSAL_NOTE, agent_question, classify_dola_text,
+    ConfirmKind, DolaTextClass, PORTRAIT_NOTE, REFUSAL_NOTE, agent_question, classify_dola_text,
     confirmation_reply, is_generating, is_portrait_hint, looks_like_json, needs_confirmation,
-    policy_rejection,
+    policy_rejection, refusal_snippet,
 };
 pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;

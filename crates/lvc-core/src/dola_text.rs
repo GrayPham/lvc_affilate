@@ -143,6 +143,15 @@ const DURATION_RANGE_EN_SRC: &str = r"(\d+)\s*(?:to|-|–)\s*(\d+)\s*seconds";
 /// (khong phai het credit).
 pub const REFUSAL_NOTE: &str = "Dola từ chối tạo video (KHÔNG phải hết credit — cùng tài khoản vẫn tạo được cảnh khác). Thường do ảnh tham chiếu (mặt người thật, trẻ em, nhân vật bản quyền) hoặc nội dung prompt → đổi ảnh/prompt rồi Chạy lại (tự mở chat mới). Dola nói: ";
 
+/// video_worker_ui.py:77-78 `PORTRAIT_NOTE` — tien to `PromptViolationError` khi ly do tu choi
+/// chinh sach khop `PORTRAIT_RE` (`_handle_poll` `:1351-1352`; Task 11 dung). Chep nguyen van.
+pub const PORTRAIT_NOTE: &str = "Dola (Nhanh + Seedance 2.5) chặn ảnh tham chiếu có mặt người thật vì 'bảo vệ chân dung' — chỉ cho video của chính bạn. Cách chạy: đổi cảnh sang Agent/Pro (cùng ảnh vẫn tạo được) hoặc model 2.0, hoặc dùng ảnh không có mặt người. Dola nói: ";
+
+/// `video_worker_ui.py:1313` `dom_text[max(0, m.start() - 40):m.end() + 160]` — so KY TU quanh cho
+/// khop `GENERIC_REFUSAL_RE` khi quet DOM (Task 11).
+const REFUSAL_SNIPPET_BEFORE: usize = 40;
+const REFUSAL_SNIPPET_AFTER: usize = 160;
+
 // ===== Regex bien tinh (compile 1 lan) =====
 
 static DAILY_LIMIT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -255,6 +264,26 @@ pub fn classify_dola_text(text: &str) -> Option<DolaTextClass> {
 pub fn looks_like_json(text: &str) -> bool {
     let t = text.trim_start();
     t.starts_with('{') || t.starts_with('[') || t.contains("\"limit_type\"")
+}
+
+/// video_worker_ui.py:1312-1314 — khi quet DOM (`_handle_poll` buoc 4) thay `refusal`, thong diep
+/// loi la `REFUSAL_NOTE` + doan van quanh cho khop `GENERIC_REFUSAL_RE`: tu 40 KY TU truoc
+/// `m.start()` toi 160 ky tu sau `m.end()` (chi so Python = codepoint), `.strip()`.
+///
+/// `None` khi `GENERIC_REFUSAL_RE` KHONG khop — xay ra khi `classify_dola_text` tra `Refusal`
+/// chi nho `policy_rejection` (nhanh thu hai cua `:91`): Python `m = GENERIC_REFUSAL_RE.search(...)`
+/// la `None` -> `m.start()` nem `AttributeError` -> bi `except Exception: pass` (`:1319-1320`) nuot
+/// -> KHONG bao loi, poll tiep. Port giu nguyen hanh vi do (caller bo qua khi `None`).
+#[must_use]
+pub fn refusal_snippet(text: &str) -> Option<String> {
+    let m = GENERIC_REFUSAL_RE.find(text)?;
+    // regex tra offset BYTE; Python cat theo KY TU -> doi sang chi so ky tu.
+    let start_c = text[..m.start()].chars().count();
+    let end_c = text[..m.end()].chars().count();
+    let from = start_c.saturating_sub(REFUSAL_SNIPPET_BEFORE);
+    let to = end_c + REFUSAL_SNIPPET_AFTER;
+    let snippet: String = text.chars().skip(from).take(to - from).collect();
+    Some(snippet.trim().to_string())
 }
 
 /// `PORTRAIT_RE` `video_worker_ui.py:76` — Dola chan anh tham chieu vi "bao ve chan dung".
@@ -602,6 +631,48 @@ mod tests {
             None
         );
         assert_eq!(needs_confirmation(&[]), None);
+    }
+
+    /// video_worker_ui.py:77-78 — chep nguyen van (oracle: `.venv` Python, 238 ky tu).
+    #[test]
+    fn portrait_note_khop_ban_python() {
+        assert_eq!(
+            PORTRAIT_NOTE,
+            "Dola (Nhanh + Seedance 2.5) chặn ảnh tham chiếu có mặt người thật vì 'bảo vệ chân dung' — \
+chỉ cho video của chính bạn. Cách chạy: đổi cảnh sang Agent/Pro (cùng ảnh vẫn tạo được) hoặc model 2.0, \
+hoặc dùng ảnh không có mặt người. Dola nói: "
+        );
+        assert_eq!(PORTRAIT_NOTE.chars().count(), 238);
+    }
+
+    /// `video_worker_ui.py:1313` — `dom_text[max(0, m.start() - 40):m.end() + 160].strip()`: chi so
+    /// KY TU; khop o dau chuoi -> bat dau tu 0; duoi dai bi cat o 160 ky tu sau `m.end()`.
+    /// Oracle Python (`.venv`, chi doc): `re.search` chon nhanh DAU TIEN khop tai vi tri trai nhat
+    /// (`temporarily unable to generate`, 55..85 — KHONG phai `I am ... the content`), snippet 230
+    /// ky tu = 35 `あ` + "I am " + khop + " the content you requested" + 134 `x`; Rust `regex`
+    /// cung leftmost-first.
+    #[test]
+    fn refusal_snippet_40_truoc_160_sau_theo_ky_tu() {
+        // 50 ky tu tieng Nhat truoc (nhieu byte/ky tu) + cau khop + 200 chu 'x' sau.
+        let before: String = "あ".repeat(50);
+        let hit = "I am temporarily unable to generate the content you requested";
+        let after: String = "x".repeat(200);
+        let dom = format!("{before}{hit}{after}");
+        let got = refusal_snippet(&dom).expect("khop GENERIC_REFUSAL_RE");
+        let want = format!("{}{hit}{}", "あ".repeat(35), "x".repeat(134));
+        assert_eq!(got, want);
+        assert_eq!(got.chars().count(), 230);
+        // Khop ngay dau chuoi: max(0, start - 40) = 0; strip() bo khoang trang cuoi.
+        let dom2 = format!("{hit}   ");
+        assert_eq!(refusal_snippet(&dom2).as_deref(), Some(hit));
+        // Chi khop policy_rejection (khong khop GENERIC_REFUSAL_RE) -> None (Python: AttributeError
+        // bi nuot, khong bao loi).
+        assert_eq!(
+            classify_dola_text("ポリシーに違反しています"),
+            Some(DolaTextClass::Refusal)
+        );
+        assert_eq!(refusal_snippet("ポリシーに違反しています"), None);
+        assert_eq!(refusal_snippet("猫の動画です"), None);
     }
 
     #[test]
