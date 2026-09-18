@@ -32,7 +32,7 @@
 //! | 4 | `:1300-1320` quet DOM `<main>` | `dom_text` do vong doc bang [`DOM_TAIL_JS`] (5 s, loi nuot); bo qua khi co `ignore_*` (`:1301` chat dung lai); `Refusal` chi khi [`refusal_snippet`] co (Python nuot `AttributeError` khi chi khop policy) |
 //! | 5 | `:1321-1343` loc `ignore_*` | theo chuoi, [`link_key`], [`video_ids`] (tinh san trong [`PollState::new`]) |
 //! | 6 | `:1344-1353` `policy_rejection(latest)` | khong video/link; `PORTRAIT_NOTE` khi [`is_portrait_hint`] |
-//! | 7 | `:1354-1368` `needs_confirmation` | **chi pro-like** (brief Task 11; Python khong gate — xem "Khac Python"); khoa [`confirm_key`], toi da `confirm_max_replies`; tra [`PollDecision::ConfirmReply`] (vong gui + stage `confirm`) |
+//! | 7 | `:1354-1368` `needs_confirmation` | MOI mode nhu Python (khong gate pro-like — fix vong 1); khoa [`confirm_key`], toi da `confirm_max_replies`; tra [`PollDecision::ConfirmReply`] (vong gui + stage `confirm`) |
 //! | 8 | `:1369-1375` `agent_question` ≥ `agent_question_grace_s` | [`question_grace`]; luu y `lvc_core::agent_question` KHONG BAO GIO `Some` (parity co chu dich, doc o do) |
 //! | 9 | `:1376-1384` `AGENT_IDLE_FAIL` | `latest` la chu, khong phai lenh cua tool (`DIRECTIVE:` + `Content:`), im ≥ `agent_idle_fail_s`, khong `is_generating` → `AGENT_NO_VIDEO` |
 //! | 10 | `:1385-1393` videos | [`PollDecision::NeedRaw`] `models = [video_models[0]]`, fallback [`RawFallback::Unwatermarked`] |
@@ -47,10 +47,10 @@
 //!   cac cap `Set-Cookie` ma poll truoc tra ve (`PullOutcome::set_cookies`, moi nhat thang) len tren:
 //!   ten da co → thay gia tri, chua co → them. Neu trinh duyet tu xoay cookie SAU khi ta nhan
 //!   `Set-Cookie`, gia tri cua ta van thang (Dola cap cho phien HTTP nay; ca hai deu hop le).
-//! - **Confirmation chi pro-like**: Python `:1354` khong xet mode (tham so `accept_links` cua
-//!   `_handle_poll` khong duoc doc trong than ham — tham so chet). Brief Task 11 quy dinh chi pro-like:
-//!   o mode Nhanh, go tra loi vao o soan (van dang gan skill video) se tao THEM mot video "Yes, please
-//!   proceed" — ton credit. `PollOpts::accept_links` giu de khop giao dien, KHONG doc (nhu Python).
+//! - **Confirmation MOI mode** (fix vong 1, ruling): Python `:1354` khong xet mode — port y nguyen
+//!   (ban dau gate pro-like theo brief; brief sai). Tham so `accept_links` cua `_handle_poll` khong
+//!   duoc doc trong than ham (tham so chet) → `PollOpts::accept_links` giu de khop giao dien, KHONG doc.
+//!   `PollOpts::mode` hien chi de log/giao dien (Task 12/14 co the dung).
 //! - **`LINK_PREVIEW_ASK`**: `config.py:298` mac dinh `"0"` (tat) — khong port nhanh xin preview
 //!   `:1414-1425` (toi uu hoa, can gui chat); hang [`LINK_PREVIEW_ASK`] = `false` ghi lai quyet dinh.
 //! - **Gui tra loi xac nhan**: Python `_send_chat_message` (`:1242-1262`) = go + Enter + bam nut gui neu
@@ -149,7 +149,8 @@ pub struct VideoArtifact {
 pub struct PollOpts {
     /// `timeout` `:1476` (da qua `submit_timeout`).
     pub timeout: Duration,
-    /// Mode cua task — gate buoc 7 (chi pro-like, xem doc module).
+    /// Mode cua task (`mode` `:1788`/`:2387`) — KHONG anh huong quyet dinh (fix vong 1: Python
+    /// `_handle_poll` khong gate theo mode); giu cho log/giao dien.
     pub mode: Mode,
     /// `current_duration.get()` `:1360` — tra loi khi Dola hoi so giay.
     pub duration: u16,
@@ -677,11 +678,9 @@ pub(crate) fn handle_poll(
     if no_media {
         // 6. :1344-1353
         policy_step(cur_latest)?;
-        // 7. :1354-1368 (brief: chi pro-like — xem doc module)
-        if opts.mode.is_pro_like() {
-            if let Some(decision) = confirm_step(cur_latest, state, opts, limits, now) {
-                return Ok(decision);
-            }
+        // 7. :1354-1368 — MOI mode (Python khong gate theo mode; fix vong 1)
+        if let Some(decision) = confirm_step(cur_latest, state, opts, limits, now) {
+            return Ok(decision);
         }
     }
     // 8. :1369-1375 agent hoi nguoi dung -> sau grace khong ai tra loi -> fail
@@ -1456,14 +1455,31 @@ mod tests {
             PollDecision::Continue
         );
         assert_eq!(st.confirm_keys.len(), 3);
-        // Mode Nhanh (brief: chi pro-like) -> khong tra loi
+        // Mode Nhanh CUNG tra loi (fix vong 1: Python :1354 khong gate theo mode) — toi da 3 roi roi xuong
         let of = opts(Mode::Fast);
         let mut sf = PollState::new(start, &of);
         assert_eq!(
             hp(&p1, &mut sf, &of, &l, now1).unwrap(),
+            PollDecision::ConfirmReply {
+                text: CONFIRM_REPLY.to_string(),
+                nth: 1
+            }
+        );
+        assert!(sf.confirmed);
+        assert_eq!(sf.last_activity, now1);
+        assert!(matches!(
+            hp(&p2, &mut sf, &of, &l, now2).unwrap(),
+            PollDecision::ConfirmReply { nth: 2, .. }
+        ));
+        assert!(matches!(
+            hp(&p3, &mut sf, &of, &l, now2).unwrap(),
+            PollDecision::ConfirmReply { nth: 3, .. }
+        ));
+        assert_eq!(
+            hp(&p4, &mut sf, &of, &l, now2).unwrap(),
             PollDecision::Continue
         );
-        assert!(!sf.confirmed);
+        assert_eq!(sf.confirm_keys.len(), 3);
         // Co video -> khong xet xac nhan (:1354)
         let mut pv = poll_with(&["ご確認ください"]);
         pv.videos = vec!["http://h/video/a.mp4".to_string()];
@@ -1495,7 +1511,8 @@ mod tests {
     // ===== Buoc 8: agent_question grace (:1369-1375) =====
 
     /// `lvc_core::agent_question` khong bao gio `Some` (parity Python — doc o do) nen nhanh nay
-    /// KHONG the kich qua `handle_poll`: cau hoi "?" o mode Nhanh (khong gate xac nhan) van Continue
+    /// KHONG the kich qua `handle_poll`: cau hoi "?" khop `needs_confirmation` (Question) → buoc 7 tra
+    /// loi 1 lan (fix vong 1: moi mode), roi cung tin do → buoc 8 `agent_question` = None → Continue
     /// sau grace, `question_since` khong duoc dat. Logic grace test rieng qua `question_grace`.
     #[test]
     fn hp_agent_question_grace() {
@@ -1504,8 +1521,13 @@ mod tests {
         let l = Limits::default();
         let mut st = PollState::new(start, &o);
         let p = poll_with(&["どの比率にしますか？"]);
-        assert_eq!(
+        assert!(matches!(
             hp(&p, &mut st, &o, &l, start).unwrap(),
+            PollDecision::ConfirmReply { nth: 1, .. }
+        ));
+        assert_eq!(st.question_since, None);
+        assert_eq!(
+            hp(&p, &mut st, &o, &l, start + secs(5)).unwrap(),
             PollDecision::Continue
         );
         assert_eq!(st.question_since, None);
@@ -1513,6 +1535,7 @@ mod tests {
             hp(&p, &mut st, &o, &l, start + secs(61)).unwrap(),
             PollDecision::Continue
         );
+        assert_eq!(st.question_since, None);
         // question_grace: lan dau ghi moc, truoc grace Ok, tu grace -> AGENT_QUESTION; None -> xoa moc.
         let grace = Duration::from_secs(u64::from(l.agent_question_grace_s));
         let qtext = "どの比率にしますか？";
@@ -2301,8 +2324,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn vong_pro_tra_loi_xac_nhan_roi_tai() {
+    /// Buoc 7 qua vong: agent xin xac nhan -> gui tra loi (stage `confirm`) -> lan poll sau co video.
+    /// Chay cho CA Pro lan Nhanh (fix vong 1: Python `:1354` khong gate theo mode).
+    async fn vong_tra_loi_xac_nhan_roi_tai(mode: Mode) {
         let server = MockServer::start().await;
         let raw_mp4 = format!("{}/video/raw.mp4", server.uri());
         let model =
@@ -2337,16 +2361,17 @@ mod tests {
             ACC,
             &conv(),
             dir.path(),
-            &opts(Mode::Pro),
+            &opts(mode),
             &fast_limits(),
             &hooks,
         )
         .await
         .expect("artifact");
-        assert_eq!(art.note, NOTE_RAW);
+        assert_eq!(art.note, NOTE_RAW, "{mode:?}");
         assert_eq!(
             *page.replies.lock().unwrap(),
-            vec![CONFIRM_REPLY.to_string()]
+            vec![CONFIRM_REPLY.to_string()],
+            "{mode:?}"
         );
         assert_eq!(
             *hooks.stages.lock().unwrap(),
@@ -2354,8 +2379,19 @@ mod tests {
                 STAGE_GENERATING.to_string(),
                 STAGE_CONFIRM.to_string(),
                 STAGE_DOWNLOADING.to_string()
-            ]
+            ],
+            "{mode:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn vong_pro_tra_loi_xac_nhan_roi_tai() {
+        vong_tra_loi_xac_nhan_roi_tai(Mode::Pro).await;
+    }
+
+    #[tokio::test]
+    async fn vong_nhanh_cung_tra_loi_xac_nhan_roi_tai() {
+        vong_tra_loi_xac_nhan_roi_tai(Mode::Fast).await;
     }
 
     /// Ruling #3: `Set-Cookie` cua poll truoc ghi de len chuoi CDP o lan poll sau.
