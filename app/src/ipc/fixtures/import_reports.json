@@ -11,6 +11,9 @@
     "skipped": [
       "pool_usage.db"
     ],
-    "profilesCopied": 2
+    "profilesCopied": 2,
+    "profilesSkipped": [
+      "acc_da_ton_tai"
+    ]
   }
 }

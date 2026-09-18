@@ -28,8 +28,9 @@ pub async fn account_list(
 }
 
 /// # Errors
-/// `IpcError` ma `INVALID_NAME`/`INVALID_PROXY`/`COOKIE_INVALID`/`ACCOUNT_EXISTS`/
-/// `COOKIE_NOT_LOGGED_IN`/`BROWSER`/`STORE`/`IO` — xem `lvc_engine::accounts::AccountError::code`.
+/// `IpcError` ma `INVALID_NAME`/`INVALID_PROXY`/`COOKIE_INVALID`/`ACCOUNT_BUSY`/`ACCOUNT_EXISTS`/
+/// `COOKIE_NOT_LOGGED_IN`/`BROWSER`/`STORE`/`IO` — xem `lvc_engine::accounts::AccountError::code`
+/// (`ACCOUNT_BUSY`: Minor 4 review fix-round 1, ten MOI dang bi mot lan goi khac thue cung luc).
 pub async fn account_import_cookies_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
     name: &str,
@@ -50,7 +51,7 @@ pub async fn account_import_cookies(
 }
 
 /// # Errors
-/// `IpcError` ma `ACCOUNT_NOT_FOUND`/`PROFILE_BUSY`/`BROWSER`/`STORE`.
+/// `IpcError` ma `INVALID_NAME`/`ACCOUNT_NOT_FOUND`/`INVALID_PROXY`/`PROFILE_BUSY`/`BROWSER`/`STORE`.
 pub async fn account_verify_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
     name: &str,
@@ -222,6 +223,15 @@ mod tests {
         let (_dir, ctx, _driver) = ctx_with(vec![], &["acc1"]).await;
         assert!(account_delete_impl(&ctx, "acc1").await.unwrap());
         assert!(!account_delete_impl(&ctx, "acc1").await.unwrap());
+    }
+
+    /// C1 (review fix-round 1, Critical): ten nguy hiem phai ra ma `INVALID_NAME` qua het lop IPC —
+    /// khong chi kiem o `lvc-engine`, ma ca duong `xxx_impl` thuc su UI se goi.
+    #[tokio::test]
+    async fn account_delete_impl_ten_khong_hop_le_bao_ma_dung() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &["sibling"]).await;
+        let err = account_delete_impl(&ctx, "..").await.unwrap_err();
+        assert_eq!(err.code, "INVALID_NAME");
     }
 
     #[tokio::test]

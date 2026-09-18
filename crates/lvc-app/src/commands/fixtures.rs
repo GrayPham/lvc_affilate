@@ -310,6 +310,7 @@ fn import_reports_fixture() -> Value {
             settings: 5,
             skipped: vec!["pool_usage.db".to_string()],
             profiles_copied: 2,
+            profiles_skipped: vec!["acc_da_ton_tai".to_string()],
         })
         .unwrap(),
     })

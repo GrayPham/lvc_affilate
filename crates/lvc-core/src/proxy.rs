@@ -319,14 +319,22 @@ fn mask_valid(raw: &str, spec: &ProxySpec) -> String {
 }
 
 /// `raw` KHÔNG `parse_proxy` được (định dạng rác) — vẫn không được lộ nguyên văn (có thể chứa mật
-/// khẩu ở mảnh thứ 4 trở đi của dạng `ip:port:user:pass` gõ sai): giữ 3 mảnh đầu, phần sau `:` thứ
-/// ba (nếu có) gộp thành `"***"`; ≤ 3 mảnh (không có gì để che) → giữ nguyên.
+/// khẩu ở mảnh thứ 4 trở đi của dạng `ip:port:user:pass` gõ sai): giữ 3 mảnh đầu, MỖI mảnh sau đó
+/// (nếu có) đổi thành `"***"` riêng — proxies.py:122-124 (Minor 1, review fix-round 1):
+/// `abc:def:ghi:jkl:mno` → `abc:def:ghi:***:***` (MỘT `***` cho MỖI mảnh thừa, không gộp chung một
+/// `***`); ≤ 3 mảnh (không có gì để che) → giữ nguyên.
 fn mask_invalid(raw: &str) -> String {
-    let parts: Vec<&str> = raw.splitn(4, ':').collect();
+    let parts: Vec<&str> = raw.split(':').collect();
     if parts.len() <= 3 {
         return raw.to_string();
     }
-    format!("{}:{}:{}:***", parts[0], parts[1], parts[2])
+    format!(
+        "{}:{}:{}{}",
+        parts[0],
+        parts[1],
+        parts[2],
+        ":***".repeat(parts.len() - 3)
+    )
 }
 
 #[cfg(test)]
@@ -528,11 +536,18 @@ mod tests {
     }
 
     #[test]
-    fn mask_proxy_dang_sai_giu_3_manh_dau_che_phan_con_lai() {
-        assert_eq!(mask_proxy("abc:def:ghi:jkl:mno"), "abc:def:ghi:***");
+    fn mask_proxy_dang_sai_giu_3_manh_dau_che_moi_manh_con_lai_rieng() {
+        // Minor 1 (review fix-round 1): Python proxies.py:122-124 — MOT "***" cho MOI manh thua,
+        // khong gop chung mot "***" (ban cu sai o day).
+        assert_eq!(mask_proxy("abc:def:ghi:jkl:mno"), "abc:def:ghi:***:***");
         assert_eq!(
             mask_proxy("1.2.3.4:99999:user:pass"),
             "1.2.3.4:99999:user:***"
+        );
+        assert_eq!(
+            mask_proxy("a:b:c:d:e:f"),
+            "a:b:c:***:***:***",
+            "3 manh thua -> 3 lan ***"
         );
     }
 

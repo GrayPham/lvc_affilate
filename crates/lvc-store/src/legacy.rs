@@ -19,7 +19,14 @@ pub struct ImportReport {
 }
 
 async fn open_readonly(path: &Path) -> Result<SqlitePool, StoreError> {
-    let opts = SqliteConnectOptions::new().filename(path).read_only(true);
+    // Minor 9 (review T10 fix-round 1): `?mode=ro&immutable=1` (context.md) — `read_only(true)`
+    // khong du: `immutable(true)` cho phep mo file NGAY CA KHI tien trinh Python cu con giu no mo
+    // (khong co -wal/-shm vi DB Python dung journal mode DELETE mac dinh), va tat SQLite kiem tra
+    // thay doi file (mtime) moi lan truy van — an toan vi ta chi doc MOT LAN luc import.
+    let opts = SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .immutable(true);
     Ok(SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(opts)

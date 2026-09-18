@@ -360,6 +360,24 @@ async fn clear_expired_limits_xoa_tung_cot_doc_lap() {
     assert_eq!(row.quota_reason, "q");
 }
 
+// ===== Task 10 fix-round 1 (Minor 6): luu han cookie sessionid =====
+
+#[tokio::test]
+async fn set_cookie_expires_at_ghi_moc() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = AccountRepo::new(&db);
+    repo.upsert("acc2").await.unwrap();
+    assert_f64(
+        repo.get("acc2").await.unwrap().unwrap().cookie_expires_at,
+        0.0,
+    );
+    repo.set_cookie_expires_at("acc2", 1_800_000_000.0)
+        .await
+        .unwrap();
+    let row = repo.get("acc2").await.unwrap().unwrap();
+    assert_f64(row.cookie_expires_at, 1_800_000_000.0);
+}
+
 // ===== Task 10: xoa tai khoan =====
 
 #[tokio::test]

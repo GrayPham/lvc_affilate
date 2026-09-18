@@ -369,6 +369,22 @@ impl AccountRepo {
         Ok(row.try_get("used")?)
     }
 
+    /// Minor 6 (review T10 fix-round 1): lưu hạn cookie `sessionid` đọc được LÚC NHẬP (Python
+    /// `_run_add_cookie_job` `server.py:1497` ghi `cookie_expires_at`) — trước bản sửa này
+    /// `import_cookies` (lvc-engine) tính được hạn nhưng KHÔNG BAO GIỜ ghi vào DB, cột này luôn là
+    /// `0` cho mọi tài khoản nhập qua cookie (UI không hiển thị được hạn cookie).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_cookie_expires_at(&self, name: &str, at: f64) -> Result<(), StoreError> {
+        sqlx::query("UPDATE accounts_meta SET cookie_expires_at = ?2 WHERE name = ?1")
+            .bind(name)
+            .bind(at)
+            .execute(self.db.pool())
+            .await?;
+        Ok(())
+    }
+
     /// Task 10 (`lvc-engine::accounts::Engine::delete`, tab Tài khoản → Xoá): xoá dòng
     /// `accounts_meta` của `name` (KHÔNG đụng bảng `usage` — lịch sử dùng hôm nay/trước đó giữ
     /// nguyên, không có ý nghĩa gì để xoá theo). Trả `true` khi CÓ dòng bị xoá, `false` khi `name`
