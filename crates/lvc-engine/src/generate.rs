@@ -172,6 +172,11 @@ impl EngineHooks<'_> {
 
     /// Phat `TaskStage` + xep hang ghi cot `stage` (KHONG goi `inner` — caller chi nhan stage tu
     /// driver, xem [`PollHooks::on_stage`] duoi).
+    ///
+    /// Fix-round Minor M7: `events.emit` chay TRUOC dong `stage_tx.send` — nhung ca hai deu chi XEP
+    /// HANG (mpsc khong bounded, `stage_writer` ghi `TaskRepo::set_stage` tuan tu o task nen rieng,
+    /// KHONG `await` o day duoc vi ham nay dong bo). Nghia la ke nhan su kien `TaskStage` co the doc
+    /// lai dong `tasks` ngay sau do va con thay cot `stage` CU — xem doc [`EngineEvent::TaskStage`].
     fn stage(&self, stage: &str, detail: Option<&str>) {
         self.events.emit(EngineEvent::TaskStage {
             task_id: self.task_id.to_string(),
@@ -481,8 +486,18 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             None => self.pool.pick_account(scene.mode, now_unix()).await?,
         };
         // browser_pool.py:1105 `async with self.limiter.slot(...)` — giu suot job.
-        let _slot = self.limiter.acquire().await;
+        // R4 Important #1 (review vong 2): `acquire()` co the cho vo thoi han (hang doi day) — bam
+        // Dung phai dung NGAY, khong cho toi luot. `select!` uu tien nhanh token (biased: token da
+        // huy thi khong lay them permit nua, du permit da san sang) — `Permit::drop` an toan khi
+        // `acquire()` future bi huy giua chung (CAS loop, khong giu khoa).
+        let _slot = tokio::select! {
+            biased;
+            () = hooks.token.cancelled() => return Err(EngineError::Dola(DolaError::Cancelled)),
+            p = self.limiter.acquire() => p,
+        };
         // server.py:608 (IDEA-016): huy trong luc cho slot -> khong mo Chrome, khong mat luot (R4 #1).
+        // Van giu check nay SAU select!: bat `hooks.inner.should_cancel()` (hooks cua caller/test,
+        // khong di qua CancellationToken cua registry) neu no bao huy dung luc select! vua thang.
         hooks.check("sau slot")?;
         // server.py:680 (v0.55z): het luot che do nay → doi sang che do con luot.
         let chain = if self.cfg.mode_fallback {
@@ -555,10 +570,16 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             for row in &candidates {
                 let name = row.name.as_str();
                 // browser_pool.py:1129-1136: tai khoan ban → bo qua (prefer → DOI khoa, REQ-004)
+                // R4 Important #1: `lease_wait` cho toi `busy_wait_max` (mac dinh 10 phut) — cung
+                // can uu tien token huy nhu slot o tren, khong thi bam Dung bi "cau cam" toi 10 phut
+                // khi tai khoan chi dinh dang ban. `AccountPool::lease_wait` (timeout(lock_owned()))
+                // an toan khi bi huy giua chung: drop future khong giu khoa.
                 let lease = if prefer.is_some() {
-                    self.pool
-                        .lease_wait(name, &row.proxy, self.cfg.busy_wait_max)
-                        .await?
+                    tokio::select! {
+                        biased;
+                        () = hooks.token.cancelled() => return Err(EngineError::Dola(DolaError::Cancelled)),
+                        r = self.pool.lease_wait(name, &row.proxy, self.cfg.busy_wait_max) => r?,
+                    }
                 } else if let Some(l) = self.pool.try_lease(name, &row.proxy) {
                     l
                 } else {
@@ -586,7 +607,13 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             }
             // browser_pool.py:1262-1267 (ADR-016): moi tai khoan con luot deu ban → doi roi thu lai
             if busy_skipped && prefer.is_none() && Instant::now() < busy_deadline {
-                tokio::time::sleep(BUSY_POLL).await;
+                // R4 Important #1: `select!` token trong luc ngu 0.5 s thay vi `sleep` roi moi kiem
+                // (cu the tre toi 0.5 s) — bam Dung dung ngay giua nhip cung dung ngay.
+                tokio::select! {
+                    biased;
+                    () = hooks.token.cancelled() => return Err(EngineError::Dola(DolaError::Cancelled)),
+                    () = tokio::time::sleep(BUSY_POLL) => {}
+                }
                 // R4: bam Dung trong luc doi tai khoan ban (toi da busy_wait_max = 10 phut) -> dung ngay.
                 hooks.check("doi tai khoan ban")?;
                 continue;
@@ -1303,6 +1330,7 @@ mod tests {
                 "launching",
                 "page",
                 "mode",
+                "composer",
                 "prompt",
                 "sending",
                 "generating",
@@ -1350,10 +1378,11 @@ mod tests {
         assert!(row.conversation_id.is_none());
         assert_eq!(f.used("a", Mode::Fast).await, 0);
         assert_eq!(f.engine.cache().names().await, vec!["a".to_string()]);
-        assert_eq!(hooks.seen(), vec!["page", "mode"]);
+        // `composer` da phat TRUOC diem kiem "truoc prompt" (Fast -> luon phat, xem fake.rs M3).
+        assert_eq!(hooks.seen(), vec!["page", "mode", "composer"]);
         assert_eq!(
             stages_of(&drain(&mut rx)),
-            vec!["launching", "page", "mode"]
+            vec!["launching", "page", "mode", "composer"]
         );
     }
 
@@ -1381,6 +1410,86 @@ mod tests {
         assert_row_cancelled(&f.row("t1").await);
     }
 
+    /// Fix-round Important #1a (review task-4-review.md): `prefer` dang bi giu boi lease KHAC (vd
+    /// batch job truoc) -> `lease_wait` cho toi `busy_wait_max`; bam Dung phai tra `Cancelled` NGAY
+    /// (khong phai cho het 5 s), khong mo trinh duyet nao.
+    #[tokio::test]
+    async fn huy_trong_luc_cho_tai_khoan_chi_dinh_dang_ban() {
+        let f = fx_with(&["a"], happy("a", "15"), Limits::default(), |cfg| {
+            cfg.busy_wait_max = Duration::from_secs(5);
+        })
+        .await;
+        f.task("t1", &scene()).await;
+        // giu khoa "a" TRUOC — run_mode se vao nhanh `lease_wait` (prefer) va bi chan o do.
+        let _la = f.engine.pool().try_lease("a", "").unwrap();
+        let t0 = Instant::now();
+        let sc = scene();
+        let (res, cancelled) = tokio::join!(f.run("t1", &sc, Some("a")), async {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            f.engine.cancel("t1")
+        });
+        assert!(cancelled, "task dang chay -> cancel = true");
+        assert_cancelled(&res.unwrap_err());
+        assert!(
+            t0.elapsed() < Duration::from_secs(1),
+            "phai dung ngay, khong cho lease_wait: {:?}",
+            t0.elapsed()
+        );
+        assert!(
+            f.calls().is_empty(),
+            "driver khong duoc goi: {:?}",
+            f.calls()
+        );
+        assert_row_cancelled(&f.row("t1").await);
+    }
+
+    /// Fix-round Important #1b: gioi han dong (`threads=1`) da bi MOT permit khac giu (vd job dang
+    /// chay) -> `limiter.acquire()` cho vo thoi han (khong co `busy_wait_max`); bam Dung phai tra
+    /// `Cancelled` NGAY, khong goi driver, khong cho permit kia tra.
+    #[tokio::test]
+    async fn huy_trong_luc_doi_slot_gioi_han() {
+        let db = Db::open_memory().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let accounts_dir = dir.path().join("accounts");
+        let accounts = AccountRepo::new(&db);
+        std::fs::create_dir_all(accounts_dir.join("a")).unwrap();
+        accounts.upsert("a").await.unwrap();
+        let driver = Arc::new(FakeDriver::new(happy("a", "16")));
+        let cfg = EngineConfig::new(&accounts_dir, dir.path().join("downloads"));
+        let (engine, _h) = Engine::new(Arc::clone(&driver), db.clone(), Limits::default(), cfg, 1)
+            .await
+            .unwrap();
+        let tasks = TaskRepo::new(&db);
+        tasks.create("t1", &scene(), None).await.unwrap();
+        assert_eq!(engine.limiter().effective(), 1);
+        // giu slot duy nhat TRUOC, tu ben ngoai (khong qua generate_video) — job t1 se cho vinh vien
+        // o `limiter.acquire()` neu khong bam Dung.
+        let held = engine.limiter().acquire().await;
+
+        let t0 = Instant::now();
+        let sc = scene();
+        let (res, cancelled) =
+            tokio::join!(engine.generate_video("t1", &sc, None, &NoopHooks), async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                engine.cancel("t1")
+            });
+        drop(held);
+        assert!(cancelled, "task dang cho slot -> cancel = true");
+        assert_cancelled(&res.unwrap_err());
+        assert!(
+            t0.elapsed() < Duration::from_secs(1),
+            "phai dung ngay, khong cho permit kia tra: {:?}",
+            t0.elapsed()
+        );
+        assert!(
+            driver.calls.lock().unwrap().is_empty(),
+            "driver khong duoc goi: {:?}",
+            driver.calls.lock().unwrap()
+        );
+        let row = tasks.get("t1").await.unwrap().unwrap();
+        assert_row_cancelled(&row);
+    }
+
     /// Duong hanh phuc phat DU chuoi stage theo thu tu + `TaskDone` cuoi cung; `elapsed_ms` khong
     /// giam; cot `stage` DB = `done`; hooks cua caller van nhan stage (forward).
     #[tokio::test]
@@ -1401,6 +1510,7 @@ mod tests {
                 "launching",
                 "page",
                 "mode",
+                "composer",
                 "prompt",
                 "sending",
                 "generating",
@@ -1438,13 +1548,14 @@ mod tests {
                 watermarked: false,
             })
         );
-        assert_eq!(evs.len(), 10, "9 stage + 1 TaskDone: {evs:?}");
+        assert_eq!(evs.len(), 11, "10 stage + 1 TaskDone: {evs:?}");
         // hooks cua caller: chi stage tu driver (khong `launching`/`done` cua engine)
         assert_eq!(
             hooks.seen(),
             vec![
                 "page",
                 "mode",
+                "composer",
                 "prompt",
                 "sending",
                 "generating",
@@ -1509,12 +1620,12 @@ mod tests {
         let first = next_event(&mut rx).await.expect("co su kien");
         assert!(matches!(first, EngineEvent::TaskStage { ref stage, .. } if stage == "launching"));
         drop(f);
-        // rut het roi phai la None (Closed)
+        // rut het roi phai la None (Closed) — 10 stage (fix-round: co them `composer`) + 1 TaskDone
         let mut n = 1;
         while next_event(&mut rx).await.is_some() {
             n += 1;
         }
-        assert_eq!(n, 10);
+        assert_eq!(n, 11);
     }
 
     // ---- brief: 9 test ----

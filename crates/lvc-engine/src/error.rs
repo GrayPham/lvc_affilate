@@ -41,7 +41,9 @@ pub enum EngineError {
 impl EngineError {
     /// Anh xa sang `lvc_core::FailureCode` de luu cot `failure_code` (Task 16 `AccountPool` /
     /// Task 17 `generate_video` dung ket qua nay). Bang phan loai (ruling Task 15):
-    /// - `Dola(e)` -> `e.failure_code()` (`DolaError` da phan loai o Task 9).
+    /// - `Dola(e)` -> `e.failure_code()` (`DolaError` da phan loai o Task 9); rieng
+    ///   `Dola(Cancelled)` -> `Some(FailureCode::Cancelled)` (P3 R4, nguoi dung bam Dung — ghim o
+    ///   test `failure_code_bang_anh_xa`, fix-round Minor M6).
     /// - `Browser(ProfileBusy)` -> `ProfileBusy`; `Browser` khac ma `is_proxy_down()` -> `ProxyDown`
     ///   (vi du `Navigation` voi ma loi `ERR_PROXY_*`/`ERR_TUNNEL_*`/`ERR_SOCKS_*`); `Browser` con
     ///   lai -> `None` (loi CDP/I-O khong co ma nghiep vu).
@@ -128,6 +130,11 @@ mod tests {
                 EngineError::Dola(DolaError::AgentNoVideo("x".into())),
                 Some(FailureCode::AgentNoVideo),
             ),
+            // Fix-round Minor M6 (review task-4-review.md finding 7): P3 R4 huy nguoi dung.
+            (
+                EngineError::Dola(DolaError::Cancelled),
+                Some(FailureCode::Cancelled),
+            ),
             // Browser(ProfileBusy) -> ProfileBusy
             (
                 EngineError::Browser(BrowserError::ProfileBusy("p".into())),
@@ -175,7 +182,7 @@ mod tests {
                 Some(FailureCode::ProxyDown),
             ),
         ];
-        assert_eq!(rows.len(), 13);
+        assert_eq!(rows.len(), 14);
         for (e, want) in rows {
             assert_eq!(e.failure_code(), want, "{e}");
         }

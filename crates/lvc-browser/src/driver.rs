@@ -9,6 +9,10 @@ use async_trait::async_trait;
 use lvc_core::{BrowserKind, Cookie, Limits, ProxySpec, SessionState};
 
 use crate::BrowserError;
+use crate::dola::poll::{STAGE_CONFIRM, STAGE_DOWNLOADING, STAGE_GENERATING};
+use crate::dola::submit::{
+    STAGE_COMPOSER, STAGE_MODE, STAGE_PAGE, STAGE_PROMPT, STAGE_REFS, STAGE_SENDING,
+};
 use crate::dola::{
     ConversationId, DolaError, PollHooks, PollOpts, SubmitHooks, SubmitRequest, VideoArtifact,
 };
@@ -17,6 +21,25 @@ use crate::dola::{
 pub const DEFAULT_LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
 /// Mac dinh `navigation_timeout` (Python `page.goto(..., timeout=60000)`).
 pub const DEFAULT_NAVIGATION_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// P3 Task 4 fix-round (Minor M2/M3, review task-4-review.md finding 3/4): danh sach DONG cac stage
+/// ma [`BrowserDriver::submit`] co the phat, DUNG THU TU co the xay ra — khong phai lan goi nao cung
+/// phat het (`STAGE_COMPOSER` chi Fast/Pro — `dola::submit::submit_fast`/`dola::skill::submit_pro`;
+/// `STAGE_REFS` chi khi co anh tham chieu — `dola::submit::attach_refs`). `ChromiumDriver` (qua
+/// `dola::{submit,skill}`) va `FakeDriver` (`fake.rs`) CHI dung cac hang nay khi goi `on_stage` — hai
+/// driver khong the "troi" ten stage khac nhau. Task 11 (`ipc/types.ts`) ghim UI tu day.
+pub const SUBMIT_STAGES: &[&str] = &[
+    STAGE_PAGE,
+    STAGE_MODE,
+    STAGE_COMPOSER,
+    STAGE_REFS,
+    STAGE_PROMPT,
+    STAGE_SENDING,
+    STAGE_GENERATING,
+];
+
+/// Nhu [`SUBMIT_STAGES`] nhung cho [`BrowserDriver::poll_and_download`] (`dola::poll`).
+pub const POLL_STAGES: &[&str] = &[STAGE_GENERATING, STAGE_CONFIRM, STAGE_DOWNLOADING];
 
 /// Tuy chon mo trinh duyet cho mot tai khoan. `Debug` viet tay theo ruling P2 (kieu chua bi mat
 /// phai che mat khau MOT CACH TUONG MINH tai bien giao dien): ban than `derive(Debug)` cung KHONG
@@ -265,5 +288,30 @@ mod tests {
             }
         }
         assert!(Mute.is_connected(&()));
+    }
+
+    /// P3 Task 4 fix-round (Minor M2/M3): `SUBMIT_STAGES`/`POLL_STAGES` la tap DONG — khong rong,
+    /// khong trung ten trong TUNG danh sach, moi ten `snake_case` (chi chu thuong ascii + `_`).
+    /// `ChromiumDriver`/`FakeDriver` chi goi `on_stage` bang cac hang nay (khong literal roi) nen day
+    /// la cach "khong can grep" de kiem danh sach con khop code that: neu ai them mot `pub const
+    /// STAGE_*` moi ma quen dua vao day, test `stage_phat_ra_nam_trong_danh_sach_dong` (fake.rs) se
+    /// bat duoc ngay (stage la nhung ten CO trong hai mang nay).
+    #[test]
+    fn submit_stages_va_poll_stages_la_tap_dong() {
+        fn check(list: &[&str]) {
+            assert!(!list.is_empty());
+            let uniq: std::collections::HashSet<&str> = list.iter().copied().collect();
+            assert_eq!(uniq.len(), list.len(), "co ten trung: {list:?}");
+            for s in list {
+                assert!(
+                    !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                    "khong phai snake_case: {s}"
+                );
+            }
+        }
+        check(SUBMIT_STAGES);
+        check(POLL_STAGES);
+        assert_eq!(SUBMIT_STAGES.last(), Some(&STAGE_GENERATING));
+        assert_eq!(POLL_STAGES.first(), Some(&STAGE_GENERATING));
     }
 }

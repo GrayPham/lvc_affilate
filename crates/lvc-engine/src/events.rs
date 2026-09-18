@@ -27,6 +27,13 @@ pub enum EngineEvent {
     /// tai khoan) → `page`/`mode`/`composer`/`refs`/`prompt`/`sending` (submit) → `generating` (khi co
     /// conv id, va dau vong poll) → `confirm`/`downloading` (poll) → `done` (engine). `elapsed_ms` ke
     /// tu luc `generate_video` bat dau.
+    ///
+    /// Fix-round Minor M7 (review task-4-review.md finding 8): su kien nay phat TRUOC khi cot
+    /// `tasks.stage` tuong ung duoc ghi (ghi qua kenh `mpsc` boi mot task nen rieng, xem
+    /// `generate::EngineHooks::stage` — hook la ham DONG BO, khong `await` duoc). Mot UI nhan
+    /// `TaskStage` roi doc lai dong `tasks` NGAY LAP TUC co the van thay `stage` CU. Vo hai cho trang
+    /// thai CUOI (`TaskDone`/`TaskFailed` chi phat SAU khi kenh ghi da can), chi anh huong neu UI
+    /// dua vao cot DB giua chung thay vi truong `stage` cua chinh su kien nay.
     TaskStage {
         task_id: String,
         stage: String,

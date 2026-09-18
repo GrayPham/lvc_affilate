@@ -17,11 +17,16 @@
 //! buoc ke tiep la `Poll(..)`), la LOI LOGIC cua test (kich ban sai) — `panic!` ngay voi thong
 //! diep neu ro ham nao goi va kich ban con lai, thay vi tra loi mac dinh im lang.
 //!
-//! P3 Task 4 (huy + su kien): `submit()` phat stage qua `SubmitHooks` dung thu tu Python (`page` ->
-//! `mode` -> `prompt` -> `sending` -> `generating` khi Ok) va hoi `should_cancel()` TRUOC `page` va
-//! TRUOC `prompt` (nhu `dola::submit`) -> `DolaError::Cancelled`; `poll_and_download()` phat
-//! `generating` (:1494) va `downloading` (:1268, chi khi Ok); [`FakeStep::PollUntilCancelled`] lap
-//! 10 ms/nhip toi khi `PollHooks::should_cancel()` -> `Cancelled` (engine test "huy giua poll").
+//! P3 Task 4 (huy + su kien): `submit()` phat stage qua `SubmitHooks` dung thu tu nhu driver that
+//! (`page` -> `mode` -> `composer` khi Fast/Pro -> `refs` khi co anh -> `prompt` -> `sending` ->
+//! `generating` khi Ok) va hoi `should_cancel()` TRUOC `page` va TRUOC `prompt` (nhu `dola::submit`)
+//! -> `DolaError::Cancelled`; `poll_and_download()` phat `generating` (:1494) va `downloading`
+//! (:1268, chi khi Ok); [`FakeStep::PollUntilCancelled`] lap 10 ms/nhip toi khi
+//! `PollHooks::should_cancel()` -> `Cancelled` (engine test "huy giua poll").
+//!
+//! P3 Task 4 fix-round (Minor M2/M3, review task-4-review.md finding 3): chuoi stage tren PHAI khop
+//! `driver::SUBMIT_STAGES`/`POLL_STAGES` (danh sach dong dung chung voi `ChromiumDriver`) — truoc ban
+//! sua nay `submit()` bo qua `composer`/`refs` nen engine test pin sai chuoi so voi driver that.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -32,7 +37,9 @@ use async_trait::async_trait;
 use lvc_core::{BrowserKind, Cookie, Limits, Mode, SessionState};
 
 use crate::dola::poll::{STAGE_DOWNLOADING, STAGE_GENERATING};
-use crate::dola::submit::{STAGE_MODE, STAGE_PAGE, STAGE_PROMPT, STAGE_SENDING};
+use crate::dola::submit::{
+    STAGE_COMPOSER, STAGE_MODE, STAGE_PAGE, STAGE_PROMPT, STAGE_REFS, STAGE_SENDING,
+};
 use crate::dola::{
     ConversationId, DolaError, PollHooks, PollOpts, SubmitHooks, SubmitRequest, VideoArtifact,
 };
@@ -234,6 +241,15 @@ impl BrowserDriver for FakeDriver {
         }
         hooks.on_stage(STAGE_PAGE);
         hooks.on_stage(STAGE_MODE);
+        // Fix-round Minor M3: cung thu tu ChromiumDriver — `composer` chi Fast/Pro (submit.rs:496,
+        // skill.rs:126), `refs` chi khi co anh tham chieu (submit.rs:554); CA HAI truoc diem kiem
+        // huy "truoc prompt" (nhu `before_prompt` that).
+        if matches!(req.mode, Mode::Fast | Mode::Pro) {
+            hooks.on_stage(STAGE_COMPOSER);
+        }
+        if !req.reference_images.is_empty() {
+            hooks.on_stage(STAGE_REFS);
+        }
         if hooks.should_cancel() {
             return Err(DolaError::Cancelled);
         }
@@ -598,7 +614,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             hooks.stages(),
-            vec!["page", "mode", "prompt", "sending", "generating"]
+            vec![
+                "page",
+                "mode",
+                "composer",
+                "prompt",
+                "sending",
+                "generating"
+            ]
         );
         driver
             .poll_and_download(
@@ -617,6 +640,7 @@ mod tests {
             vec![
                 "page",
                 "mode",
+                "composer",
                 "prompt",
                 "sending",
                 "generating",
@@ -643,7 +667,10 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, DolaError::Credit(_)), "{err:?}");
-        assert_eq!(hooks.stages(), vec!["page", "mode", "prompt", "sending"]);
+        assert_eq!(
+            hooks.stages(),
+            vec!["page", "mode", "composer", "prompt", "sending"]
+        );
         let err = driver
             .poll_and_download(
                 &s,
@@ -659,7 +686,14 @@ mod tests {
         assert!(matches!(err, DolaError::Timeout(_)), "{err:?}");
         assert_eq!(
             hooks.stages(),
-            vec!["page", "mode", "prompt", "sending", "generating"]
+            vec![
+                "page",
+                "mode",
+                "composer",
+                "prompt",
+                "sending",
+                "generating"
+            ]
         );
     }
 
@@ -684,7 +718,10 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, DolaError::Cancelled), "{err:?}");
-        assert_eq!(hooks.stages(), vec!["page", "mode"]);
+        // `composer` da phat TRUOC diem kiem "truoc prompt" (Fast -> composer luon phat) — huy o
+        // day KHONG con kip chan no, giong driver that (submit_fast mo composer roi moi toi
+        // before_prompt).
+        assert_eq!(hooks.stages(), vec!["page", "mode", "composer"]);
         assert!(
             driver.script.lock().unwrap().is_empty(),
             "buoc Submit da tieu thu"
@@ -760,6 +797,50 @@ mod tests {
                 },
             ]
         );
+    }
+
+    /// P3 Task 4 fix-round (Minor M2/M3): moi stage `FakeDriver` phat (submit CO anh tham chieu +
+    /// poll) deu nam trong danh sach dong `driver::SUBMIT_STAGES`/`POLL_STAGES` — cach "khong can
+    /// grep" de bat truong hop them stage moi ma quen dua vao danh sach (xem
+    /// `driver::submit_stages_va_poll_stages_la_tap_dong`).
+    #[tokio::test]
+    async fn stage_phat_ra_nam_trong_danh_sach_dong() {
+        let conv = ConversationId("1".into());
+        let driver = FakeDriver::new(vec![
+            FakeStep::Launch(Ok(())),
+            FakeStep::Submit(Ok(conv.clone())),
+            FakeStep::Poll(Ok(artifact("acc1", &conv))),
+        ]);
+        let limits = Limits::default();
+        let hooks = RecHooks::default();
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let mut r = req("acc1");
+        r.reference_images.push(PathBuf::from("ref.png")); // kich hoat stage `refs`
+        driver.submit(&s, &r, &limits, &hooks).await.unwrap();
+        driver
+            .poll_and_download(
+                &s,
+                "acc1",
+                &conv,
+                Path::new("out"),
+                &popts(),
+                &limits,
+                &hooks,
+            )
+            .await
+            .unwrap();
+        let seen = hooks.stages();
+        assert!(
+            seen.contains(&"composer".to_string()) && seen.contains(&"refs".to_string()),
+            "test phai kich hoat ca composer lan refs: {seen:?}"
+        );
+        for stage in &seen {
+            assert!(
+                crate::driver::SUBMIT_STAGES.contains(&stage.as_str())
+                    || crate::driver::POLL_STAGES.contains(&stage.as_str()),
+                "stage '{stage}' khong nam trong SUBMIT_STAGES/POLL_STAGES: {seen:?}"
+            );
+        }
     }
 
     /// Kiem tra an toan doi tuong (object safety) cua `BrowserDriver` — cung la dieu kien de

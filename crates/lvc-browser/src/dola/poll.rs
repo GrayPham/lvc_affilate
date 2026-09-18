@@ -16,7 +16,7 @@
 //! | — `pull_chain` loi | `:1500-1509` | "closed" → [`DolaError::BrowserClosed`] ([`is_browser_closed_msg`], tu loi CDP); loi HTTP → `warn` + `continue` |
 //! | — 401/403 | `:1510-1512` `is_auth_status` | [`DolaError::LoggedOut`] `revoked: false` |
 //! | — `on_poll` | `:1514-1517` | ≤ 1 lan / 30 s ([`ON_POLL_EVERY`]), lan dau ngay |
-//! | — `should_cancel` | (khong co — P3 R4) | dau moi nhip (truoc `sleep`) + sau `sleep` (truoc captcha/`pull_chain`) + truoc `download` → [`DolaError::Cancelled`] |
+//! | — `should_cancel` | (khong co — P3 R4) | dau moi nhip (truoc `sleep`) + sau `sleep` (truoc captcha/`pull_chain`) + truoc `download` + truoc `confirm` (fix-round Minor M1: xac nhan agent ton credit) → [`DolaError::Cancelled`] |
 //! | [`should_extend`] | `modes.py:361-363` | gia han khi agent con noi |
 //! | — timeout | `:1522-1524` | `TIMEOUT: No video generated within {N}s (conversation_id={id}) \| agent: {duoi 400 ky tu}` ([`latest_tail`]) |
 //! | [`handle_poll`] | `_handle_poll` `:1275-1429` | bang thu tu duoi |
@@ -1015,6 +1015,11 @@ async fn act<P: PollPage + ?Sized>(
     let (models, fallback) = match decision {
         PollDecision::Continue => return Ok(None),
         PollDecision::ConfirmReply { text, nth } => {
+            // Fix-round Minor M1 (review task-4-review.md finding 2): xac nhan trong che do agent
+            // la buoc KICH HOAT sinh video (ton credit) — kiem huy TRUOC ca stage `confirm` lan
+            // `send_reply`, khong the doi den nhip sau (cua so ho o day: chi con `pull_chain` +
+            // `read_dom_tail` cua CHINH nhip nay).
+            cancel_check(ctx.hooks, ctx.account, "truoc confirm")?;
             ctx.hooks.on_stage(STAGE_CONFIRM); // :1362 set_stage("confirm", f"#{n}")
             info!(
                 account = ctx.account,
@@ -2522,6 +2527,43 @@ mod tests {
         assert!(
             std::fs::read_dir(dir.path()).unwrap().next().is_none(),
             "khong co file nao trong thu muc tai"
+        );
+    }
+
+    /// Fix-round Minor M1 (review task-4-review.md finding 2): kiem huy TRUOC khi gui tra loi xac
+    /// nhan (agent — buoc nay LA diem kich hoat sinh video, TON CREDIT) -> `Cancelled`, KHONG goi
+    /// `send_reply`, KHONG phat stage `confirm`. Unit test truc tiep tren `act()` (khong can dung
+    /// ca vong poll HTTP — `should_cancel()` da true tu dau nen chi diem nay duoc kiem).
+    #[tokio::test]
+    async fn act_huy_truoc_khi_gui_tra_loi_xac_nhan() {
+        let page = FakePollPage::new();
+        let hooks = CancelHooks {
+            flag: Arc::new(AtomicBool::new(true)),
+            stages: Mutex::new(Vec::new()),
+        };
+        let http = http();
+        let c = conv();
+        let dir = tempdir().unwrap();
+        let ctx = LoopCtx {
+            http: &http,
+            account: ACC,
+            conv: &c,
+            out_dir: dir.path(),
+            hooks: &hooks,
+        };
+        let decision = PollDecision::ConfirmReply {
+            text: CONFIRM_REPLY.to_string(),
+            nth: 1,
+        };
+        let err = act(&ctx, &page, decision).await.unwrap_err();
+        assert!(matches!(err, DolaError::Cancelled), "{err}");
+        assert!(
+            page.replies.lock().unwrap().is_empty(),
+            "khong duoc gui tra loi"
+        );
+        assert!(
+            hooks.stages.lock().unwrap().is_empty(),
+            "khong duoc phat stage confirm"
         );
     }
 
