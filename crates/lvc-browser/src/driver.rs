@@ -31,8 +31,9 @@ pub struct LaunchOpts {
     /// `BrowserError::ExecutableNotFound` - khong roi ve tu do.
     pub executable_override: Option<PathBuf>,
     pub headless: bool,
-    /// Proxy rieng tai khoan. Task 5 chi dung `spec.server()` cho `--proxy-server`;
-    /// user/pass (neu co) duoc Task 13 xu ly qua `Fetch.*`.
+    /// Proxy rieng tai khoan. `spec.server()` → `--proxy-server` (+ `proxy-bypass-list=<-loopback>`);
+    /// user/pass (neu co) → `Fetch.enable{handleAuthRequests}` tren phien browser sau khi mo
+    /// (`chromium::enable_proxy_auth`, Task 13) — khong bao gio nam tren dong lenh.
     pub proxy: Option<ProxySpec>,
     /// Dua cua so ra ngoai man hinh (-32000,-32000) nhu `SILENT_MODE` cua Python.
     pub window_offscreen: bool,

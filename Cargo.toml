@@ -30,6 +30,9 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 uuid = { version = "1", features = ["v4"] }
 # dev: server HTTP gia cho test dola::http (khong bao gio goi dola.com trong test).
 wiremock = "0.6"
+# Task 13 (lvc-browser::job, chi Windows): Job Object KILL_ON_JOB_CLOSE de Chrome chet theo tien trinh
+# nay. `Win32_Security` can cho chu ky `CreateJobObjectW(*const SECURITY_ATTRIBUTES, ..)`.
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [workspace.lints.rust]
 unsafe_code = "warn"

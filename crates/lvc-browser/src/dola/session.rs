@@ -507,8 +507,8 @@ mod tests {
         ));
         assert!(retryable_eval_error(&ctx));
         let nav = BrowserError::Navigation {
-            url: "x".into(),
-            reason: "Navigation interrupted".into(),
+            url_host_path: "x".into(),
+            net_error: "Navigation interrupted".into(),
         };
         assert!(retryable_eval_error(&nav));
         let cannot = BrowserError::Cdp(chromiumoxide::error::CdpError::msg(

@@ -1,7 +1,8 @@
 //! Thi nghiem cua tu P1: chromiumoxide co mo duoc phien Dola khong?
 //! Chay: `cargo run -p lvc-browser --example probe_login -- profile_dir cookies.txt [--headed] [--proxy <proxy>]`
 //! `<proxy>` theo cu phap `lvc_core::parse_proxy` (`ip:port`, `ip:port:user:pass`, `scheme://...`);
-//! Task 5 chi truyen `--proxy-server` (user/pass chua duoc xu ly - Task 13).
+//! `--proxy-server` chi mang `scheme://host:port`, user/pass (neu co) duoc xac thuc qua `Fetch.*`
+//! sau khi mo (Task 13) — khong bao gio nam tren dong lenh.
 //! Bien moi truong `LVC_CHROME` = duong dan chrome.exe (mac dinh: resolver theo `BrowserKind`).
 //! CHI DOC `cookies.txt`. Ghi: `profile_dir/`, `./probe_<ts>.png`, stdout JSON.
 

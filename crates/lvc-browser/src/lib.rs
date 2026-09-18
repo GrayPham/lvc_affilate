@@ -11,12 +11,15 @@ pub mod dola;
 pub mod driver;
 pub mod error;
 pub mod executable;
+/// Task 13: Job Object `KILL_ON_JOB_CLOSE` — chi Windows (P2 chay tren Windows; Unix chua can).
+#[cfg(windows)]
+pub mod job;
 pub mod ops;
 pub mod profile;
 
 pub use dola::DolaError;
 pub use driver::{BrowserDriver, LaunchOpts, SessionProbe};
-pub use error::BrowserError;
+pub use error::{BrowserError, url_host_path};
 pub use executable::{
     SearchRoots, ms_playwright_chromium_dirs, resolve_executable, resolve_executable_in,
 };

@@ -456,7 +456,7 @@ pub async fn submit_fast(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(),
 ///
 /// # Errors
 /// `Browser` (CDP o lan dem cuoi — xem [`compose::clear_composer_attachments`]).
-pub async fn clear_old_attachments(page: &Page, account: &str) -> Result<usize, DolaError> {
+pub(crate) async fn clear_old_attachments(page: &Page, account: &str) -> Result<usize, DolaError> {
     let removed = compose::clear_composer_attachments(page).await?;
     if removed > 0 {
         tracing::info!(account, removed, "đã xoá ảnh đính kèm cũ trong composer");
@@ -471,7 +471,7 @@ pub async fn clear_old_attachments(page: &Page, account: &str) -> Result<usize, 
 ///
 /// # Errors
 /// `RefUpload`, `LoggedOut` (account rong — [`submit_at`] dien), `Browser`.
-pub async fn attach_refs(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(), DolaError> {
+pub(crate) async fn attach_refs(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(), DolaError> {
     if req.reference_images.is_empty() {
         return Ok(());
     }

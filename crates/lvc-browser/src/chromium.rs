@@ -1,6 +1,9 @@
 //! Impl `BrowserDriver` tren chromiumoxide (CDP thuan Rust).
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use chromiumoxide::Page;
@@ -8,11 +11,17 @@ use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::emulation::{
     SetLocaleOverrideParams, SetTimezoneOverrideParams, SetUserAgentOverrideParams,
 };
+use chromiumoxide::cdp::browser_protocol::fetch::{
+    AuthChallengeResponse, AuthChallengeResponseResponse, AuthChallengeSource,
+    ContinueRequestParams, ContinueWithAuthParams, EnableParams as FetchEnableParams,
+    EventAuthRequired, EventRequestPaused, RequestPattern,
+};
+use chromiumoxide::listeners::EventStream;
 use futures::StreamExt;
-use lvc_core::Cookie;
+use lvc_core::{Cookie, SessionState};
 use tokio::task::JoinHandle;
 
-use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, executable, profile};
+use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, executable, ops, profile};
 
 /// Khop Python `browser.py` `LAUNCH_ARGS` tung chuoi.
 pub const LAUNCH_ARGS: [&str; 5] = [
@@ -25,6 +34,22 @@ pub const LAUNCH_ARGS: [&str; 5] = [
 
 pub const LOCALE: &str = "ja-JP";
 pub const TIMEZONE: &str = "Asia/Tokyo";
+
+/// Task 13: `close()` doi Chrome thoat toi da chung nay sau `Browser.close` (Python/Playwright
+/// `context.close()` cung doi tien trinh; Chrome ghi cookie `SQLite`/`exit_type` luc thoat sach).
+pub const CLOSE_WAIT: Duration = Duration::from_secs(30);
+/// Task 13: `probe_session` — Python `browser.py:352` `asyncio.wait_for(page.evaluate(...), 15)`.
+pub const PROBE_EVAL_TIMEOUT: Duration = Duration::from_secs(15);
+/// Task 13: `launch()` doi handler bao ve trang dau (`Target.targetCreated` + attach) toi da chung nay
+/// truoc khi roi ve `new_page` (binh thuong < 100 ms).
+const FIRST_PAGE_WAIT: Duration = Duration::from_secs(3);
+/// Python `browser.py` `CLOSE_TAB_TIMEOUT = 5`: dong mot tab thua toi da 5 s; qua → bo, khong dong tiep.
+const CLOSE_TAB_TIMEOUT: Duration = Duration::from_secs(5);
+/// Python `browser.py` `STARTUP_JUNK_HOSTS`: tab Opera GX mo san — KHONG dung lam tab chinh (goto
+/// bi `ERR_ABORTED`) va KHONG dong (Opera GX treo).
+const STARTUP_JUNK_HOSTS: [&str; 1] = ["gxcorner.games"];
+/// Gioi han bo nho cua tap "request id da thu xac thuc proxy" (xem `proxy_auth_loop`).
+const AUTH_ATTEMPTED_CAP: usize = 1024;
 
 /// Bo co MAC DINH cua patchright 1.62.3 (Chromium 1234), chep NGUYEN VAN tu dong lenh that
 /// ma patchright khoi chay (bat `DEBUG=pw:browser` khi Python goi
@@ -94,15 +119,32 @@ const PATCHRIGHT_DEFAULT_ARGS: [&str; 22] = [
 ///    Task 3-6): than ham no tu lam nhieu dieu con te hon — UA gia nam 2022 khong khop build
 ///    Chrome that dang chay, giao dien JS thay `navigator.webdriver`/`plugins` khong native,
 ///    va lam vo `WebGLRenderingContext.getParameter`.
+/// 5. (Task 13) Proxy co user/pass → `Fetch.enable{patterns:[*], handleAuthRequests}` tren PHIEN
+///    BROWSER: MOI request cua MOI target bi tam dung roi `continueRequest` qua CDP (Playwright
+///    lam y het cho `proxy.username`, nhung tren phien trang + `Network.setCacheDisabled(true)`;
+///    ta KHONG tat cache). Chi bat khi co user/pass — proxy khong auth/khong proxy: khong Fetch.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ChromiumDriver;
 
+/// Phien Chromium mot tai khoan. Task 13: cac phan can dong deu nam trong `Option`/`Arc` de
+/// `close()` lay ra (`take`) va `Drop` biet "da dong hay chua":
+/// - `browser`: `Arc` vi task xac thuc proxy ([`proxy_auth_loop`]) can `&Browser` dong thoi (gui
+///   `Fetch.continue*` tren PHIEN BROWSER); `close()` dung task do roi `Arc::try_unwrap` de goi
+///   `Browser::close`/`wait` (`&mut self`).
+/// - `handler`: task bom su kien CDP; `is_connected()` = chua ket thuc.
+/// - `proxy_auth`: task Fetch.* (chi khi proxy co user/pass).
+/// - `job`: Job Object Windows (`KILL_ON_JOB_CLOSE`), tha SAU khi Chrome da thoat.
 pub struct ChromiumSession {
-    pub browser: Browser,
+    browser: Option<Arc<Browser>>,
     pub page: Page,
-    handler: JoinHandle<()>,
+    handler: Option<JoinHandle<()>>,
+    proxy_auth: Option<JoinHandle<()>>,
+    #[cfg(windows)]
+    job: Option<crate::job::JobHandle>,
+    /// PID tien trinh Chrome (browser process) — chan doan / smoke test dong lenh.
+    pid: Option<u32>,
     /// Chep tu `LaunchOpts::navigation_timeout` luc launch de `goto()` dung.
-    navigation_timeout: std::time::Duration,
+    navigation_timeout: Duration,
 }
 
 impl ChromiumSession {
@@ -111,6 +153,125 @@ impl ChromiumSession {
     pub fn page(&self) -> &Page {
         &self.page
     }
+
+    /// Task 13: handler CDP con chay (websocket con mo, Chrome con song). `false` sau `close()`
+    /// hoac khi Chrome chet/bi kill — engine (T15 `SessionCache::spawn_reaper`) bo phien nay.
+    #[must_use]
+    pub fn is_connected(&self) -> bool {
+        self.handler.as_ref().is_some_and(|h| !h.is_finished())
+    }
+
+    /// PID tien trinh Chrome (browser process); `None` neu chromiumoxide khong tra `Child`.
+    #[must_use]
+    pub fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+
+    /// `Browser` chromiumoxide (lenh muc browser: `pages()`, `version()`…); `None` sau `close()`.
+    /// Thay cho truong `pub browser` cu (Task 13 boc `Option<Arc<_>>`).
+    #[must_use]
+    pub fn browser(&self) -> Option<&Browser> {
+        self.browser.as_deref()
+    }
+
+    /// Lay het phan can dong ra khoi `self` (mot lan): `None` neu da `close()`.
+    fn take_parts(&mut self) -> Option<SessionParts> {
+        let browser = self.browser.take()?;
+        Some(SessionParts {
+            browser,
+            handler: self.handler.take(),
+            proxy_auth: self.proxy_auth.take(),
+            #[cfg(windows)]
+            job: self.job.take(),
+        })
+    }
+}
+
+/// Task 13: `Drop` khong bo roi Chrome. Chua `close()` ma con runtime tokio → spawn dong NHE NHANG
+/// ([`shutdown`]: `Browser.close` + doi thoat ≤ [`CLOSE_WAIT`]). Khong co runtime (drop ngoai
+/// async, hoac runtime dang tat nen task spawn bi huy ngay) → roi ve `kill_on_drop` cua
+/// chromiumoxide (`TerminateProcess` khi `Browser`/`Child` drop) + Job Object dong → Chrome chet
+/// ngay, KHONG thoat sach (co the mat cookie ghi do; profile tu phuc hoi lan sau — `profile.rs`).
+impl Drop for ChromiumSession {
+    fn drop(&mut self) {
+        let Some(parts) = self.take_parts() else {
+            return; // da close()
+        };
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            tracing::warn!(
+                pid = ?self.pid,
+                "ChromiumSession bi drop khi chua close() — dong Chrome nhe nhang trong nen"
+            );
+            rt.spawn(shutdown(parts, CLOSE_WAIT));
+        } else {
+            tracing::warn!(
+                pid = ?self.pid,
+                "ChromiumSession bi drop ngoai runtime tokio — Chrome bi kill (kill_on_drop + Job Object)"
+            );
+            drop(parts);
+        }
+    }
+}
+
+/// Nhung gi [`shutdown`] can — tach khoi `ChromiumSession` de `close()`, `Drop` va duong loi cua
+/// `launch()` dung chung mot trinh tu.
+struct SessionParts {
+    browser: Arc<Browser>,
+    handler: Option<JoinHandle<()>>,
+    proxy_auth: Option<JoinHandle<()>>,
+    #[cfg(windows)]
+    job: Option<crate::job::JobHandle>,
+}
+
+/// Trinh tu dong duy nhat (Task 13): (1) dung task proxy auth (tha `Arc<Browser>` cua no);
+/// (2) `Browser.close` (CDP) roi doi tien trinh thoat toi da `wait` — qua han → drop `Browser`
+/// (chromiumoxide `kill_on_drop` = `TerminateProcess`); (3) huy handler; (4) tha Job Object cuoi
+/// cung (Chrome da thoat → Job rong; con sot → Job giet ca cay). Khong bao gio tra loi: dong la
+/// best-effort, moi loi chi log.
+async fn shutdown(parts: SessionParts, wait: Duration) {
+    let SessionParts {
+        browser,
+        handler,
+        proxy_auth,
+        #[cfg(windows)]
+        job,
+    } = parts;
+    if let Some(t) = proxy_auth {
+        t.abort();
+        let _ = t.await; // dam bao future (va Arc<Browser> trong no) da bi drop
+    }
+    match Arc::try_unwrap(browser) {
+        Ok(mut b) => {
+            if let Err(e) = b.close().await {
+                tracing::debug!(error = %e, "Browser.close loi (Chrome co the da thoat)");
+            }
+            // Review Task 3-6 (I-3): Browser::close chi doi phan hoi CDP; Chrome van dang ghi profile
+            // (cookie SQLite, exit_type) — doi tien trinh thoat that su.
+            match tokio::time::timeout(wait, b.wait()).await {
+                Ok(Ok(status)) => tracing::debug!(?status, "Chrome da thoat"),
+                Ok(Err(e)) => tracing::warn!(error = %e, "doi Chrome thoat loi"),
+                Err(_elapsed) => tracing::warn!(
+                    ?wait,
+                    "Chrome khong thoat kip — kill (kill_on_drop + Job Object)"
+                ),
+            }
+            drop(b);
+        }
+        Err(shared) => {
+            // Khong xay ra khi task proxy auth da dung; luoi an toan: van yeu cau dong qua CDP.
+            tracing::warn!(
+                "Arc<Browser> con tham chieu khac — chi gui Browser.close, khong doi duoc"
+            );
+            let _ = shared
+                .execute(chromiumoxide::cdp::browser_protocol::browser::CloseParams::default())
+                .await;
+        }
+    }
+    if let Some(h) = handler {
+        h.abort();
+    }
+    #[cfg(windows)]
+    drop(job);
 }
 
 /// Windows: mo file dang duoc tien trinh khac giu doc quyen (vd Chrome dang chay tren cung
@@ -204,13 +365,196 @@ pub(crate) fn chrome_args(opts: &LaunchOpts) -> Vec<String> {
         args.push("window-position=-32000,-32000".to_string());
     }
     if let Some(p) = &opts.proxy {
-        // Chi `scheme://host:port`; user/pass (neu co) di qua Fetch.* o Task 13.
+        // Chi `scheme://host:port`; user/pass (neu co) di qua Fetch.* sau khi mo (`enable_proxy_auth`).
         args.push(format!("proxy-server={}", p.server()));
         // M-11 (Playwright parity): Playwright luon them bypass `<-loopback>` khi co proxy de
         // 127.0.0.1/localhost KHONG di qua proxy (cong CDP, server test cuc bo...).
         args.push("proxy-bypass-list=<-loopback>".to_string());
     }
     args
+}
+
+/// Task 13: user/pass proxy de day qua `Fetch.*` — `Some` CHI khi `ProxySpec::has_auth()`
+/// (co username; password thieu → chuoi rong). Thuan de test "khong auth → khong bat Fetch".
+#[must_use]
+pub(crate) fn proxy_credentials(opts: &LaunchOpts) -> Option<(String, String)> {
+    let p = opts.proxy.as_ref()?;
+    let username = p.username.clone()?;
+    Some((username, p.password.clone().unwrap_or_default()))
+}
+
+/// Python `browser.py` `is_startup_junk`: URL thuoc host rac luc khoi dong (Opera GX).
+fn is_startup_junk(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    STARTUP_JUNK_HOSTS.iter().any(|h| u.contains(h))
+}
+
+/// Python `browser.py` `fresh_page`/`close_extra_pages` (M-3): chon chi so trang CHINH trong danh
+/// sach URL cua cac tab dang mo — uu tien `about:blank` (URL rong coi nhu `about:blank`), khong thi
+/// tab dau tien khong rac; toan rac → `None` (caller mo tab moi). Thuan de test khong can Chrome.
+#[must_use]
+pub(crate) fn choose_main_page(urls: &[Option<String>]) -> Option<usize> {
+    let is_blank = |u: &Option<String>| {
+        u.as_deref()
+            .is_none_or(|u| u.is_empty() || u == "about:blank")
+    };
+    let not_junk = |u: &Option<String>| !u.as_deref().is_some_and(is_startup_junk);
+    urls.iter()
+        .position(|u| not_junk(u) && is_blank(u))
+        .or_else(|| urls.iter().position(not_junk))
+}
+
+/// M-3 (Python `fresh_page` + `close_extra_pages`): dung TRANG DAU cua Chrome (tab `about:blank`/NTP
+/// mo san) thay vi `Target.createTarget` — patchright cung dung `context.pages[0]`; mot tab moi
+/// bang CDP la dau hieu tu dong hoa khong can thiet. Doi handler bao ve tab (toi da
+/// [`FIRST_PAGE_WAIT`]); khong co tab nao → `new_page` (Chrome mo khong tab, hiem). Tab thua (khoi
+/// phuc phien, tab rac) dong voi timeout [`CLOSE_TAB_TIMEOUT`] moi tab; tab rac (Opera GX) giu
+/// nguyen nhu Python. Sau do `Page.navigate about:blank` de tab chinh o trang thai sach (chromiumoxide
+/// khong truyen `about:blank` vi tri cuoi dong lenh nhu Playwright → headed mo NTP).
+async fn first_page(browser: &Browser) -> Result<Page, BrowserError> {
+    let deadline = tokio::time::Instant::now() + FIRST_PAGE_WAIT;
+    let pages = loop {
+        let pages = browser.pages().await?;
+        if !pages.is_empty() || tokio::time::Instant::now() >= deadline {
+            break pages;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    let mut urls = Vec::with_capacity(pages.len());
+    for p in &pages {
+        urls.push(p.url().await?);
+    }
+    let Some(keep) = choose_main_page(&urls) else {
+        tracing::debug!(tabs = pages.len(), "khong co tab dung duoc — mo tab moi");
+        return Ok(browser.new_page("about:blank").await?);
+    };
+    let mut closed = 0_usize;
+    for (i, p) in pages.iter().enumerate() {
+        if i == keep || urls[i].as_deref().is_some_and(is_startup_junk) {
+            continue; // Python: khong dong tab rac (Opera GX treo)
+        }
+        match tokio::time::timeout(CLOSE_TAB_TIMEOUT, p.clone().close()).await {
+            Ok(Ok(())) => closed += 1,
+            Ok(Err(e)) => tracing::debug!(error = %e, "dong tab thua loi — bo qua"),
+            Err(_elapsed) => {
+                tracing::warn!(
+                    ?CLOSE_TAB_TIMEOUT,
+                    "dong tab thua treo — de nguyen cac tab con lai"
+                );
+                break;
+            }
+        }
+    }
+    if closed > 0 {
+        tracing::info!(closed, "da dong tab thua/khoi phuc");
+    }
+    let page = pages
+        .into_iter()
+        .nth(keep)
+        .ok_or(BrowserError::Disconnected)?;
+    ops::navigate(&page, "about:blank").await?;
+    Ok(page)
+}
+
+/// Task 13: bat xac thuc proxy `user:pass` bang `Fetch.*` THO tren PHIEN BROWSER (khong phai phien
+/// trang). CHI goi khi [`proxy_credentials`] la `Some`.
+///
+/// Vi sao phien BROWSER (lech so voi brief `page.event_listener`): `NetworkManager` cua chromiumoxide
+/// tra loi MOI `Fetch.authRequired` cua phien trang bang `continueWithAuth(Default)` ngay trong
+/// `Target::on_event` (`handler/network.rs::on_fetch_auth_required`, khong co dieu kien) — TRUOC khi
+/// listener cua ta nhan su kien, nen `ProvideCredentials` cua ta se toi sau va bi Chrome tu choi
+/// ("khong con thu thach dang cho"). Su kien cua phien browser (khong `sessionId`) KHONG di qua
+/// `Target` (`handler/mod.rs::on_event`) ma chi toi `Browser::event_listener`, va `Fetch` tren
+/// browser target chan request cua MOI target (ke ca tab/worker mo sau). Van la Fetch tho: KHONG
+/// `Page::authenticate`/`enable_request_intercept` (chung gui kem `Network.setCacheDisabled`).
+///
+/// Dang ky listener TRUOC `Fetch.enable` de khong lot su kien dau tien.
+async fn enable_proxy_auth(
+    browser: &Arc<Browser>,
+    username: String,
+    password: String,
+) -> Result<JoinHandle<()>, BrowserError> {
+    let paused = browser.event_listener::<EventRequestPaused>().await?;
+    let auth = browser.event_listener::<EventAuthRequired>().await?;
+    browser
+        .execute(
+            FetchEnableParams::builder()
+                .handle_auth_requests(true)
+                .pattern(RequestPattern::builder().url_pattern("*").build())
+                .build(),
+        )
+        .await?;
+    tracing::debug!("Fetch.enable(handleAuthRequests) tren phien browser — proxy co user/pass");
+    Ok(tokio::spawn(proxy_auth_loop(
+        Arc::clone(browser),
+        paused,
+        auth,
+        username,
+        password,
+    )))
+}
+
+/// Vong nghe su kien Fetch (task rieng, huy trong [`shutdown`]):
+/// - `Fetch.requestPaused` → `Fetch.continueRequest` NGAY, khong sua gi (moi request deu bi tam dung
+///   vi `Fetch.enable` can pattern `*` moi nhan duoc `authRequired` — Playwright cung vay).
+/// - `Fetch.authRequired` nguon `Proxy` → `ProvideCredentials` lan dau cho moi request id; lan hai
+///   cung id (sai mat khau) → `CancelAuth` de khong lap vo han (Playwright `_attemptedAuthentications`);
+///   nguon `Server` (401 cua trang) → `Default` (khong phai viec cua ta).
+///
+/// Tap id da thu bi xoa khi qua [`AUTH_ATTEMPTED_CAP`] (id la duy nhat theo request, chi can nho
+/// ngan han). Xu ly tuan tu tung su kien: round-trip CDP cuc bo ~ms, du nhanh.
+/// KHONG log `ev.request` (URL co chu ky) va KHONG BAO GIO log `password`.
+async fn proxy_auth_loop(
+    browser: Arc<Browser>,
+    mut paused: EventStream<EventRequestPaused>,
+    mut auth: EventStream<EventAuthRequired>,
+    username: String,
+    password: String,
+) {
+    let mut attempted: HashSet<String> = HashSet::new();
+    loop {
+        tokio::select! {
+            ev = paused.next() => {
+                let Some(ev) = ev else { break };
+                let params = ContinueRequestParams::new(ev.request_id.clone());
+                if let Err(e) = browser.execute(params).await {
+                    tracing::debug!(error = %e, "Fetch.continueRequest loi");
+                }
+            }
+            ev = auth.next() => {
+                let Some(ev) = ev else { break };
+                let id: &str = ev.request_id.as_ref();
+                let is_proxy = matches!(ev.auth_challenge.source, Some(AuthChallengeSource::Proxy));
+                let response = if !is_proxy {
+                    AuthChallengeResponseResponse::Default
+                } else if attempted.contains(id) {
+                    AuthChallengeResponseResponse::CancelAuth
+                } else {
+                    if attempted.len() >= AUTH_ATTEMPTED_CAP {
+                        attempted.clear();
+                    }
+                    attempted.insert(id.to_string());
+                    AuthChallengeResponseResponse::ProvideCredentials
+                };
+                tracing::debug!(
+                    source = ?ev.auth_challenge.source,
+                    origin = %ev.auth_challenge.origin,
+                    response = response.as_ref(),
+                    "Fetch.authRequired"
+                );
+                let mut reply = AuthChallengeResponse::new(response.clone());
+                if response == AuthChallengeResponseResponse::ProvideCredentials {
+                    reply.username = Some(username.clone());
+                    reply.password = Some(password.clone());
+                }
+                let params = ContinueWithAuthParams::new(ev.request_id.clone(), reply);
+                if let Err(e) = browser.execute(params).await {
+                    tracing::warn!(error = %e, "Fetch.continueWithAuth loi");
+                }
+            }
+        }
+    }
+    tracing::debug!("proxy_auth_loop ket thuc (luong su kien dong)");
 }
 
 /// Ket qua buoc chuan bi THUAN cua `launch()` (khong ghi dia): config da build + duong dan
@@ -290,6 +634,22 @@ impl BrowserDriver for ChromiumDriver {
         let (mut browser, mut handler) = Browser::launch(config)
             .await
             .map_err(|e| map_launch_error(&e))?;
+        // Task 13 (I-7): Job Object KILL_ON_JOB_CLOSE ngay khi co Child — loi chi warn (vd tien
+        // trinh nay nam trong Job cam long nhau), khong fail launch.
+        let pid = browser.get_mut_child().and_then(|c| c.as_mut_inner().id());
+        #[cfg(windows)]
+        let job = match pid.map(crate::job::assign_kill_on_close) {
+            Some(Ok(j)) => Some(j),
+            Some(Err(e)) => {
+                tracing::warn!(?pid, error = %e, "khong gan duoc Chrome vao Job Object — bo qua");
+                None
+            }
+            None => {
+                tracing::warn!("chromiumoxide khong tra Child — khong co Job Object");
+                None
+            }
+        };
+        let browser = Arc::new(browser);
         let handler_task = tokio::spawn(async move {
             while let Some(h) = handler.next().await {
                 if h.is_err() {
@@ -297,13 +657,24 @@ impl BrowserDriver for ChromiumDriver {
                 }
             }
         });
+        let mut parts = SessionParts {
+            browser: Arc::clone(&browser),
+            handler: Some(handler_task),
+            proxy_auth: None,
+            #[cfg(windows)]
+            job,
+        };
         // M-12: neu buoc nao duoi day loi, TRUOC day ham tra Err ngay va lam `browser` bi drop
         // — Drop cua Browser chi canh bao (khong doi CDP), va Child ben duoi kill_on_drop
         // (TerminateProcess) giet Chrome GIUA chung khi no co the dang ghi profile (giong hai
         // vi tri da fix o `close()`, xem review Task 3-6 I-3). Gom lai trong mot khoi de khi
-        // loi thi dong nhe nhang (`Browser::close`) truoc khi tra Err, thay vi de drop giet.
+        // loi thi dong nhe nhang (`shutdown`: Browser.close + doi thoat) truoc khi tra Err.
         let init_result: Result<Page, BrowserError> = async {
-            let page = browser.new_page("about:blank").await?;
+            // Task 13: proxy co user/pass → Fetch.* tren phien browser TRUOC khi tab dau dieu huong.
+            if let Some((username, password)) = proxy_credentials(opts) {
+                parts.proxy_auth = Some(enable_proxy_auth(&browser, username, password).await?);
+            }
+            let page = first_page(&browser).await?;
             page.execute(SetLocaleOverrideParams::builder().locale(LOCALE).build())
                 .await?;
             // Review Task 3-6 (I-1): navigator.language(s) VA header Accept-Language deu bat
@@ -339,15 +710,27 @@ impl BrowserDriver for ChromiumDriver {
         let page = match init_result {
             Ok(page) => page,
             Err(e) => {
-                let _ = browser.close().await;
-                handler_task.abort();
+                drop(browser); // tha Arc cua ham nay de shutdown() try_unwrap duoc
+                shutdown(parts, CLOSE_WAIT).await;
                 return Err(e);
             }
         };
-        Ok(ChromiumSession {
+        drop(browser);
+        let SessionParts {
             browser,
+            handler,
+            proxy_auth,
+            #[cfg(windows)]
+            job,
+        } = parts;
+        Ok(ChromiumSession {
+            browser: Some(browser),
             page,
-            handler: handler_task,
+            handler,
+            proxy_auth,
+            #[cfg(windows)]
+            job,
+            pid,
             navigation_timeout: opts.navigation_timeout,
         })
     }
@@ -392,26 +775,22 @@ impl BrowserDriver for ChromiumDriver {
         // KE TIEP (handler/target.rs), nen mot SPA khong bao gio phat su kien load lai (hoac
         // mot redirect vo han) se treo vinh vien. Boc timeout `navigation_timeout` (mac dinh 60s,
         // khop Python: /chat cho toi 60s) ngoai ca goto+wait.
+        // Task 13: `ops::navigate` = Page.navigate tho → `errorText` thanh `Navigation{net_error}`
+        // (`is_proxy_down()` cho engine); loi kenh → `Disconnected`. Thong diep timeout chi co
+        // host/path (khong query — URL Dola co chu ky).
         let limit = s.navigation_timeout;
         tokio::time::timeout(limit, async {
-            s.page
-                .goto(url)
-                .await
-                .map_err(|e| BrowserError::Navigation {
-                    url: url.into(),
-                    reason: e.to_string(),
-                })?;
-            s.page
-                .wait_for_navigation()
-                .await
-                .map_err(|e| BrowserError::Navigation {
-                    url: url.into(),
-                    reason: e.to_string(),
-                })?;
+            ops::navigate(&s.page, url).await?;
+            s.page.wait_for_navigation().await?;
             Ok::<(), BrowserError>(())
         })
         .await
-        .map_err(|_elapsed| BrowserError::Timeout(format!("dieu huong toi {url} qua {limit:?}")))?
+        .map_err(|_elapsed| {
+            BrowserError::Timeout(format!(
+                "dieu huong toi {} qua {limit:?}",
+                crate::url_host_path(url)
+            ))
+        })?
     }
 
     async fn probe_session(&self, s: &ChromiumSession) -> Result<SessionProbe, BrowserError> {
@@ -420,11 +799,6 @@ impl BrowserDriver for ChromiumDriver {
             texts: Vec<String>,
             composer: bool,
         }
-        let raw: Raw = s
-            .page
-            .evaluate(lvc_core::SESSION_PROBE_JS)
-            .await?
-            .into_value()?;
         // I-2: gioi han urls=[DOLA_URL] thay vi Page::get_cookies() (Network.getCookies KHONG
         // urls -> cookie cua TRANG/TAB hien tai, co the la trang OAuth/loi sau redirect) —
         // khop Python context.cookies("https://www.dola.com"). Luat "co sessionid hop le" la
@@ -433,6 +807,41 @@ impl BrowserDriver for ChromiumDriver {
         let cookies = crate::ops::cookies(&s.page, lvc_core::DOLA_URL).await?;
         let has_sessionid = crate::dola::session::has_sessionid(&cookies);
         let url = s.page.url().await?.unwrap_or_default();
+        // Task 13 — Python `dola_session_state` (`browser.py:349-356`): chi doc TRANG khi co
+        // sessionid; `wait_for(evaluate, 15)` het gio hoac nem (trang chua san sang / dang dieu
+        // huong) → tra `Unknown` (caller khong ket luan), KHONG Err. Khong sessionid → `LoggedOut`
+        // ngay (classify_session), khong evaluate.
+        if !has_sessionid {
+            return Ok(SessionProbe {
+                has_sessionid,
+                texts: Vec::new(),
+                composer: false,
+                url,
+                state: SessionState::LoggedOut,
+            });
+        }
+        let evaluated = tokio::time::timeout(PROBE_EVAL_TIMEOUT, async {
+            s.page
+                .evaluate(lvc_core::SESSION_PROBE_JS)
+                .await?
+                .into_value::<Raw>()
+                .map_err(BrowserError::from)
+        })
+        .await;
+        let raw = match evaluated {
+            Ok(Ok(raw)) => raw,
+            Ok(Err(e)) => {
+                tracing::debug!(error = %e, "SESSION_PROBE_JS loi — state Unknown");
+                return Ok(unknown_probe(has_sessionid, url));
+            }
+            Err(_elapsed) => {
+                tracing::debug!(
+                    ?PROBE_EVAL_TIMEOUT,
+                    "SESSION_PROBE_JS qua gio — state Unknown"
+                );
+                return Ok(unknown_probe(has_sessionid, url));
+            }
+        };
         let state = lvc_core::classify_session(has_sessionid, &raw.texts, raw.composer);
         Ok(SessionProbe {
             has_sessionid,
@@ -453,15 +862,25 @@ impl BrowserDriver for ChromiumDriver {
         Ok(())
     }
 
+    /// Task 13: [`shutdown`] voi [`CLOSE_WAIT`] (30 s). Sau khi lay het phan can dong ra, `Drop`
+    /// cua `s` khong lam gi nua. Khong bao gio `Err` (dong la best-effort).
     async fn close(&self, mut s: ChromiumSession) -> Result<(), BrowserError> {
-        let _ = s.browser.close().await;
-        // Review Task 3-6 (I-3): Browser::close chi doi phan hoi CDP Browser.close; drop
-        // ChromiumSession ngay sau do co the kich hoat kill_on_drop trong luc Chrome van dang
-        // ghi profile (cookie SQLite commit theo lo, exit_type chi ghi khi thoat sach). Doi
-        // them (co timeout de khong treo mai neu tien trinh da bi giet) truoc khi huy handler.
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), s.browser.wait()).await;
-        s.handler.abort();
+        if let Some(parts) = s.take_parts() {
+            shutdown(parts, CLOSE_WAIT).await;
+        }
         Ok(())
+    }
+}
+
+/// `SessionProbe` khi khong doc duoc trang (timeout/loi evaluate): giu `has_sessionid` + URL,
+/// state `Unknown`.
+fn unknown_probe(has_sessionid: bool, url: String) -> SessionProbe {
+    SessionProbe {
+        has_sessionid,
+        texts: Vec::new(),
+        composer: false,
+        url,
+        state: SessionState::Unknown,
     }
 }
 
@@ -689,6 +1108,93 @@ mod tests {
                 .iter()
                 .any(|a| a.starts_with("blink-settings="))
         );
+    }
+
+    /// Task 13: user/pass proxy KHONG lam dong lenh doi (chi `proxy-server=` + bypass) — xac thuc
+    /// di qua Fetch.* sau khi Chrome mo, khong bao gio nam tren dong lenh (ai cung doc duoc qua
+    /// `Win32_Process.CommandLine`).
+    #[test]
+    fn chrome_args_khong_doi_khi_proxy_co_auth() {
+        let base = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            ..LaunchOpts::default()
+        };
+        let no_auth = LaunchOpts {
+            proxy: lvc_core::parse_proxy("http://10.0.0.9:3128").unwrap(),
+            ..base.clone()
+        };
+        let with_auth = LaunchOpts {
+            proxy: lvc_core::parse_proxy("http://tenND:matkhauBM@10.0.0.9:3128").unwrap(),
+            ..base
+        };
+        assert!(with_auth.proxy.as_ref().unwrap().has_auth());
+        assert_eq!(chrome_args(&no_auth), chrome_args(&with_auth));
+    }
+
+    /// Task 13: `proxy_credentials` chi `Some` khi co username (password thieu → "").
+    #[test]
+    fn proxy_credentials_chi_khi_co_username() {
+        let base = LaunchOpts {
+            profile_dir: PathBuf::from("accounts/x"),
+            ..LaunchOpts::default()
+        };
+        assert_eq!(proxy_credentials(&base), None);
+
+        let no_auth = LaunchOpts {
+            proxy: lvc_core::parse_proxy("1.2.3.4:8080").unwrap(),
+            ..base.clone()
+        };
+        assert_eq!(proxy_credentials(&no_auth), None);
+
+        let with_auth = LaunchOpts {
+            proxy: lvc_core::parse_proxy("1.2.3.4:8080:user1:s3cr3tPW").unwrap(),
+            ..base.clone()
+        };
+        assert_eq!(
+            proxy_credentials(&with_auth),
+            Some(("user1".to_string(), "s3cr3tPW".to_string()))
+        );
+
+        let mut spec = with_auth.proxy.clone().unwrap();
+        spec.password = None;
+        let no_password = LaunchOpts {
+            proxy: Some(spec),
+            ..base
+        };
+        assert_eq!(
+            proxy_credentials(&no_password),
+            Some(("user1".to_string(), String::new()))
+        );
+    }
+
+    /// M-3 / Python `fresh_page`: uu tien `about:blank` (URL `None`/rong cung coi la blank), khong
+    /// thi tab dau khong rac; tab rac (Opera GX) khong bao gio duoc chon; toan rac → `None`.
+    #[test]
+    fn choose_main_page_uu_tien_about_blank_va_bo_rac() {
+        let u = |s: &str| Some(s.to_string());
+        assert_eq!(choose_main_page(&[]), None);
+        assert_eq!(choose_main_page(&[None]), Some(0));
+        assert_eq!(choose_main_page(&[u("about:blank")]), Some(0));
+        assert_eq!(
+            choose_main_page(&[u("chrome://new-tab-page/"), u("about:blank")]),
+            Some(1)
+        );
+        assert_eq!(
+            choose_main_page(&[u("https://www.dola.com/chat"), u("chrome://newtab/")]),
+            Some(0),
+            "khong co about:blank → tab dau"
+        );
+        assert_eq!(
+            choose_main_page(&[u("https://gxcorner.games/"), u("https://a.b/")]),
+            Some(1),
+            "tab rac khong duoc chon du dung dau"
+        );
+        assert_eq!(
+            choose_main_page(&[u("https://GXCORNER.games/x"), u("")]),
+            Some(1),
+            "URL rong = about:blank; so sanh host rac khong phan biet hoa thuong"
+        );
+        assert_eq!(choose_main_page(&[u("https://gxcorner.games/")]), None);
     }
 
     /// M-11: co proxy → `proxy-server=<server()>` (KHONG kem user:pass) va ngay sau la

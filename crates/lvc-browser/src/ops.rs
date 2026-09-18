@@ -44,7 +44,7 @@ use chromiumoxide::cdp::browser_protocol::network::{
     EventResponseReceived, GetCookiesParams,
 };
 use chromiumoxide::cdp::browser_protocol::page::{
-    EventDomContentEventFired, FrameTree, GetFrameTreeParams, ReloadParams,
+    EventDomContentEventFired, FrameTree, GetFrameTreeParams, NavigateParams, ReloadParams,
 };
 use chromiumoxide::cdp::js_protocol::runtime::{EvaluateParams, ExceptionDetails};
 use chromiumoxide::error::CdpError;
@@ -54,7 +54,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 
-use crate::BrowserError;
+use crate::{BrowserError, url_host_path};
 
 /// `reload()`/`goto()`: thoi gian toi da cho `Page.domContentEventFired` (Python
 /// `page.reload(wait_until="domcontentloaded", timeout=60000)` / `page.goto(..., timeout=60000)`).
@@ -71,7 +71,8 @@ const MOD_SHIFT: i64 = 8;
 fn map_cdp(e: CdpError) -> BrowserError {
     match e {
         CdpError::JavascriptException(ex) => BrowserError::Js(exception_text(&ex)),
-        other => BrowserError::Cdp(other),
+        // Task 13: qua `From` de `ChannelSendError` → `Disconnected` (khong `Cdp` chung chung).
+        other => BrowserError::from(other),
     }
 }
 
@@ -621,10 +622,7 @@ pub async fn goto(page: &Page, url: &str, settle: Duration) -> Result<(), Browse
         .event_listener::<EventDomContentEventFired>()
         .await
         .map_err(map_cdp)?;
-    page.goto(url).await.map_err(|e| BrowserError::Navigation {
-        url: url.to_string(),
-        reason: e.to_string(),
-    })?;
+    navigate(page, url).await?;
     match tokio::time::timeout(RELOAD_TIMEOUT, dcl.next()).await {
         Ok(Some(_)) => {}
         Ok(None) => {
@@ -640,6 +638,26 @@ pub async fn goto(page: &Page, url: &str, settle: Duration) -> Result<(), Browse
     }
     tokio::time::sleep(settle).await;
     Ok(())
+}
+
+/// Task 13: `Page.navigate` THO — `NavigateReturns.error_text` (vd `net::ERR_CONNECTION_REFUSED`,
+/// `net::ERR_PROXY_CONNECTION_FAILED`) → [`BrowserError::Navigation`] voi URL DA CAT query
+/// ([`url_host_path`]); loi CDP khac qua `From` (`ChannelSendError` → `Disconnected`). Khong dung
+/// `Page::goto` cua chromiumoxide vi no gop `error_text` vao `CdpError::ChromeMessage` (mat phan
+/// loai). chromiumoxide chi tra phan hoi `Page.navigate` SAU khi khung chinh `load` xong (hoac
+/// `request_timeout`), nen ham nay da bao ham "cho tai" o muc `load`.
+///
+/// # Errors
+/// `Navigation` (errorText), `Disconnected`, `Cdp`.
+pub async fn navigate(page: &Page, url: &str) -> Result<(), BrowserError> {
+    let resp = page.execute(NavigateParams::new(url)).await?;
+    match resp.result.error_text {
+        Some(net_error) => Err(BrowserError::Navigation {
+            url_host_path: url_host_path(url),
+            net_error,
+        }),
+        None => Ok(()),
+    }
 }
 
 /// Bo dem `Network.responseReceived` (Python `page.on("response")` trong

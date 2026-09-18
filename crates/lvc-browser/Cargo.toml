@@ -25,6 +25,10 @@ base64.workspace = true
 reqwest.workspace = true
 uuid.workspace = true
 
+# Task 13: job.rs (Job Object) chi build tren Windows.
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [dev-dependencies]
 tempfile = "3"
 # dola::http tests: mock server HTTP cuc bo (kiem header/body/query, tra fixture) — khong dola.com.
