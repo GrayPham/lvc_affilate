@@ -9,8 +9,9 @@
 //! `launch`/`submit`/`poll_and_download`. Cac ham con lai (`add_cookies`/`goto`/`probe_session`/
 //! `screenshot`/`user_agent`/`close`) KHONG tieu thu kich ban — chung la "hanh vi mac dinh vo hai"
 //! (Ok/no-op) vi engine khong can gia lap loi rieng cho tung ham (T15-17 xoay quanh
-//! launch/submit/poll). Moi loi goi trait deu duoc ghi lai vao `calls` (theo THU TU) de test cua
-//! engine khang dinh duoc trinh tu goi.
+//! launch/submit/poll). CHI 4 loi goi vong doi (`launch`/`submit`/`poll_and_download`/`close`)
+//! duoc ghi lai vao `calls` (theo THU TU) de test cua engine khang dinh duoc trinh tu goi;
+//! `goto`/`add_cookies`/`probe_session`/`screenshot`/`user_agent` KHONG ghi.
 //!
 //! Kich ban het TRUOC khi mot ham can no, hoac buoc ke tiep sai loai (vd `submit()` goi nhung
 //! buoc ke tiep la `Poll(..)`), la LOI LOGIC cua test (kich ban sai) — `panic!` ngay voi thong
@@ -117,8 +118,8 @@ impl FakeDriver {
     }
 }
 
-/// Ten tai khoan tu ten file cuoi cung cua `profile_dir` (`accounts/<ten>/` -> `<ten>`); duong dan
-/// rong/ket thuc bang `..`/`/` (khong co ten file) -> chuoi rong.
+/// Ten tai khoan tu ten file cuoi cung cua `profile_dir` (`accounts/<ten>/` -> `<ten>`; dau `/`
+/// cuoi duoc `Path::file_name` bo qua); duong dan rong hoac ket thuc bang `..` -> chuoi rong.
 fn account_from_profile_dir(profile_dir: &Path) -> String {
     profile_dir
         .file_name()
@@ -284,8 +285,8 @@ mod tests {
         }
     }
 
-    /// Kich ban hanh phuc: `launch` -> `submit` Ok -> `poll` Ok -> `close`; cac loi goi duoc ghi
-    /// lai DUNG THU TU (ke ca cac loi khong tieu thu kich ban nhu `goto`).
+    /// Kich ban hanh phuc: `launch` -> `submit` Ok -> `poll` Ok -> `close`; 4 loi goi vong doi duoc
+    /// ghi lai DUNG THU TU (`goto` khong ghi — xem doc module).
     #[tokio::test]
     async fn kich_ban_hanh_phuc_ghi_lai_dung_thu_tu() {
         let conv = ConversationId("123".into());
