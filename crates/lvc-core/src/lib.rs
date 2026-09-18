@@ -47,7 +47,7 @@ pub use limits::Limits;
 pub use mode::{Mode, route_30s, video_timeout};
 pub use pro_prompt::{agent_prompt, pro_max_prompt, pro_prompt};
 pub use progress::{BatchProgress, TaskStatus, batch_progress};
-pub use proxy::{DIRECT, ProxySpec, effective_proxy, parse_proxy};
+pub use proxy::{DIRECT, ProxySpec, effective_proxy, mask_proxy, parse_proxy};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
 pub use scene_txt::{format_txt, parse_txt};
 pub use scheduling::{

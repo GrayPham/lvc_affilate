@@ -170,6 +170,12 @@ pub struct Engine<D: BrowserDriver + 'static> {
     // cua run dang ky token con cua token nay qua `cancels().register_child` (fix-round 1, C1) —
     // xem doc `dag.rs`.
     pub(crate) run_tokens: DashMap<String, CancellationToken>,
+    // pub(crate): Task 10 (P3) `accounts.rs` can `Db` truc tiep cho
+    // `lvc_store::legacy::import_legacy(&db, ..)` (TaskRepo/RunRepo/AccountPool deu boc rieng repo
+    // cua chung, khong ai lo `Db` tho ra — them truong nay thay vi mo mot repo moi chi de doc/ghi
+    // bang `tasks`/`accounts_meta`/`usage`/`settings` cua ban Python cu, dung y `import_legacy` da
+    // nhan).
+    pub(crate) db: Db,
 }
 
 /// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
@@ -344,6 +350,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             cancels: CancelRegistry::new(),
             run_repo: RunRepo::new(&db),
             run_tokens: DashMap::new(),
+            db,
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))

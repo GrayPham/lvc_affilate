@@ -359,3 +359,36 @@ async fn clear_expired_limits_xoa_tung_cot_doc_lap() {
     assert_f64(row.quota_blocked_until, 300.0);
     assert_eq!(row.quota_reason, "q");
 }
+
+// ===== Task 10: xoa tai khoan =====
+
+#[tokio::test]
+async fn delete_xoa_dong_tra_true_goi_lai_tra_false() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = AccountRepo::new(&db);
+    repo.upsert("acc2").await.unwrap();
+    assert!(repo.delete("acc2").await.unwrap());
+    assert!(repo.get("acc2").await.unwrap().is_none());
+    assert!(
+        !repo.delete("acc2").await.unwrap(),
+        "da xoa -> lan hai tra false, khong loi"
+    );
+}
+
+#[tokio::test]
+async fn delete_khong_dung_toi_bang_usage() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = AccountRepo::new(&db);
+    repo.upsert("acc2").await.unwrap();
+    repo.bump_usage("acc2", "2026-09-16", Mode::Fast)
+        .await
+        .unwrap();
+    repo.delete("acc2").await.unwrap();
+    // usage khong bi dong theo (lich su dung con nguyen, chi accounts_meta mat dong)
+    assert_eq!(
+        repo.used_today("acc2", "2026-09-16", Mode::Fast)
+            .await
+            .unwrap(),
+        1
+    );
+}

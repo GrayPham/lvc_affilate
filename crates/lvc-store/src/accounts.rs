@@ -369,6 +369,21 @@ impl AccountRepo {
         Ok(row.try_get("used")?)
     }
 
+    /// Task 10 (`lvc-engine::accounts::Engine::delete`, tab Tài khoản → Xoá): xoá dòng
+    /// `accounts_meta` của `name` (KHÔNG đụng bảng `usage` — lịch sử dùng hôm nay/trước đó giữ
+    /// nguyên, không có ý nghĩa gì để xoá theo). Trả `true` khi CÓ dòng bị xoá, `false` khi `name`
+    /// không tồn tại (idempotent — gọi lại lần hai không lỗi).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn delete(&self, name: &str) -> Result<bool, StoreError> {
+        let res = sqlx::query("DELETE FROM accounts_meta WHERE name = ?1")
+            .bind(name)
+            .execute(self.db.pool())
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     /// # Errors
     /// `StoreError::Sqlx` khi truy vấn thất bại.
     pub async fn used_today(

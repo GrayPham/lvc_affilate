@@ -1,0 +1,16 @@
+{
+  "cookies": {
+    "name": "acc1",
+    "sessionidExpiresAt": 1800000000
+  },
+  "legacy": {
+    "tasks": 12,
+    "accounts": 3,
+    "usage": 8,
+    "settings": 5,
+    "skipped": [
+      "pool_usage.db"
+    ],
+    "profilesCopied": 2
+  }
+}
