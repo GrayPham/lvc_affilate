@@ -338,6 +338,15 @@ impl TaskRepo {
     /// Mọi task thuộc một lần chạy workflow, sắp theo thứ tự cảnh rồi thời điểm
     /// tạo (khớp thứ tự batch cũ — xem [`TaskRepo::create`]).
     ///
+    /// Lưu ý (review vòng 1 M4): `scene_index` là `NULL` cho task KHÔNG tạo qua
+    /// [`BatchRef`] (tạo lẻ, không thuộc kịch bản nhiều cảnh). `ORDER BY` tăng dần
+    /// của `SQLite` xếp `NULL` TRƯỚC mọi giá trị khác, nên nếu một run lẫn cả task
+    /// có `scene_index` lẫn task không có, các task không có sẽ hiện trước hết —
+    /// bất kể thời điểm tạo. P3 hiện luôn gán `scene_index` cho task sinh từ node
+    /// Tạo video trong workflow nên trong thực tế một run chỉ toàn một loại; nếu
+    /// sau này có run trộn cả hai, cân nhắc
+    /// `ORDER BY COALESCE(scene_index, 999999999), created_at`.
+    ///
     /// # Errors
     /// `StoreError::Sqlx` khi truy vấn thất bại.
     pub async fn list_by_run(&self, run_id: &str) -> Result<Vec<TaskRow>, StoreError> {
@@ -372,41 +381,40 @@ impl TaskRepo {
     /// `store.py:385-397 requeue_orphans` + `server.py:903-904` (gọi lúc khởi
     /// động): task còn `processing` nhưng CHƯA có `conversation_id` (kể cả `''`)
     /// nghĩa là app tắt giữa chừng trước khi gửi lệnh — chưa mất lượt, đưa thẳng
-    /// về `queued` để dispatch lại ngay. Trả về danh sách id đã đụng tới.
+    /// về `queued` để dispatch lại ngay trên MỘT tài khoản bất kỳ (review vòng 1
+    /// I1: khớp Python đủ 6 cột — `status`, `account`, `retry_at`, `failure_code`,
+    /// `error`, `updated_at` — không chỉ 4 như bản đầu; `account`/`retry_at` phải
+    /// về `NULL`/`0` vì account cũ có thể đã kẹt/hỏng và `retry_at` cũ (nếu có) sẽ
+    /// trì hoãn lần dispatch lại này một cách sai). Trả về danh sách id đã đụng
+    /// tới.
     ///
-    /// Khác bản Python: KHÔNG đụng `account`/`retry_at` (ruling Task 3 — chỉ
-    /// `status`/`failure_code`/`error`/`updated_at`; `account`/`retry_at` để
-    /// nguyên cho tầng gọi tự quyết).
+    /// Một câu `UPDATE ... RETURNING id` DUY NHẤT (review M2) thay vì `SELECT` rồi
+    /// `UPDATE` — `SQLite` thực thi nguyên tử trong một statement nên không cần bọc
+    /// transaction: không có khe hở giữa "đọc" và "ghi" để trạng thái của task đổi
+    /// ở giữa (khác bản đầu, vốn có thể trả về id không thực sự bị `UPDATE` chạm
+    /// tới nếu điều kiện đổi ngay giữa hai câu lệnh).
     ///
     /// # Errors
     /// `StoreError::Sqlx` khi truy vấn/ghi thất bại.
     pub async fn requeue_orphans(&self, now: f64) -> Result<Vec<String>, StoreError> {
-        let processing = TaskStatus::Processing.as_str();
         let rows = sqlx::query(
-            "SELECT id FROM tasks WHERE status = ?1 AND (conversation_id IS NULL OR conversation_id = '')",
+            "UPDATE tasks
+               SET status = ?2, account = NULL, retry_at = ?3, failure_code = ?4,
+                   error = ?5, updated_at = ?6
+             WHERE status = ?1 AND (conversation_id IS NULL OR conversation_id = '')
+             RETURNING id",
         )
-        .bind(processing)
+        .bind(TaskStatus::Processing.as_str())
+        .bind(TaskStatus::Queued.as_str())
+        .bind(0.0_f64)
+        .bind(FailureCode::Restart.as_str())
+        .bind("RESTART: app khoi dong lai")
+        .bind(now)
         .fetch_all(self.db.pool())
         .await?;
-        let ids = rows
-            .iter()
-            .map(|r| r.try_get::<String, _>("id"))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if !ids.is_empty() {
-            sqlx::query(
-                "UPDATE tasks SET status = ?2, failure_code = ?3, error = ?4, updated_at = ?5
-                 WHERE status = ?1 AND (conversation_id IS NULL OR conversation_id = '')",
-            )
-            .bind(processing)
-            .bind(TaskStatus::Queued.as_str())
-            .bind(FailureCode::Restart.as_str())
-            .bind("RESTART: app khoi dong lai")
-            .bind(now)
-            .execute(self.db.pool())
-            .await?;
-        }
-        Ok(ids)
+        rows.iter()
+            .map(|r| r.try_get::<String, _>("id").map_err(StoreError::from))
+            .collect()
     }
 
     /// Ứng viên resume (Task 6): còn `processing` VÀ đã có `conversation_id` —

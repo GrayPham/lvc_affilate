@@ -118,16 +118,66 @@ impl WorkflowRepo {
     }
 }
 
+/// Trạng thái một lần chạy workflow. Khái niệm mới của P3 — không có tương
+/// đương Python — nhưng theo đúng khuôn `TaskStatus`/`FailureCode` (lvc-core):
+/// enum + `as_str`/`parse`, không để chuỗi trạng thái trôi tự do giữa các nơi
+/// gọi `RunRepo::create`/`set_status` (review vòng 1 M3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RunStatus {
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl RunStatus {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "running" => Some(Self::Running),
+            "completed" => Some(Self::Completed),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
 /// Một dòng `runs` — một lần chạy workflow (DAG executor Task 7 cập nhật khi
 /// chạy; resume Task 6 đọc lại sau khi khởi động lại app).
 #[derive(Debug, Clone)]
 pub struct RunRow {
     pub id: String,
     pub workflow_id: String,
-    pub status: String,
+    /// Chuỗi thô trong cột `status` không parse được (không lẽ xảy ra — repo là
+    /// đường ghi duy nhất — nhưng DB có thể bị sửa tay/nhập từ bản cũ) rơi về
+    /// `Failed`, giống cách phòng thủ của `TaskRow::status`/`row_to_task`.
+    pub status: RunStatus,
     pub started_at: f64,
     pub finished_at: f64,
     pub error: String,
+}
+
+fn row_to_run(r: &sqlx::sqlite::SqliteRow) -> Result<RunRow, StoreError> {
+    let status_str: String = r.try_get("status")?;
+    Ok(RunRow {
+        id: r.try_get("id")?,
+        workflow_id: r.try_get("workflow_id")?,
+        status: RunStatus::parse(&status_str).unwrap_or(RunStatus::Failed),
+        started_at: r.try_get("started_at")?,
+        finished_at: r.try_get("finished_at")?,
+        error: r.try_get("error")?,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -141,8 +191,11 @@ impl RunRepo {
         Self { db: db.clone() }
     }
 
-    /// Bắt đầu một lần chạy mới — `status = "running"`, `finished_at = 0`,
-    /// `error = ""`. DAG executor (Task 7) gọi khi bắt đầu thực thi workflow.
+    /// Bắt đầu một lần chạy mới ở trạng thái `status` do tầng gọi chỉ định
+    /// (thường [`RunStatus::Running`] — review vòng 1 M3: không còn mặc định
+    /// ngầm "running" trong hàm, DAG executor Task 7 truyền tường minh, kể cả
+    /// khi cần tạo một run đã huỷ/lỗi ngay từ đầu). `finished_at = 0`,
+    /// `error = ""`.
     ///
     /// # Errors
     /// `StoreError::Sqlx` khi ghi thất bại.
@@ -150,14 +203,16 @@ impl RunRepo {
         &self,
         id: &str,
         workflow_id: &str,
+        status: RunStatus,
         started_at: f64,
     ) -> Result<(), StoreError> {
         sqlx::query(
             "INSERT INTO runs (id, workflow_id, status, started_at, finished_at, error)
-             VALUES (?1, ?2, 'running', ?3, 0, '')",
+             VALUES (?1, ?2, ?3, ?4, 0, '')",
         )
         .bind(id)
         .bind(workflow_id)
+        .bind(status.as_str())
         .bind(started_at)
         .execute(self.db.pool())
         .await?;
@@ -173,14 +228,14 @@ impl RunRepo {
     pub async fn set_status(
         &self,
         id: &str,
-        status: &str,
+        status: RunStatus,
         error: Option<&str>,
         finished_at: f64,
     ) -> Result<bool, StoreError> {
         let result =
             sqlx::query("UPDATE runs SET status = ?2, error = ?3, finished_at = ?4 WHERE id = ?1")
                 .bind(id)
-                .bind(status)
+                .bind(status.as_str())
                 .bind(error.unwrap_or(""))
                 .bind(finished_at)
                 .execute(self.db.pool())
@@ -195,17 +250,7 @@ impl RunRepo {
             .bind(id)
             .fetch_optional(self.db.pool())
             .await?;
-        row.map(|r| {
-            Ok(RunRow {
-                id: r.try_get("id")?,
-                workflow_id: r.try_get("workflow_id")?,
-                status: r.try_get("status")?,
-                started_at: r.try_get("started_at")?,
-                finished_at: r.try_get("finished_at")?,
-                error: r.try_get("error")?,
-            })
-        })
-        .transpose()
+        row.as_ref().map(row_to_run).transpose()
     }
 
     /// `limit` được kẹp vào [1, 200] như [`crate::TaskRepo::list_recent`].
@@ -218,17 +263,6 @@ impl RunRepo {
             .bind(limit)
             .fetch_all(self.db.pool())
             .await?;
-        rows.iter()
-            .map(|r| {
-                Ok(RunRow {
-                    id: r.try_get("id")?,
-                    workflow_id: r.try_get("workflow_id")?,
-                    status: r.try_get("status")?,
-                    started_at: r.try_get("started_at")?,
-                    finished_at: r.try_get("finished_at")?,
-                    error: r.try_get("error")?,
-                })
-            })
-            .collect()
+        rows.iter().map(row_to_run).collect()
     }
 }

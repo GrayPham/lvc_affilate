@@ -14,4 +14,4 @@ pub use error::StoreError;
 pub use legacy::{ImportReport, import_legacy};
 pub use settings::SettingsRepo;
 pub use tasks::{BatchRef, TaskRepo, TaskRow};
-pub use workflows::{RunRepo, RunRow, WorkflowMeta, WorkflowRepo, WorkflowRow};
+pub use workflows::{RunRepo, RunRow, RunStatus, WorkflowMeta, WorkflowRepo, WorkflowRow};

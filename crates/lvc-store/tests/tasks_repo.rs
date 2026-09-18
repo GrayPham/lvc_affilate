@@ -323,17 +323,28 @@ async fn requeue_orphans_chi_dua_processing_khong_conv_ve_queued() {
     let repo = TaskRepo::new(&db);
 
     // Case 1: processing, KHONG co conversation_id (con NULL) -> phai duoc requeue.
+    // Gan san account + retry_at (nhu the da tung dispatch/bi requeue-thuong truoc do)
+    // de kiem ca hai cot nay bi xoa ve NULL/0 dung nhu Python (store.py:394).
     repo.create("orphan_null", &scene("x"), None).await.unwrap();
     repo.set_status("orphan_null", TaskStatus::Processing, None, None)
         .await
         .unwrap();
+    repo.set_account("orphan_null", "acc_cu").await.unwrap();
+    sqlx::query("UPDATE tasks SET retry_at = 555.0 WHERE id = 'orphan_null'")
+        .execute(db.pool())
+        .await
+        .unwrap();
 
-    // Case 2: processing, CO conversation_id -> KHONG duoc dung vao.
+    // Case 2: processing, CO conversation_id -> KHONG duoc dung vao (account/retry_at
+    // cua no cung phai giu nguyen, khong bi requeue_orphans dung toi).
     repo.create("has_conv", &scene("x"), None).await.unwrap();
     repo.set_status("has_conv", TaskStatus::Processing, None, None)
         .await
         .unwrap();
     repo.set_conversation("has_conv", "conv123").await.unwrap();
+    repo.set_account("has_conv", "acc_giu_nguyen")
+        .await
+        .unwrap();
 
     // Case 3: queued/completed -> khong bi dung toi.
     repo.create("still_queued", &scene("x"), None)
@@ -352,9 +363,19 @@ async fn requeue_orphans_chi_dua_processing_khong_conv_ve_queued() {
     assert_eq!(got.failure_code, Some(FailureCode::Restart));
     assert_eq!(got.error.as_deref(), Some("RESTART: app khoi dong lai"));
     assert!((got.updated_at - 9000.0).abs() < f64::EPSILON);
+    assert_eq!(got.account, None, "review I1: account phai ve NULL");
+    assert!(
+        (got.retry_at - 0.0).abs() < f64::EPSILON,
+        "review I1: retry_at phai ve 0"
+    );
 
     let untouched = repo.get("has_conv").await.unwrap().unwrap();
     assert_eq!(untouched.status, TaskStatus::Processing);
+    assert_eq!(
+        untouched.account.as_deref(),
+        Some("acc_giu_nguyen"),
+        "co conv thi khong bi requeue_orphans dung toi"
+    );
 
     let queued = repo.get("still_queued").await.unwrap().unwrap();
     assert_eq!(queued.status, TaskStatus::Queued);
