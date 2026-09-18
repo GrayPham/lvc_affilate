@@ -135,8 +135,24 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
 #[cfg(test)]
 mod tests {
     use lvc_browser::FakeDriver;
+    use lvc_core::{RawScene, Scene, TaskStatus};
+    use lvc_store::TaskRepo;
 
     use super::*;
+
+    /// 9:16, 10s, seedance-2.0, fast — canh toi thieu de tao task (giong `lvc_engine::generate::tests::scene`
+    /// nhung `pub(crate)` o do nen phai tu dung `Scene::normalize` o day).
+    fn scene() -> Scene {
+        Scene::normalize(
+            &RawScene {
+                prompt: Some("con meo di bo".into()),
+                ..RawScene::default()
+            },
+            &Limits::default(),
+            None,
+        )
+        .unwrap()
+    }
 
     #[tokio::test]
     async fn tao_thu_muc_db_settings_mac_dinh_va_requeue_rong() {
@@ -198,5 +214,47 @@ mod tests {
         assert_eq!(boot.settings.threads, 1, "gia tri sai -> mac dinh");
         assert_eq!(boot.warnings.len(), 1);
         assert!(boot.warnings[0].contains("threads"), "{:?}", boot.warnings);
+    }
+
+    /// I1 (fix-round review task-8): `build_engine` phai tu `requeue_on_start` that su khi DB da co
+    /// task orphan tu truoc — khong chi `lvc-engine` tu no. Seed 2 task `processing`: `a` KHONG
+    /// `conversation_id` (phai requeue ve `queued` ngay) va `b` CO `conversation_id` (chi liet ke
+    /// resumable, KHONG bi dong) truoc khi goi `build_engine` lan hai — mo phong app bi tat/crash
+    /// giua chung roi khoi dong lai.
+    #[tokio::test]
+    async fn build_engine_requeue_orphan_co_va_khong_conv() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let driver_setup = Arc::new(FakeDriver::new(vec![]));
+        let boot_setup = build_engine(dir.path(), driver_setup).await.unwrap();
+
+        let tasks = TaskRepo::new(&boot_setup.db);
+        tasks.create("a", &scene(), None).await.unwrap();
+        tasks
+            .set_status("a", TaskStatus::Processing, None, None)
+            .await
+            .unwrap();
+
+        tasks.create("b", &scene(), None).await.unwrap();
+        tasks
+            .set_status("b", TaskStatus::Processing, None, None)
+            .await
+            .unwrap();
+        tasks.set_conversation("b", "42").await.unwrap();
+
+        drop(boot_setup);
+
+        let driver = Arc::new(FakeDriver::new(vec![]));
+        let boot = build_engine(dir.path(), driver).await.unwrap();
+
+        assert_eq!(boot.requeue.requeued, vec!["a".to_string()]);
+        assert_eq!(boot.requeue.resumable, vec!["b".to_string()]);
+
+        let row_a = TaskRepo::new(&boot.db).get("a").await.unwrap().unwrap();
+        assert_eq!(
+            row_a.status,
+            TaskStatus::Queued,
+            "a phai ve queued sau requeue"
+        );
     }
 }

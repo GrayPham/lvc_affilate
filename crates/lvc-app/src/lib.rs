@@ -12,13 +12,24 @@ mod state;
 
 use tauri::Manager;
 
+/// Boc `WorkerGuard` de quan ly trong Tauri state (`app.manage`) thay vi `Box::leak` — song dung
+/// het doi `App`, `Drop` flush kenh ghi log non-blocking khi ung dung thoat (ca khi thoat binh
+/// thuong lan khi `.setup()` loi som truoc khi co cua so nao, vi `App` bi drop ngay khi do).
+#[allow(
+    dead_code,
+    reason = "chi giu WorkerGuard song qua RAII (Tauri state), truong .0 khong can doc truc tiep"
+)]
+struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
+
 /// Diem vao thuc su — `main.rs` chi goi ham nay (quy uoc Tauri 2: lib ten `<package>_lib`).
 ///
 /// # Panics
 /// Khoi dong tang duoi (mo/migrate DB, tao `Engine`) hoac chinh `tauri::Builder::run` that bai ->
 /// panic co chu dinh: ung dung khong the chay thieu tang duoi, va day la giai doan `setup()`/`run()`
 /// truoc khi co man hinh nao de bao loi cho nguoi dung (Task 9 se xet doi thanh man hinh loi thay vi
-/// panic cung khi co giao dien).
+/// panic cung khi co giao dien). Loi khoi dong tang duoi (`bootstrap::run_bootstrap`) duoc log bang
+/// `tracing::error!` TRUOC khi propagate — ban release khong co console (xem `main.rs`) nen day dong
+/// duy nhat con lai trong `logs/app.log` giai thich vi sao ung dung khong mo duoc.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -29,14 +40,15 @@ pub fn run() {
 
             let base = paths::app_data_dir(&handle)?;
             let guard = log::init(&paths::logs_dir(&base))?;
-            // `setup()` tra ve truoc khi ung dung chay tiep nen khong the giu `guard` trong bien
-            // cuc bo (se bi drop ngay, dong kenh ghi log non-blocking). Leak co chu dinh de guard
-            // song het doi tien trinh — cai gia la mat vai dong log cuoi neu tien trinh bi ket
-            // thuc dot ngot (khong flush kip), chap nhan duoc cho ung dung desktop.
-            let _ = Box::leak(Box::new(guard));
+            // Quan ly trong Tauri state (thay vi Box::leak) — xem doc `LogGuard`. Phai quan ly
+            // TRUOC khi goi bootstrap de guard chac chan con song (va se flush luc App bi drop)
+            // du bootstrap co loi hay khong.
+            app.manage(LogGuard(guard));
 
             tracing::info!(base = %base.display(), "lvc-app: bat dau khoi dong tang duoi");
-            tauri::async_runtime::block_on(bootstrap::run_bootstrap(&handle))?;
+            tauri::async_runtime::block_on(bootstrap::run_bootstrap(&handle)).inspect_err(|e| {
+                tracing::error!(error = %e, "khoi dong that bai");
+            })?;
 
             let state = handle.state::<state::AppState>();
             events::spawn_bridge(handle.clone(), &state.engine);
