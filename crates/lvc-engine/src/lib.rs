@@ -16,7 +16,11 @@
 //! requeue-ngay vs ung-vien-resume, khong tu chay).
 //! P3 Task 7: [`dag`] — `Engine::run_graph` (chay ca do thi: fan-out video qua `DynamicLimiter`,
 //! gom ket qua, Save, phat `NodeState`/`RunDone`, ghi `runs`) va `Engine::cancel_run`.
+//! P3 Task 10: [`accounts`] — `Engine::{list_with_status, import_cookies, verify, set_scheduling,
+//! set_proxy, delete, import_legacy}` (tab Tai khoan UI: liet ke + trang thai, nhap cookie, kiem tra
+//! dang nhap, bat/tat lich, sua proxy, xoa, nhap du lieu ban Python cu).
 
+pub mod accounts;
 pub mod cancel;
 pub mod cli;
 pub mod dag;
@@ -29,6 +33,9 @@ pub mod resume;
 pub mod session_cache;
 pub mod settings;
 
+pub use accounts::{
+    AccountError, AccountStatus, ImportCookiesReport, LegacyImportReport, VerifyReport,
+};
 pub use cancel::{CancelGuard, CancelRegistry};
 pub use dag::{HooksFactory, NodeOutputs, RunHandle, noop_hooks_factory};
 pub use error::EngineError;

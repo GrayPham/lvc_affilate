@@ -294,10 +294,12 @@ impl AccountPool {
         Ok(chosen)
     }
 
-    /// browser_pool.py:405-411 `accounts` + :490-548 `list_accounts`: xoa moc het han, quet thu
-    /// muc profile (tu them `accounts_meta` cho thu muc moi — `_ensure_meta`), chi giu tai khoan
-    /// CO thu muc, kem luot da dung hom nay (ngay Tokyo).
-    async fn snapshot_all(&self, mode: Mode, now: f64) -> Result<Vec<Snapshot>, EngineError> {
+    /// browser_pool.py:405-411 `accounts` + :459-467 `_clear_expired_rate_limits`: xoa moc het han,
+    /// quet thu muc profile (tu them `accounts_meta` cho thu muc moi — `_ensure_meta`), chi giu tai
+    /// khoan CO thu muc — nguon "tai khoan that su ton tai" dung chung boi [`Self::snapshot_all`]
+    /// (`candidates_for`/`pick_account`/`all_*`) VA `accounts::Engine::list_with_status` (Task 10,
+    /// liet ke tab Tai khoan UI — CUNG mot nguon voi engine dieu phoi de UI khong lech danh sach).
+    pub(crate) async fn rows_with_dirs(&self, now: f64) -> Result<Vec<AccountRow>, EngineError> {
         self.repo.clear_expired_limits(now).await?;
         let dir_names = self.profile_dirs().await;
         let mut rows = self.repo.list().await?;
@@ -312,13 +314,20 @@ impl AccountPool {
             }
             rows = self.repo.list().await?;
         }
+        Ok(rows
+            .into_iter()
+            .filter(|r| dir_names.contains(&r.name))
+            .collect())
+    }
+
+    /// browser_pool.py:490-548 `list_accounts`: nhu [`Self::rows_with_dirs`], kem luot da dung hom
+    /// nay (ngay Tokyo) cua `mode` xin (+ luon ca `fast`, dung lam khoa `_spread_key`).
+    async fn snapshot_all(&self, mode: Mode, now: f64) -> Result<Vec<Snapshot>, EngineError> {
+        let rows = self.rows_with_dirs(now).await?;
         let day = tokyo_day(now);
         let limit_mode = i64::from(self.limits.daily_limit(mode));
-        let mut out = Vec::with_capacity(dir_names.len());
+        let mut out = Vec::with_capacity(rows.len());
         for row in rows {
-            if !dir_names.contains(&row.name) {
-                continue;
-            }
             let used_fast = self.repo.used_today(&row.name, &day, Mode::Fast).await?;
             let used_mode = if mode == Mode::Fast {
                 used_fast
@@ -639,6 +648,14 @@ impl AccountPool {
                 .iter()
                 .all(|s| s.quota_blocked(now) || s.rate_limited(now) || s.over_limit())
             && candidates.iter().any(|s| s.quota_blocked(now)))
+    }
+
+    /// Task 10 (`accounts::Engine`): truy cap thang [`AccountRepo`] cho cac thao tac khong qua
+    /// snapshot/lease (liet ke + luot da dung theo tung mode, sua `scheduling`/`proxy`/`login_ok`,
+    /// xoa dong) — `pub(crate)` (khong phai `pub`): chi module trong crate nay (`accounts.rs`) duoc
+    /// dung thang repo, ngoai crate van phai di qua cac ham nghiep vu cua `AccountPool`/`Engine`.
+    pub(crate) fn repo(&self) -> &AccountRepo {
+        &self.repo
     }
 
     /// So tai khoan dang bat lich VA co thu muc profile (review T17 M7 — cung bo loc voi

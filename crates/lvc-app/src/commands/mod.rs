@@ -2,8 +2,8 @@
 //! ky trong `lib.rs::invoke_handler` — khong may chu HTTP nao (ADR P3, xem doc `lib.rs`).
 //!
 //! [`IpcError`] la kieu loi CHUNG cho MOI lenh — `Serialize` camelCase de frontend (Task 11) doc
-//! truc tiep, khong can parse chuoi loi Rust. `From<EngineError>`/`From<StoreError>` anh xa loi
-//! tang duoi sang `code` on dinh (xem doc hai impl duoi).
+//! truc tiep, khong can parse chuoi loi Rust. `From<EngineError>`/`From<StoreError>`/
+//! `From<AccountError>` (Task 10) anh xa loi tang duoi sang `code` on dinh (xem doc ba impl duoi).
 //!
 //! [`Ctx`] la phan cua `AppState` (Task 8) ma CAC HAM LOI cua tung lenh nhan — generic tren
 //! `D: BrowserDriver` (khong phai `tauri::State<AppState>` cu the `ChromiumDriver`) de test duoc
@@ -18,6 +18,7 @@
 //! `AppState` (`state.rs`) la alias `Ctx<ChromiumDriver>` — moi `xxx_impl` deu chay dung tren
 //! `AppState` do (deref tu `tauri::State`).
 
+pub mod accounts;
 pub mod settings;
 pub mod tasks;
 pub mod workflow;
@@ -30,7 +31,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use lvc_browser::BrowserDriver;
 use lvc_core::AppSettings;
-use lvc_engine::{Engine, EngineError, LimiterHandle, RunHandle};
+use lvc_engine::{AccountError, Engine, EngineError, LimiterHandle, RunHandle};
 use lvc_store::{Db, StoreError};
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -93,6 +94,14 @@ impl From<StoreError> for IpcError {
     }
 }
 
+/// Task 10 (`lvc_engine::accounts`): moi lenh tai khoan dung `AccountError::code()` lam nguon DUY
+/// NHAT cho `code` (KHONG suy tu `Display`/chuoi loi — xem doc `AccountError::code`).
+impl From<AccountError> for IpcError {
+    fn from(e: AccountError) -> Self {
+        Self::new(e.code(), e.to_string())
+    }
+}
+
 /// Phan cua `AppState` (Task 8) ma cac lenh IPC doc/ghi — xem doc dau module ve ly do generic tren
 /// `D`. `runs`: `run_id` -> [`RunHandle`] (Task 7) cua lan chay dang co — `run_start` chen vao,
 /// `run_cancel` lay ra (`remove`) roi spawn mot task NEN doi `join` (khong chan lenh) thay vi giu
@@ -103,11 +112,14 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     pub engine: Arc<Engine<D>>,
     /// Ban sao `LimiterHandle` (`Clone`, cung mot `watch::Sender` voi ban Engine giu noi bo) — Task
     /// 9 KHONG dung truc tiep (`settings::settings_set_impl` chi goi `Engine::apply_settings`, da
-    /// tu `set_threads` qua ban NOI BO cua no — goi lai o day se trung, xem doc do); giu lai truong
-    /// nay de Task 10 (lenh tai khoan) doi `set_accounts` khi bat/tat lich mot tai khoan.
+    /// tu `set_threads` qua ban NOI BO cua no — goi lai o day se trung, xem doc do). Task 10 (lenh
+    /// tai khoan) CUNG khong dung truc tiep truong nay: `Engine::{set_scheduling, delete,
+    /// import_cookies, import_legacy}` deu tu goi `Engine::refresh_account_count` (dung ban
+    /// `LimiterHandle` NOI BO cua Engine, khong phai ban sao nay) — giu lai phong khi mot lenh
+    /// tuong lai can doi `threads`/`accounts` truc tiep tu `Ctx` ma khong qua `Engine`.
     #[allow(
         dead_code,
-        reason = "du choi cho Task 10 (lenh tai khoan) - Task 9 chua co lenh nao doc/ghi truong nay"
+        reason = "chua co lenh nao (Task 9-10) doc/ghi truc tiep - moi thay doi accounts/threads deu qua Engine::apply_settings/refresh_account_count"
     )]
     pub handle: LimiterHandle,
     pub db: Db,
@@ -217,5 +229,12 @@ mod tests {
     fn store_error_ra_ma_chung_store() {
         let e: IpcError = StoreError::BadPath("x".to_string()).into();
         assert_eq!(e.code, "STORE");
+    }
+
+    #[test]
+    fn account_error_dung_ma_tu_code() {
+        let e: IpcError = lvc_engine::AccountError::AccountBusy("acc1".to_string()).into();
+        assert_eq!(e.code, "ACCOUNT_BUSY");
+        assert!(e.message.contains("acc1"));
     }
 }

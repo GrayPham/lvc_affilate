@@ -74,6 +74,13 @@ pub fn run() {
             commands::settings::settings_set,
             commands::settings::pick_directory,
             commands::settings::pick_files,
+            commands::accounts::account_list,
+            commands::accounts::account_import_cookies,
+            commands::accounts::account_verify,
+            commands::accounts::account_set_scheduling,
+            commands::accounts::account_set_proxy,
+            commands::accounts::account_delete,
+            commands::accounts::legacy_import,
         ])
         .run(tauri::generate_context!())
         .expect("loi khi chay ung dung Tauri");

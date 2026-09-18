@@ -271,6 +271,64 @@ pub fn effective_proxy(account_proxy: &str, global: &str) -> Result<Option<Proxy
     parse_proxy(own)
 }
 
+/// proxies.py:113-133 `mask_proxy` (Task 10, tab Tài khoản — KHÔNG BAO GIỜ hiện mật khẩu/username
+/// đầy đủ ra UI/log): rỗng → `""`; `"direct"` (không phân biệt hoa thường) → `"direct"` (khác rỗng —
+/// cho biết người dùng CHỦ Ý chặn proxy chung, không phải "chưa đặt gì"); phân tích được → che username
+/// hoặc mật khẩu (không bao giờ lộ password), giữ nguyên dạng gốc (`scheme://…` hay `host:port…`);
+/// phân tích lỗi (chuỗi rác người dùng gõ nhầm) → giữ 3 mảnh đầu tách bằng `:`, phần còn lại (nếu có)
+/// gộp thành `"***"` — không panic, không lộ nguyên văn chuỗi có thể chứa mật khẩu ở mảnh thứ 4+.
+#[must_use]
+pub fn mask_proxy(text: &str) -> String {
+    let raw = text.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    if raw.eq_ignore_ascii_case(DIRECT) {
+        return DIRECT.to_string();
+    }
+    match parse_proxy(raw) {
+        // rong/direct da xu ly o tren; nhanh nay phong thu, thuc te khong toi day.
+        Ok(None) => String::new(),
+        Ok(Some(spec)) => mask_valid(raw, &spec),
+        Err(_) => mask_invalid(raw),
+    }
+}
+
+/// `raw` đã `parse_proxy` được thành `spec` — che theo dạng gốc (URL hay `ip:port[:user:pass]`).
+fn mask_valid(raw: &str, spec: &ProxySpec) -> String {
+    let is_url_form = raw.contains("://");
+    if let Some(user) = &spec.username {
+        if is_url_form {
+            // spec.server() = "scheme://host:port" (bọc ngoặc vuông cho IPv6 sẵn) — chèn
+            // "user:***@" ngay sau "scheme://" thay vì tự ghép host/port (tránh lặp logic IPv6).
+            let server = spec.server();
+            let after_scheme = server.find("://").map_or(0, |i| i + 3);
+            format!(
+                "{}{user}:***@{}",
+                &server[..after_scheme],
+                &server[after_scheme..]
+            )
+        } else {
+            format!("{}:{}:{user}:***", spec.host, spec.port)
+        }
+    } else if !is_url_form && spec.scheme == "http" {
+        format!("{}:{}", spec.host, spec.port)
+    } else {
+        spec.server()
+    }
+}
+
+/// `raw` KHÔNG `parse_proxy` được (định dạng rác) — vẫn không được lộ nguyên văn (có thể chứa mật
+/// khẩu ở mảnh thứ 4 trở đi của dạng `ip:port:user:pass` gõ sai): giữ 3 mảnh đầu, phần sau `:` thứ
+/// ba (nếu có) gộp thành `"***"`; ≤ 3 mảnh (không có gì để che) → giữ nguyên.
+fn mask_invalid(raw: &str) -> String {
+    let parts: Vec<&str> = raw.splitn(4, ':').collect();
+    if parts.len() <= 3 {
+        return raw.to_string();
+    }
+    format!("{}:{}:{}:***", parts[0], parts[1], parts[2])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,5 +475,71 @@ mod tests {
     #[test]
     fn effective_proxy_ca_hai_rong_thi_khong_proxy() {
         assert_eq!(effective_proxy("  ", "  ").unwrap(), None);
+    }
+
+    // ---- mask_proxy (Task 10, proxies.py:113-133) ----
+
+    #[test]
+    fn mask_proxy_rong_khac_direct() {
+        assert_eq!(mask_proxy(""), "");
+        assert_eq!(mask_proxy("   "), "");
+    }
+
+    #[test]
+    fn mask_proxy_direct_giu_nguyen_khong_phan_biet_hoa_thuong() {
+        assert_eq!(mask_proxy("direct"), "direct");
+        assert_eq!(mask_proxy("DIRECT"), "direct");
+        assert_eq!(mask_proxy("  Direct  "), "direct");
+    }
+
+    #[test]
+    fn mask_proxy_ip_port_khong_xac_thuc_giu_nguyen() {
+        assert_eq!(mask_proxy("1.2.3.4:8080"), "1.2.3.4:8080");
+    }
+
+    #[test]
+    fn mask_proxy_ip_port_user_pass_che_pass_giu_dang_goc() {
+        assert_eq!(
+            mask_proxy("1.2.3.4:8080:user:s3cr3t"),
+            "1.2.3.4:8080:user:***"
+        );
+    }
+
+    #[test]
+    fn mask_proxy_url_khong_xac_thuc_giu_nguyen_dang_url() {
+        assert_eq!(mask_proxy("http://host:1080"), "http://host:1080");
+    }
+
+    #[test]
+    fn mask_proxy_url_co_xac_thuc_che_pass_giu_scheme_va_user() {
+        assert_eq!(
+            mask_proxy("socks5://u:p@host.example.com:1080"),
+            "socks5://u:***@host.example.com:1080"
+        );
+    }
+
+    #[test]
+    fn mask_proxy_url_ipv6_giu_ngoac_vuong() {
+        assert_eq!(
+            mask_proxy("socks5://u:p@[::1]:1080"),
+            "socks5://u:***@[::1]:1080"
+        );
+        assert_eq!(mask_proxy("http://[::1]:1080"), "http://[::1]:1080");
+    }
+
+    #[test]
+    fn mask_proxy_dang_sai_giu_3_manh_dau_che_phan_con_lai() {
+        assert_eq!(mask_proxy("abc:def:ghi:jkl:mno"), "abc:def:ghi:***");
+        assert_eq!(
+            mask_proxy("1.2.3.4:99999:user:pass"),
+            "1.2.3.4:99999:user:***"
+        );
+    }
+
+    #[test]
+    fn mask_proxy_dang_sai_it_hon_4_manh_giu_nguyen() {
+        assert_eq!(mask_proxy("abc"), "abc");
+        assert_eq!(mask_proxy("abc:def"), "abc:def");
+        assert_eq!(mask_proxy("abc:def:ghi"), "abc:def:ghi");
     }
 }

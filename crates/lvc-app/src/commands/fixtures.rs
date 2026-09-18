@@ -13,6 +13,7 @@ use lvc_core::{AppSettings, LogoMode, Mode, Model, Ratio};
 use lvc_engine::events::EngineEvent;
 use lvc_engine::generate::{STAGE_DONE, STAGE_LAUNCHING};
 use lvc_engine::resume::RequeueReport;
+use lvc_engine::{AccountStatus, ImportCookiesReport, LegacyImportReport};
 use lvc_store::{RunRow, RunStatus, TaskRow, WorkflowMeta};
 use serde_json::{Value, json};
 
@@ -251,6 +252,69 @@ fn ports_json() -> Value {
     Value::Array(entries)
 }
 
+/// Task 10: mot [`AccountStatus`] du moi truong, gia tri tinh toan (`cooling`/`rate_limited`/
+/// `quota_blocked`/`remaining`) khop THAT SU voi cac truong tho (khong hand-wave) — proxy da MASK
+/// (khong bao gio lo mat khau, ke ca trong fixture).
+fn account_status_fixture() -> AccountStatus {
+    AccountStatus {
+        name: "acc1".to_string(),
+        scheduling: true,
+        note: "tai khoan chinh".to_string(),
+        email: "acc1@example.com".to_string(),
+        created_at: 1_700_000_000.0,
+        last_used_at: 1_700_000_500.0,
+        login_ok: true,
+        login_checked_at: 1_700_000_400.0,
+        cooldown_until: 0.0,
+        cooling: false,
+        rate_limited_until: 0.0,
+        rate_limited: false,
+        limit_reason: String::new(),
+        quota_blocked_until: 0.0,
+        quota_blocked: false,
+        quota_reason: String::new(),
+        credit_balance: Some(10),
+        credit_checked_at: 1_700_000_300.0,
+        proxy: "1.2.3.4:8080:user:***".to_string(),
+        browser: "chromium".to_string(),
+        proxy_set: true,
+        logged_out_at: 0.0,
+        auto_verify_state: String::new(),
+        auto_verify_tries: 0,
+        cookie_expires_at: 1_800_000_000.0,
+        used_today: 2,
+        limit: 30,
+        remaining: 28,
+        used_pro: 0,
+        limit_pro: 10,
+        used_pro_max: 0,
+        limit_pro_max: 10,
+        used_agent: 0,
+        limit_agent: 30,
+    }
+}
+
+/// Task 10: `import_reports.json` gom hai mau bao cao trong MOT file (`cookies` = `import_cookies`,
+/// `legacy` = `import_legacy`) — ca hai deu nho, tach file rieng khong dang.
+fn import_reports_fixture() -> Value {
+    json!({
+        "cookies": serde_json::to_value(ImportCookiesReport {
+            name: "acc1".to_string(),
+            sessionid_expires_at: Some(1_800_000_000),
+        })
+        .unwrap(),
+        "legacy": serde_json::to_value(LegacyImportReport {
+            tasks: 12,
+            accounts: 3,
+            usage: 8,
+            settings: 5,
+            skipped: vec!["pool_usage.db".to_string()],
+            profiles_copied: 2,
+        })
+        .unwrap(),
+    })
+}
+
 /// `[STAGE_LAUNCHING, ...SUBMIT_STAGES, ...POLL_STAGES, STAGE_DONE]` da khu trung (giu lan xuat
 /// hien DAU TIEN) — `STAGE_GENERATING` co mat o ca cuoi `SUBMIT_STAGES` lan dau `POLL_STAGES`.
 fn stages_json() -> Vec<String> {
@@ -332,4 +396,9 @@ fn fixtures_khop_ban_da_commit() {
     );
     check_or_write("ports.json", &ports_json());
     check_or_write("stages.json", &serde_json::to_value(stages_json()).unwrap());
+    check_or_write(
+        "account_status.json",
+        &serde_json::to_value(account_status_fixture()).unwrap(),
+    );
+    check_or_write("import_reports.json", &import_reports_fixture());
 }

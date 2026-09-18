@@ -52,11 +52,20 @@ pub const FAKE_USER_AGENT: &str = "FakeUA/1";
 /// Nhip hoi `should_cancel()` cua [`FakeStep::PollUntilCancelled`].
 pub const POLL_UNTIL_CANCELLED_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
-/// Mot buoc kich ban. Chi 3 loai — xem doc module ve ly do cac ham con lai khong can buoc rieng.
+/// Mot buoc kich ban. Chu yeu 3 loai (`Launch`/`Submit`/`Poll`) — xem doc module ve ly do cac ham
+/// con lai khong can buoc rieng.
 #[derive(Debug)]
 pub enum FakeStep {
-    /// `launch()`: `Ok(())` -> tra phien moi; `Err(e)` -> tra `e` nguyen van.
+    /// `launch()`: `Ok(())` -> tra phien moi voi `probe_state: SessionState::LoggedIn` (mac dinh);
+    /// `Err(e)` -> tra `e` nguyen van.
     Launch(Result<(), BrowserError>),
+    /// Task 10 (`lvc-engine::accounts`, nhap cookie/verify tai khoan): nhu `Launch` nhung dat SAN
+    /// `probe_state` cua phien moi thay vi mac dinh `LoggedIn` — `import_cookies`/`verify` goi
+    /// `probe_session` NGAY SAU `launch()` (khong qua `submit`/`poll`) nen can kich ban duoc trang
+    /// thai probe tra ve ma khong phai tu tay dung `FakeSession` (kieu chi co the chen vao noi nhan
+    /// truoc, vd `SessionCache`, xem `resume.rs` test `resume_probe_logged_out_...`). `Ok(state)` ->
+    /// tra phien moi voi `probe_state: state`; `Err(e)` -> nhu `Launch(Err(e))`.
+    LaunchWithState(Result<SessionState, BrowserError>),
     /// `submit()`.
     Submit(Result<ConversationId, DolaError>),
     /// `poll_and_download()`.
@@ -141,6 +150,18 @@ impl FakeDriver {
             .map(|s| format!("{s:?}"))
             .collect()
     }
+
+    /// Dung chung boi `Launch`/`LaunchWithState`: phien moi voi `probe_state` cho truoc, `seq` tang
+    /// dan (xem doc truong `FakeSession::seq`).
+    fn new_session(&self, opts: &LaunchOpts, probe_state: SessionState) -> FakeSession {
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        FakeSession {
+            account: account_from_profile_dir(&opts.profile_dir),
+            probe_state,
+            seq,
+            connected: true,
+        }
+    }
 }
 
 /// Ten tai khoan tu ten file cuoi cung cua `profile_dir` (`accounts/<ten>/` -> `<ten>`; dau `/`
@@ -162,18 +183,13 @@ impl BrowserDriver for FakeDriver {
             browser: opts.browser,
         });
         match self.pop() {
-            Some(FakeStep::Launch(res)) => res.map(|()| {
-                let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
-                FakeSession {
-                    account: account_from_profile_dir(&opts.profile_dir),
-                    probe_state: SessionState::LoggedIn,
-                    seq,
-                    connected: true,
-                }
-            }),
+            Some(FakeStep::Launch(res)) => {
+                res.map(|()| self.new_session(opts, SessionState::LoggedIn))
+            }
+            Some(FakeStep::LaunchWithState(res)) => res.map(|state| self.new_session(opts, state)),
             Some(other) => panic!(
-                "FakeDriver::launch: buoc kich ban ke tiep la {other:?}, khong phai Launch(..) \
-                 — kich ban con lai: {:?}",
+                "FakeDriver::launch: buoc kich ban ke tiep la {other:?}, khong phai Launch(..)/\
+                 LaunchWithState(..) — kich ban con lai: {:?}",
                 self.remaining_debug()
             ),
             None => panic!("FakeDriver::launch: kich ban da het truoc khi goi launch()"),
@@ -548,6 +564,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(s.account, "acc_042");
+    }
+
+    /// Task 10: `LaunchWithState` dat san `probe_state` cua phien MOI (khong can sua tay sau khi
+    /// `launch()` tra ve — `import_cookies`/`verify` goi `probe_session` ngay sau `launch()`, khong
+    /// co diem nao khac de chen `FakeSession` da sua nhu cach `resume.rs` lam qua `SessionCache`).
+    #[tokio::test]
+    async fn launch_with_state_dat_san_probe_state() {
+        let driver = FakeDriver::new(vec![FakeStep::LaunchWithState(Ok(SessionState::LoggedOut))]);
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        assert_eq!(s.probe_state, SessionState::LoggedOut);
+        let p = driver.probe_session(&s).await.unwrap();
+        assert_eq!(p.state, SessionState::LoggedOut);
+        assert!(!p.has_sessionid);
+    }
+
+    /// `LaunchWithState(Err(..))` loi ra nguyen van nhu `Launch(Err(..))`.
+    #[tokio::test]
+    async fn launch_with_state_err_lo_ra_nguyen_van() {
+        let driver = FakeDriver::new(vec![FakeStep::LaunchWithState(Err(
+            BrowserError::ProfileBusy("dang bi Chrome khac dung".into()),
+        ))]);
+        let err = driver.launch(&opts("acc1")).await.unwrap_err();
+        assert!(matches!(err, BrowserError::ProfileBusy(_)), "{err:?}");
     }
 
     /// `probe_session` mac dinh `LoggedIn`; sua `probe_state` truoc khi goi thi doi theo.
