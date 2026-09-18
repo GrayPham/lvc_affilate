@@ -1,0 +1,42 @@
+[package]
+name = "lvc-app"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Tauri 2: ten lib khac ten package (quy uoc "<ten>_lib") vi mobile (khong ap dung o day, Windows-only)
+# can lib rieng ben canh binary "lvc-app" (src/main.rs).
+[lib]
+name = "lvc_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+lvc-core.workspace = true
+lvc-store.workspace = true
+lvc-browser.workspace = true
+lvc-engine.workspace = true
+tauri = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+# log.rs: ghi logs/app.log xoay theo ngay (chinh sach log, khong bao gio in cookie/prompt/proxy).
+tracing-appender = "0.2.5"
+# state.rs: AppState.runs (run_id -> token huy) — Task 7 (dag::RunHandle) chua co trong cay nay.
+dashmap = "6"
+tokio-util = "0.7"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# sync: AppState.settings dung tokio::sync::RwLock (giu qua diem await trong Tauri command Task 9/10).
+tokio = { workspace = true, features = ["sync"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

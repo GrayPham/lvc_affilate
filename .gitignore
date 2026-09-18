@@ -11,3 +11,8 @@ uploads/
 logs/
 .env.local
 accounts_creds.json
+
+# P3 Task 8/11: frontend (app/) va san pham Tauri sinh ra — khong commit.
+app/node_modules
+app/dist
+crates/lvc-app/gen
