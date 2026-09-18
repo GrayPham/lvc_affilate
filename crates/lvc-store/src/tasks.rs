@@ -1,4 +1,6 @@
-use lvc_core::{FailureCode, Scene, TaskStatus};
+use std::path::Path;
+
+use lvc_core::{FailureCode, Mode, Scene, TaskStatus};
 use sqlx::Row;
 
 use crate::{Db, StoreError};
@@ -165,6 +167,88 @@ impl TaskRepo {
         .bind(now())
         .execute(self.db.pool())
         .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Task 17 — server.py:625-627 `on_account` (v0.55t): từ đây trình duyệt mở bằng tài khoản
+    /// này. Chỉ ghi `account` + `updated_at`, không đụng status. `true` khi có dòng khớp `id`.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_account(&self, id: &str, account: &str) -> Result<bool, StoreError> {
+        let result = sqlx::query("UPDATE tasks SET account = ?2, updated_at = ?3 WHERE id = ?1")
+            .bind(id)
+            .bind(account)
+            .bind(now())
+            .execute(self.db.pool())
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Task 17 — server.py:612-619 `on_conversation_id`: đã có chat id → lưu để resume/Tiếp tục
+    /// (spec §4.4). `true` khi có dòng khớp `id`.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_conversation(
+        &self,
+        id: &str,
+        conversation_id: &str,
+    ) -> Result<bool, StoreError> {
+        let result =
+            sqlx::query("UPDATE tasks SET conversation_id = ?2, updated_at = ?3 WHERE id = ?1")
+                .bind(id)
+                .bind(conversation_id)
+                .bind(now())
+                .execute(self.db.pool())
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Task 17 — server.py:442-480 `_finish_task` (phần lưu kết quả; hậu kỳ logo/H.264 là P3):
+    /// `video_url` + `local_path` (chuỗi `Path::display`). KHÔNG đổi status — engine gọi
+    /// [`TaskRepo::set_status`]`(Completed)` riêng. `true` khi có dòng khớp `id`.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_result(
+        &self,
+        id: &str,
+        video_url: &str,
+        local_path: &Path,
+    ) -> Result<bool, StoreError> {
+        let result = sqlx::query(
+            "UPDATE tasks SET video_url = ?2, local_path = ?3, updated_at = ?4 WHERE id = ?1",
+        )
+        .bind(id)
+        .bind(video_url)
+        .bind(local_path.display().to_string())
+        .bind(now())
+        .execute(self.db.pool())
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Task 17 — server.py:684-685 `store.update(task_id, mode=try_mode, duration=try_duration)`:
+    /// hết lượt chế độ này → đổi sang chế độ còn lượt, thời lượng đã nắn theo chế độ mới.
+    /// `true` khi có dòng khớp `id`.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_mode_duration(
+        &self,
+        id: &str,
+        mode: Mode,
+        duration: u16,
+    ) -> Result<bool, StoreError> {
+        let result =
+            sqlx::query("UPDATE tasks SET mode = ?2, duration = ?3, updated_at = ?4 WHERE id = ?1")
+                .bind(id)
+                .bind(mode.as_str())
+                .bind(i64::from(duration))
+                .bind(now())
+                .execute(self.db.pool())
+                .await?;
         Ok(result.rows_affected() > 0)
     }
 

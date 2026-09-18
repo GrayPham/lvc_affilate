@@ -127,3 +127,69 @@ async fn list_recent_moi_nhat_truoc_va_kep_limit() {
         "limit vuot so ban ghi thi tra het, khong loi"
     );
 }
+
+// ---- Task 17: cac cot engine ghi trong luc chay (server.py:610-627 on_account/on_conversation_id,
+// :684-685 doi mode khi het luot, _finish_task :442-480 video_url/local_path) ----
+
+#[tokio::test]
+async fn set_account_va_conversation_ghi_dung_cot() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    repo.create("video_e", &scene("x"), None).await.unwrap();
+
+    assert!(repo.set_account("video_e", "acc1").await.unwrap());
+    assert!(repo.set_conversation("video_e", "7451234").await.unwrap());
+
+    let got = repo.get("video_e").await.unwrap().unwrap();
+    assert_eq!(got.account.as_deref(), Some("acc1"));
+    assert_eq!(got.conversation_id.as_deref(), Some("7451234"));
+    // cac cot khac khong bi dung
+    assert_eq!(got.status, TaskStatus::Queued);
+    assert!(got.video_url.is_none());
+
+    // id khong ton tai -> false, khong loi
+    assert!(!repo.set_account("ghost", "acc1").await.unwrap());
+    assert!(!repo.set_conversation("ghost", "1").await.unwrap());
+}
+
+#[tokio::test]
+async fn set_result_ghi_video_url_va_local_path() {
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    repo.create("video_f", &scene("x"), None).await.unwrap();
+
+    let local = std::path::Path::new(r"D:\downloads\acc1_20260918_010203.mp4");
+    assert!(
+        repo.set_result("video_f", "https://v.example/x.mp4", local)
+            .await
+            .unwrap()
+    );
+    let got = repo.get("video_f").await.unwrap().unwrap();
+    assert_eq!(got.video_url.as_deref(), Some("https://v.example/x.mp4"));
+    assert_eq!(got.local_path.as_deref(), Some(local.to_str().unwrap()));
+    // set_result KHONG doi status (engine goi set_status(Completed) rieng)
+    assert_eq!(got.status, TaskStatus::Queued);
+    assert!(!repo.set_result("ghost", "u", local).await.unwrap());
+}
+
+#[tokio::test]
+async fn set_mode_duration_khi_doi_mode_het_luot() {
+    // server.py:684-685 `store.update(task_id, mode=try_mode, duration=try_duration)`
+    let db = Db::open_memory().await.unwrap();
+    let repo = TaskRepo::new(&db);
+    repo.create("video_g", &scene("x"), None).await.unwrap();
+    assert!(
+        repo.set_mode_duration("video_g", lvc_core::Mode::Pro, 15)
+            .await
+            .unwrap()
+    );
+    let got = repo.get("video_g").await.unwrap().unwrap();
+    assert_eq!(got.mode, "pro");
+    assert_eq!(got.duration, 15);
+    assert!(
+        !repo
+            .set_mode_duration("ghost", lvc_core::Mode::Fast, 10)
+            .await
+            .unwrap()
+    );
+}
