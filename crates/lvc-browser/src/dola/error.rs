@@ -176,6 +176,54 @@ mod tests {
         }
     }
 
+    /// Task 11 vong 2 (I-1): `#[error]` DA them ma loi — thong diep ben trong KHONG duoc mang ma nua.
+    /// Moi bien the co ma, dung chuoi thuong `x`: `Display` bat dau bang `CODE: ` va `CODE: ` xuat hien
+    /// DUNG 1 lan. Ca doi chung: thong diep tu mang ma -> dem 2 (test nay bat duoc loi lap tien to).
+    #[test]
+    fn display_ma_loi_dung_mot_lan() {
+        let rows: Vec<(DolaError, &str)> = vec![
+            (
+                DolaError::LoggedOut {
+                    account: "a".into(),
+                    why: "x".into(),
+                    revoked: false,
+                },
+                "LOGGED_OUT",
+            ),
+            (DolaError::ModeUnavailable("x".into()), "MODE_UNAVAILABLE"),
+            (DolaError::RatioUnavailable("x".into()), "RATIO_UNAVAILABLE"),
+            (
+                DolaError::DurationUnavailable("x".into()),
+                "DURATION_UNAVAILABLE",
+            ),
+            (DolaError::RefUpload("x".into()), "REF_UPLOAD"),
+            (DolaError::NoConversation("x".into()), "NO_CONVERSATION"),
+            (DolaError::RiskControl("x".into()), "RISK_CONTROL"),
+            (DolaError::PromptViolation("x".into()), "PROMPT_VIOLATION"),
+            (DolaError::AgentQuestion("x".into()), "AGENT_QUESTION"),
+            (DolaError::AgentNoVideo("x".into()), "AGENT_NO_VIDEO"),
+            (DolaError::AccountLimited("x".into()), "LIMIT"),
+            (DolaError::Credit("x".into()), "CREDIT"),
+            (DolaError::Timeout("x".into()), "TIMEOUT"),
+            (DolaError::BrowserClosed("x".into()), "BROWSER_CLOSED"),
+            (DolaError::Http("x".into()), "HTTP"),
+        ];
+        assert_eq!(
+            rows.len(),
+            15,
+            "15 bien the co ma (ModeSwitch/Browser khong ma)"
+        );
+        for (e, code) in rows {
+            let s = e.to_string();
+            let prefix = format!("{code}: ");
+            assert!(s.starts_with(&prefix), "{s}");
+            assert_eq!(s.matches(&prefix).count(), 1, "ma lap: {s}");
+        }
+        // Doi chung: thong diep tu mang ma (loi I-1 vong 2 o poll.rs) -> lap 2 lan.
+        let doubled = DolaError::AgentQuestion("AGENT_QUESTION: x".into()).to_string();
+        assert_eq!(doubled.matches("AGENT_QUESTION: ").count(), 2);
+    }
+
     /// `Browser(#[from] BrowserError)` la `transparent`: thong diep = thong diep cua `BrowserError`,
     /// `?` chuyen doi duoc.
     #[test]

@@ -442,8 +442,9 @@ pub(crate) fn question_grace(
     };
     let since = *state.question_since.get_or_insert(now); // :1371 setdefault
     if now.duration_since(since) >= grace {
+        // `#[error("AGENT_QUESTION: {0}")]` da them ma -> KHONG lap trong thong diep (fix vong 2, I-1)
         return Err(DolaError::AgentQuestion(format!(
-            "AGENT_QUESTION: Dola asks the user, no one answers -> fix the prompt: {}",
+            "Dola asks the user, no one answers -> fix the prompt: {}",
             head(q, MSG_HEAD_300)
         )));
     }
@@ -586,8 +587,9 @@ fn idle_fail_step(
         && idle.as_secs() >= idle_fail
         && !is_generating(latest_text)
     {
+        // `#[error("AGENT_NO_VIDEO: {0}")]` da them ma -> KHONG lap (fix vong 2, I-1)
         return Err(DolaError::AgentNoVideo(format!(
-            "AGENT_NO_VIDEO: agent tra loi bang chu, khong tao video ({}s im lang): {}",
+            "agent tra loi bang chu, khong tao video ({}s im lang): {}",
             idle.as_secs(),
             head(latest_text, MSG_HEAD_400)
         )));
@@ -623,11 +625,8 @@ fn link_step(
             fallback: RawFallback::Wait,
         };
     }
-    info!(
-        grace_s = limits.link_raw_grace_s,
-        link = %url_host_path(link),
-        "chỉ có link trong câu trả lời, không khớp được bản raw sau grace → tải link (có thể còn watermark)"
-    );
+    // Log "tải link" o `act` (nhanh `RawFallback::Link`) SAU khi thu raw that bai — nhu Python :1427
+    // (fix vong 2, Minor #4).
     PollDecision::NeedRaw {
         models,
         fallback: RawFallback::Link(link.to_string()),
@@ -914,6 +913,8 @@ pub(crate) async fn poll_and_download_at<P: PollPage + ?Sized>(
         } else {
             read_dom_tail(page).await
         };
+        // `now` lay lai SAU khi doc DOM (<= 5 s) — Python `time.time()` tai moi cho dung (fix vong 2, Minor #2)
+        let now = Instant::now();
         let decision = handle_poll(&poll, &mut state, opts, limits, now, dom_text.as_deref())?;
         if let Some(artifact) = act(&ctx, page, decision).await? {
             return Ok(artifact);
@@ -1029,7 +1030,15 @@ async fn act<P: PollPage + ?Sized>(
                 .await
                 .map(Some)
         }
-        RawFallback::Link(url) => download_result(ctx, &url, NOTE_LINK).await.map(Some),
+        RawFallback::Link(url) => {
+            // :1427 — chi log khi `_raw_for_link` da tra None (sau vong `models` o tren)
+            info!(
+                account = ctx.account,
+                link = %url_host_path(&url),
+                "chỉ có link trong câu trả lời, không khớp được bản raw sau grace → tải link (có thể còn watermark)"
+            );
+            download_result(ctx, &url, NOTE_LINK).await.map(Some)
+        }
         RawFallback::Wait => Ok(None),
     }
 }
@@ -1543,10 +1552,11 @@ mod tests {
         assert_eq!(st.question_since, Some(start));
         question_grace(&mut st, Some(qtext), start + secs(59), grace).unwrap();
         let err = question_grace(&mut st, Some(qtext), start + secs(60), grace).unwrap_err();
-        assert!(
-            matches!(&err, DolaError::AgentQuestion(m)
-                if m == "AGENT_QUESTION: Dola asks the user, no one answers -> fix the prompt: どの比率にしますか？"),
-            "{err}"
+        assert!(matches!(err, DolaError::AgentQuestion(_)), "{err}");
+        // Fix vong 2 (I-1): `Display` = dung chuoi Python :1373 — ma loi MOT lan (`#[error]` da them).
+        assert_eq!(
+            err.to_string(),
+            "AGENT_QUESTION: Dola asks the user, no one answers -> fix the prompt: どの比率にしますか？"
         );
         assert!(err.is_dead_chat());
         question_grace(&mut st, None, start + secs(61), grace).unwrap();
@@ -1579,10 +1589,11 @@ mod tests {
             PollDecision::Continue
         );
         let err = hp(&p, &mut st, &o, &l, start + secs(120)).unwrap_err();
-        assert!(
-            matches!(&err, DolaError::AgentNoVideo(m)
-                if m == "AGENT_NO_VIDEO: agent tra loi bang chu, khong tao video (120s im lang): 猫の動画はこちらです\n以上です"),
-            "{err}"
+        assert!(matches!(err, DolaError::AgentNoVideo(_)), "{err}");
+        // Fix vong 2 (I-1): `Display` = dung chuoi Python :1384 — ma loi MOT lan.
+        assert_eq!(
+            err.to_string(),
+            "AGENT_NO_VIDEO: agent tra loi bang chu, khong tao video (120s im lang): 猫の動画はこちらです\n以上です"
         );
         // Lenh cua tool (DIRECTIVE: + Content:) la tin moi nhat -> agent chua tra loi -> Continue
         let mut s2 = PollState::new(start, &o);
@@ -1767,6 +1778,66 @@ mod tests {
             hp(&ok, &mut st, &o, &l, start + secs(1000)).unwrap(),
             PollDecision::Continue
         );
+    }
+
+    // ===== Thu tu uu tien giua cac buoc (fix vong 2, Minor #3) =====
+
+    /// Buoc truoc thang buoc sau: 3 (latest) truoc 4 (DOM); 3 duyet `latest` theo thu tu, tin dau
+    /// khop thang; 5 (loc ignore) truoc 6 (policy) — video CU bi loc thi van xet policy; 6 (policy)
+    /// truoc 7 (xac nhan) khi mot tin khop ca hai.
+    #[test]
+    fn hp_thu_tu_uu_tien_giua_cac_buoc() {
+        let start = t0();
+        let o = opts(Mode::Pro);
+        let l = Limits::default();
+        // 3 truoc 4: latest = credit, DOM = limit -> Credit (khong phai "(DOM)")
+        let mut st = PollState::new(start, &o);
+        let p = poll_with(&["残高不足のため生成できません"]);
+        let err = handle_poll(
+            &p,
+            &mut st,
+            &o,
+            &l,
+            start,
+            Some("動画生成の1日あたりの上限に達しました"),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&err, DolaError::Credit(m) if m == "Insufficient quota: 残高不足のため生成できません"),
+            "{err}"
+        );
+        // 3 duyet theo thu tu: latest[0] = refusal, latest[1] = limit -> PromptViolation (tin dau)
+        let mut st = PollState::new(start, &o);
+        let p = poll_with(&[
+            "I am temporarily unable to generate the content you requested.",
+            "動画生成の1日あたりの上限に達しました",
+        ]);
+        let err = hp(&p, &mut st, &o, &l, start).unwrap_err();
+        assert!(matches!(err, DolaError::PromptViolation(_)), "{err}");
+        // 5 truoc 6: video duy nhat bi ignore (theo ma) + latest policy -> PromptViolation
+        let mut o5 = opts(Mode::Pro);
+        o5.ignore_videos
+            .insert(format!("http://cdn.example/{VID_A}/old.mp4"));
+        let mut st = PollState::new(start, &o5);
+        let mut p = poll_with(&[r#"{"note": "content policy violation"}"#]);
+        p.videos = vec![format!("http://other.example/{VID_A}/again.mp4")];
+        p.video_models = vec![String::new()];
+        let err = hp(&p, &mut st, &o5, &l, start).unwrap_err();
+        assert!(matches!(err, DolaError::PromptViolation(_)), "{err}");
+        // 6 truoc 7: mot tin khop ca policy (chan dung, co chu credit -> classify None) lan
+        // needs_confirmation ("ご確認ください") -> PromptViolation, KHONG ConfirmReply (oracle Python:
+        // classify '' / policy True / needs_confirmation True)
+        let mut st = PollState::new(start, &o);
+        let text = "肖像保護のため、あなた自身が写っている動画のみ対応します。credit は消費されません。ご確認ください";
+        assert_eq!(classify_dola_text(text), None, "tien de");
+        assert!(needs_confirmation(&[text.to_string()]).is_some(), "tien de");
+        let p = poll_with(&[text]);
+        let err = hp(&p, &mut st, &o, &l, start).unwrap_err();
+        assert!(
+            matches!(&err, DolaError::PromptViolation(m) if m.starts_with(PORTRAIT_NOTE)),
+            "{err}"
+        );
+        assert!(st.confirm_keys.is_empty());
     }
 
     // ===== Ham thuan phu tro =====
@@ -2071,8 +2142,9 @@ mod tests {
                 Some(COOKIE_BASE)
             );
         }
-        // hooks: on_poll lan dau ngay; stage generating -> downloading; agent_reply moi khi latest doi
-        assert!(hooks.polls.load(Ordering::SeqCst) >= 1);
+        // hooks: on_poll lan dau ngay, lan 2 (< 30 s) bi tiet luu -> dung 1 (ON_POLL_EVERY);
+        // stage generating -> downloading; agent_reply moi khi latest doi
+        assert_eq!(hooks.polls.load(Ordering::SeqCst), 1);
         assert_eq!(
             *hooks.stages.lock().unwrap(),
             vec![STAGE_GENERATING.to_string(), STAGE_DOWNLOADING.to_string()]
@@ -2133,14 +2205,19 @@ mod tests {
         );
     }
 
-    /// Ruling #4: `fetch_raw_video` `Err` (khong ket noi duoc, cong 9) coi nhu `None` -> thu
-    /// `fallback_api` ke tiep (<= 3) -> raw.
+    /// Ruling #4: `fetch_raw_video` `Err` (khong ket noi duoc) coi nhu `None` -> thu `fallback_api`
+    /// ke tiep (<= 3) -> raw. Cong "chet" = cong vua bind roi tha (fix vong 2, Minor #7: chac chan
+    /// RST ngay, khong phu thuoc firewall DROP o cong 9).
     #[tokio::test]
     async fn vong_raw_loi_mang_coi_nhu_none_thu_api_ke() {
         let server = MockServer::start().await;
         let raw_mp4 = format!("{}/video/raw2.mp4", server.uri());
+        let dead_port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind cong 0");
+            l.local_addr().expect("addr").port()
+        };
         let model = json!({
-            "fallback_api": "http://127.0.0.1:9/video/dead",
+            "fallback_api": format!("http://127.0.0.1:{dead_port}/video/dead"),
             "nested": {"fallback_api": format!("{}/video/fplay/2/sig/vid", server.uri())},
             "video_list": {"v1": {"main_url": B64.encode(format!("{}/video/main.mp4", server.uri()))}}
         })
