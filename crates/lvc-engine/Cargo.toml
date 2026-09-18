@@ -1,0 +1,22 @@
+[package]
+name = "lvc-engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+lvc-core.workspace = true
+lvc-store.workspace = true
+lvc-browser.workspace = true
+# limiter.rs (Task 15): watch + Notify. pool.rs (Task 16) can them "time" cho cooldown/rate_limited —
+# da co san qua workspace tokio (rt-multi-thread, macros, fs, time).
+tokio = { workspace = true, features = ["sync"] }
+# pool.rs (Task 16): DashMap<AccountId, Arc<tokio::Mutex<()>>> (spec §5.2).
+dashmap = "6"
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

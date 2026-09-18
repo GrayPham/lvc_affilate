@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lvc-core", "crates/lvc-store", "crates/lvc-browser"]
+members = ["crates/lvc-core", "crates/lvc-store", "crates/lvc-browser", "crates/lvc-engine"]
 
 [workspace.package]
 edition = "2024"
@@ -18,6 +18,8 @@ cbc = { version = "0.1", features = ["alloc"] }
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "macros", "migrate"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time"] }
 lvc-core = { path = "crates/lvc-core" }
+lvc-store = { path = "crates/lvc-store" }
+lvc-engine = { path = "crates/lvc-engine" }
 chromiumoxide = "0.9"
 async-trait = "0.1"
 futures = "0.3"
