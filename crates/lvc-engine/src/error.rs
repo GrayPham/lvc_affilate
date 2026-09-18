@@ -32,6 +32,10 @@ pub enum EngineError {
     /// Dieu huong that bai do proxy chet (`BrowserError::is_proxy_down`) da gan cho 1 tai khoan cu the.
     #[error("PROXY_DOWN: {account}: {why}")]
     ProxyDown { account: String, why: String },
+    /// Review cuoi P2 M-10: `task_id` khong co dong trong `tasks` — loi cua nguoi goi, KHONG
+    /// chay browser (tranh tieu credit ma khong co dong nao de ghi ket qua).
+    #[error("TASK_NOT_FOUND: {0}")]
+    TaskNotFound(String),
 }
 
 impl EngineError {
@@ -56,7 +60,8 @@ impl EngineError {
                 Some(FailureCode::ProfileBusy)
             }
             Self::Browser(e) if e.is_proxy_down() => Some(FailureCode::ProxyDown),
-            Self::Browser(_) | Self::Store(_) => None,
+            // TaskNotFound: loi nguoi goi, khong co dong tasks de ghi ma -> None nhu Store.
+            Self::Browser(_) | Self::Store(_) | Self::TaskNotFound(_) => None,
             Self::AllAccountsLimited { .. } => Some(FailureCode::RateLimited),
             Self::PreferredUnavailable(_) => Some(FailureCode::AccountUnavailable),
             Self::ProxyDown { .. } => Some(FailureCode::ProxyDown),

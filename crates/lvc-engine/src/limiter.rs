@@ -373,29 +373,36 @@ mod tests {
     async fn stress_khong_mat_wakeup_khi_tha_ngay() {
         let (limiter, _handle) = DynamicLimiter::new(1, 5); // effective = 1
 
-        let outcome = tokio::time::timeout(Duration::from_secs(10), async {
-            for _ in 0..200_000 {
-                let limiter_a = Arc::clone(&limiter);
-                let limiter_b = Arc::clone(&limiter);
-                let a = tokio::spawn(async move {
-                    let permit = limiter_a.acquire().await;
-                    drop(permit);
-                });
-                let b = tokio::spawn(async move {
-                    let permit = limiter_b.acquire().await;
-                    drop(permit);
-                });
+        // Review cuoi P2 I-1: chan TUNG VONG (5 s) thay vi tong 10 s — tren may nay ca test mat
+        // ~6,4 s nen bound tong chi con 1,6x headroom, de do gia tren CI cham. Mot vong binh
+        // thuong mat vai micro-giay; treo 5 s = chac chan mat wakeup. So vong doc tu
+        // LVC_STRESS_ITERS (mac dinh 200_000) de CI cham co the giam.
+        let iters: u32 = std::env::var("LVC_STRESS_ITERS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200_000);
+        for i in 0..iters {
+            let limiter_a = Arc::clone(&limiter);
+            let limiter_b = Arc::clone(&limiter);
+            let a = tokio::spawn(async move {
+                let permit = limiter_a.acquire().await;
+                drop(permit);
+            });
+            let b = tokio::spawn(async move {
+                let permit = limiter_b.acquire().await;
+                drop(permit);
+            });
+            let outcome = tokio::time::timeout(Duration::from_secs(5), async {
                 let (a_res, b_res) = tokio::join!(a, b);
                 a_res.expect("task A khong duoc panic");
                 b_res.expect("task B khong duoc panic");
-            }
-        })
-        .await;
-
-        assert!(
-            outcome.is_ok(),
-            "C1 (mat wakeup) tai hien: it nhat 1 trong 200 vong bi treo qua 10s"
-        );
+            })
+            .await;
+            assert!(
+                outcome.is_ok(),
+                "C1 (mat wakeup) tai hien: vong {i} bi treo qua 5s"
+            );
+        }
     }
 
     /// Giam `accounts` khi dang chay: giong `giam_threads_khong_cat_job` nhung qua kenh `accounts`.

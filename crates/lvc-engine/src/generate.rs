@@ -262,6 +262,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         let prefer = prefer
             .and_then(non_empty)
             .or_else(|| non_empty(&scene.account));
+        // Review cuoi P2 M-10: dong task phai co truoc — moi ghi trang thai/ket qua tro thanh
+        // no-op neu khong, va credit van bi tieu. Kiem TRUOC khi cham vao browser.
+        if self.tasks.get(task_id).await?.is_none() {
+            return Err(EngineError::TaskNotFound(task_id.to_string()));
+        }
         let res = self.run(task_id, scene, prefer, hooks).await;
         match &res {
             Ok(out) => info!(
@@ -934,6 +939,27 @@ mod tests {
     }
 
     // ---- brief: 9 test ----
+
+    /// Review cuoi P2 M-10: `task_id` khong ton tai -> `TaskNotFound`, KHONG mo browser, khong
+    /// tieu credit (`FakeDriver` khong duoc goi lan nao).
+    #[tokio::test]
+    async fn task_khong_ton_tai_khong_cham_browser() {
+        let f = fx(&["a"], happy("a", "111")).await;
+        let err = f
+            .run("khong-co", &scene(), None)
+            .await
+            .expect_err("phai loi");
+        assert!(
+            matches!(err, EngineError::TaskNotFound(ref id) if id == "khong-co"),
+            "{err}"
+        );
+        assert_eq!(err.failure_code(), None);
+        assert!(
+            f.calls().is_empty(),
+            "driver khong duoc goi: {:?}",
+            f.calls()
+        );
+    }
 
     #[tokio::test]
     async fn thanh_cong_claim_usage() {

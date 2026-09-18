@@ -19,9 +19,12 @@ use tracing_subscriber::EnvFilter;
 
 fn init_tracing() {
     // Directive nguoi dung (RUST_LOG, mac dinh info) TRUOC, `chromiumoxide=warn` SAU -> thang.
+    // `chromiumoxide::handler=error`: Chrome 151 gui event CDP moi ma chromiumoxide 0.9 chua
+    // biet -> "WS Invalid message" o muc WARN, 309 dong/video (do live 2026-09-18), vo hai.
+    const POLICY: &str = "chromiumoxide=warn,chromiumoxide::handler=error";
     let user = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    let filter = EnvFilter::try_new(format!("{user},chromiumoxide=warn"))
-        .unwrap_or_else(|_| EnvFilter::new("info,chromiumoxide=warn"));
+    let filter = EnvFilter::try_new(format!("{user},{POLICY}"))
+        .unwrap_or_else(|_| EnvFilter::new(format!("info,{POLICY}")));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
