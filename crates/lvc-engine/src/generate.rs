@@ -14,10 +14,10 @@
 //! | `run_mode` — `candidates_for` / `try_lease` / `lease_wait` | `:1108-1136` | prefer → doi khoa (REQ-004), khac → bo qua tai khoan ban |
 //! | `run_mode` — kiem lai sau khi co khoa | `:1138-1145` | "State changed while waiting" |
 //! | `run_mode` — doi 0.5 s khi moi tai khoan ban | `:1262-1270` (ADR-016) | toi da `busy_wait_max` |
-//! | `final_error` | `:1279-1294` | prefer → `PreferredUnavailable`; `ProfileBusy` → `NoFreeProfile`; `LoggedOut` → giu; `all_limited_for` → `AllAccountsLimited` |
+//! | `final_error` | `:1279-1294` | prefer → `PreferredUnavailable`; `ProfileBusy` → `NoFreeProfile`; `LoggedOut` → giu; `all_quota_blocked` (`:1287-1289`) / `all_limited_for` → `AllAccountsLimited` |
 //! | `attempt` — `take_or_launch` | `warm_browser_manager.acquire` + `proxy_precheck` `:1146-1149` | `ExecutableNotFound` → loi ngay; `ProfileBusy` → cooldown 300 `:1245-1261`; proxy chet → `ProxyDown` + xoay |
-//! | `attempt` — `set_status(Processing)` + `set_account` | `:610`, `on_account` `:625-627` | |
-//! | `attempt` — `submit` → `set_conversation` | `on_conversation_id` `:612-619` | |
+//! | `attempt` — `set_status(Processing)` | `:610` (`on_account` `:625-627` chi trong bo nho) | |
+//! | `attempt` — `submit` → `set_account` + `set_conversation` | `on_conversation_id` `:612-619` | cung lan gui (review I1) |
 //! | `attempt` — `poll_and_download` Ok → `claim` | `_claim` `:1186-1189` | roi `set_result` + `set_status(Completed)` (`_finish_task` phan luu; hau ky logo P3) |
 //! | `after_dola_error` | `except` `:1192-1261` + `:2507-2511` | bang trong doc ham |
 //!
@@ -36,7 +36,7 @@ use lvc_core::{
     BrowserKind, FailureCode, Limits, Mode, Scene, TaskStatus, fit_duration_to_mode,
     mode_fallback_chain, video_timeout,
 };
-use lvc_store::{AccountRepo, AccountRow, Db, TaskRepo};
+use lvc_store::{AccountRow, Db, TaskRepo};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -121,7 +121,6 @@ pub struct Engine<D: BrowserDriver + 'static> {
     limiter: Arc<DynamicLimiter>,
     cache: Arc<SessionCache<D::Session>>,
     tasks: TaskRepo,
-    accounts: AccountRepo,
     limits: Limits,
     cfg: EngineConfig,
     /// Ban sao de `refresh_account_count` goi `set_accounts` (ban goc tra cho caller).
@@ -184,7 +183,6 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             limiter,
             cache,
             tasks: TaskRepo::new(&db),
-            accounts: AccountRepo::new(&db),
             limits,
             cfg,
             handle: handle.clone(),
@@ -214,19 +212,14 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         &self.cfg
     }
 
-    /// Dem lai so tai khoan `scheduling = 1` va bao cho limiter (`LimiterHandle::set_accounts`) —
-    /// goi sau khi UI bat/tat lich mot tai khoan. Tra so vua dem.
+    /// Dem lai so tai khoan bat lich VA co thu muc profile ([`AccountPool::scheduling_count`] —
+    /// cung bo loc voi `candidates_for`, review T17 M7) va bao cho limiter
+    /// (`LimiterHandle::set_accounts`) — goi sau khi UI bat/tat lich mot tai khoan. Tra so vua dem.
     ///
     /// # Errors
     /// `Store` khi doc bang tai khoan loi.
     pub async fn refresh_account_count(&self) -> Result<usize, EngineError> {
-        let n = self
-            .accounts
-            .list()
-            .await?
-            .iter()
-            .filter(|r| r.scheduling)
-            .count();
+        let n = self.pool.scheduling_count().await?;
         self.handle.set_accounts(n);
         Ok(n)
     }
@@ -476,9 +469,19 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             Some(e @ EngineError::Dola(DolaError::LoggedOut { .. })) => return e,
             _ => {}
         }
+        let now = now_unix();
+        // :1287-1289 AllAccountsQuotaBlockedError("429: ... insufficient points") — server.py:668
+        // xu ly nhu AllAccountsLimited (xoay mode, ma 429) (review T17 I2).
         // :1290-1293 AllAccountsLimitedError (429); :1294 RuntimeError khong ma → ruling Task 17:
         // candidates rong/khong loi cu the → cung AllAccountsLimited (→ thu mode ke tiep).
-        match self.pool.all_limited_for(mode, now_unix()).await {
+        let limited = async {
+            Ok::<bool, EngineError>(
+                self.pool.all_quota_blocked(now).await?
+                    || self.pool.all_limited_for(mode, now).await?,
+            )
+        }
+        .await;
+        match limited {
             Err(e) => e,
             Ok(true) => EngineError::AllAccountsLimited { mode },
             Ok(false) => last_err.unwrap_or(EngineError::AllAccountsLimited { mode }),
@@ -557,11 +560,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             Opened::Session(s) => s,
             Opened::Rotate(e) => return Ok(Attempt::Rotate(e)),
         };
-        // server.py:610 + on_account :625-627
+        // server.py:610 (`on_account` :625-627 chi giu trong bo nho — khong ghi cot `account` o day,
+        // review T17 I1: cot account phai di cung conversation_id cua CUNG lan gui).
         self.tasks
             .set_status(task_id, TaskStatus::Processing, None, None)
             .await?;
-        self.tasks.set_account(task_id, name).await?;
         info!(
             task_id,
             account = name,
@@ -583,7 +586,9 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             Ok(c) => c,
             Err(e) => return self.after_dola_error(name, mode, e, session).await,
         };
-        // on_conversation_id :612-619
+        // on_conversation_id :612-619: account + conversation_id cua CUNG lan gui (I1) — xoay sang
+        // tai khoan khac ma gui loi thi dong task van tro ve chat nay de "Tiep tuc" (spec §4.4).
+        self.tasks.set_account(task_id, name).await?;
         self.tasks.set_conversation(task_id, &conv.0).await?;
         info!(task_id, account = name, conversation_id = %conv, "da co hoi thoai, cho video");
         let popts = PollOpts {
@@ -1056,6 +1061,103 @@ mod tests {
             row.error
         );
         assert!(f.engine.cache().is_empty().await);
+        // review T17 M5 (server.py:684-685): het chuoi -> dong task mang mode/duration CUOI da thu
+        let last = *lvc_core::mode_fallback_chain(Mode::Fast, &Limits::default())
+            .last()
+            .unwrap();
+        assert_eq!(last, Mode::ProMax);
+        assert_eq!(row.mode, last.as_str());
+        assert_eq!(
+            row.duration,
+            i64::from(lvc_core::fit_duration_to_mode(10, last, scene().model))
+        );
+        assert!(
+            matches!(e, EngineError::AllAccountsLimited { mode } if mode == last),
+            "loi cuoi mang mode cuoi cua chuoi"
+        );
+    }
+
+    #[tokio::test]
+    async fn ca_2_het_credit_bao_429() {
+        // review T17 I2 — browser_pool.py:1027-1033 all_accounts_quota_blocked + :1287-1289
+        // AllAccountsQuotaBlockedError("429: ...") -> server.py:668 xoay mode roi :677-679 "429".
+        // Credit KHONG dong phien (video_worker_ui.py:2507) -> ca 2 phien con am.
+        let f = fx(
+            &["a", "b"],
+            vec![
+                FakeStep::Launch(Ok(())),
+                FakeStep::Submit(Err(DolaError::Credit("Insufficient credits".into()))),
+                FakeStep::Launch(Ok(())),
+                FakeStep::Submit(Err(DolaError::Credit("Insufficient credits".into()))),
+            ],
+        )
+        .await;
+        f.task("t1", &scene()).await;
+
+        let e = f.run("t1", &scene(), None).await.unwrap_err();
+        assert!(matches!(e, EngineError::AllAccountsLimited { .. }), "{e:?}");
+        assert_eq!(e.failure_code(), Some(FailureCode::RateLimited));
+        assert_eq!(
+            f.calls(),
+            vec![
+                f.launch("a"),
+                submit("a", Mode::Fast, 10),
+                f.launch("b"),
+                submit("b", Mode::Fast, 10),
+            ],
+            "khong Close, khong mo them o cac mode fallback"
+        );
+        for n in ["a", "b"] {
+            assert!(f.account(n).await.quota_blocked_until > now_unix(), "{n}");
+        }
+        let row = f.row("t1").await;
+        assert_eq!(row.status, TaskStatus::Failed);
+        assert_eq!(row.failure_code, Some(FailureCode::RateLimited));
+        assert_eq!(
+            f.engine.cache().names().await,
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn xoay_sau_submit_giu_account_va_conversation_cua_lan_gui() {
+        // review T17 I1 — server.py:612-619 on_conversation_id ghi account + conversation_id CUNG
+        // LUC; on_account :625-627 chi giu trong bo nho. a gui xong (chat 11) roi poll gap
+        // RiskControl -> xoay; b gui loi -> dong task van la (a, 11) de "Tiep tuc" poll dung chat.
+        let f = fx(
+            &["a", "b"],
+            vec![
+                FakeStep::Launch(Ok(())),
+                FakeStep::Submit(Ok(conv("11"))),
+                FakeStep::Poll(Err(DolaError::RiskControl("captcha".into()))),
+                FakeStep::Launch(Ok(())),
+                FakeStep::Submit(Err(DolaError::Credit("het".into()))),
+            ],
+        )
+        .await;
+        f.task("t1", &scene()).await;
+
+        let e = f.run("t1", &scene(), None).await.unwrap_err();
+        assert!(matches!(e, EngineError::AllAccountsLimited { .. }), "{e:?}");
+        assert_eq!(
+            f.calls(),
+            vec![
+                f.launch("a"),
+                submit("a", Mode::Fast, 10),
+                poll("a", "11"),
+                FakeCall::Close,
+                f.launch("b"),
+                submit("b", Mode::Fast, 10),
+            ]
+        );
+        let row = f.row("t1").await;
+        assert_eq!(row.status, TaskStatus::Failed);
+        assert_eq!(
+            row.account.as_deref(),
+            Some("a"),
+            "account cua lan GUI thanh cong"
+        );
+        assert_eq!(row.conversation_id.as_deref(), Some("11"));
     }
 
     #[tokio::test]
@@ -1692,7 +1794,12 @@ mod tests {
         assert_eq!(f.engine.refresh_account_count().await.unwrap(), 1);
         assert_eq!(f.engine.limiter().effective(), 1);
         f.accounts.set_scheduling("b", true).await.unwrap();
+        // review T17 M7: dong DB khong co thu muc profile -> KHONG dem (nhu candidates_for)
         f.accounts.upsert("c").await.unwrap();
+        assert_eq!(f.engine.refresh_account_count().await.unwrap(), 2);
+        assert_eq!(f.engine.limiter().effective(), 2);
+        // thu muc moi (chua co dong) -> dem
+        std::fs::create_dir(f.accounts_dir().join("d")).unwrap();
         assert_eq!(f.engine.refresh_account_count().await.unwrap(), 3);
         assert_eq!(f.engine.limiter().effective(), 3);
     }

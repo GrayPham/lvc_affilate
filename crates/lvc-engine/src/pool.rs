@@ -597,6 +597,46 @@ impl AccountPool {
         }
         Ok(any)
     }
+
+    /// browser_pool.py:1027-1033 `all_accounts_quota_blocked` (review T17 I2): `true` neu CO tai
+    /// khoan dang bat lich va khong cooling, TAT CA chung deu `quota_blocked` hoac `rate_limited`
+    /// hoac het han muc FAST, va IT NHAT MOT bi `quota_blocked` — Task 17 `final_error` xet TRUOC
+    /// `all_limited_for` (:1287-1289 `AllAccountsQuotaBlockedError("429: ...")`, server.py:668 xoay
+    /// mode nhu `AllAccountsLimited`).
+    ///
+    /// # Errors
+    /// `Store` khi doc DB loi.
+    pub async fn all_quota_blocked(&self, now: f64) -> Result<bool, EngineError> {
+        // used_today_fast / limit_fast (:1031) = snapshot theo Mode::Fast
+        let snaps = self.snapshot_all(Mode::Fast, now).await?;
+        let candidates: Vec<&Snapshot> = snaps
+            .iter()
+            .filter(|s| s.row.scheduling && !s.cooling(now))
+            .collect();
+        Ok(!candidates.is_empty()
+            && candidates
+                .iter()
+                .all(|s| s.quota_blocked(now) || s.rate_limited(now) || s.over_limit())
+            && candidates.iter().any(|s| s.quota_blocked(now)))
+    }
+
+    /// So tai khoan dang bat lich VA co thu muc profile (review T17 M7 — cung bo loc voi
+    /// `candidates_for`: thu muc chua co dong DB tinh la bat lich, `_ensure_meta` mac dinh 1) —
+    /// `Engine::refresh_account_count` bao so nay cho `DynamicLimiter`. Khong xet cooldown /
+    /// han muc (tam thoi, limiter chi can so tai khoan "co the dung").
+    ///
+    /// # Errors
+    /// `Store` khi doc DB loi.
+    pub async fn scheduling_count(&self) -> Result<usize, EngineError> {
+        let dirs = self.profile_dirs().await;
+        let rows = self.repo.list().await?;
+        let off: HashSet<&str> = rows
+            .iter()
+            .filter(|r| !r.scheduling)
+            .map(|r| r.name.as_str())
+            .collect();
+        Ok(dirs.iter().filter(|d| !off.contains(d.as_str())).count())
+    }
 }
 
 #[cfg(test)]
@@ -1355,6 +1395,73 @@ mod tests {
         assert!(!f.pool.all_limited_for(Mode::Fast, NOW).await.unwrap());
         // het cooling -> cool con luot -> false
         assert!(!f.pool.all_limited_for(Mode::Pro, NOW + 1.0).await.unwrap());
+    }
+
+    // ---- all_quota_blocked (browser_pool.py:1027-1033) — review T17 I2 ----
+
+    #[tokio::test]
+    async fn all_quota_blocked_can_moi_tai_khoan_chan_va_it_nhat_mot_quota() {
+        let limits = Limits {
+            daily_limit_fast: 1,
+            ..Limits::default()
+        };
+        let f = fx_with(&["qb", "rl", "lim", "cool", "off"], limits, "").await;
+        // khong co tai khoan nao -> false
+        let empty = fx(&[]).await;
+        assert!(!empty.pool.all_quota_blocked(NOW).await.unwrap());
+        // chua danh dau gi -> false
+        assert!(!f.pool.all_quota_blocked(NOW).await.unwrap());
+
+        f.repo
+            .set_quota_blocked_until("qb", NOW + 1.0, "q")
+            .await
+            .unwrap();
+        f.repo
+            .set_rate_limited_until("rl", NOW + 1.0, "r")
+            .await
+            .unwrap();
+        f.repo.set_usage("lim", DAY, Mode::Fast, 1).await.unwrap(); // het han muc FAST
+        f.repo.set_cooldown_until("cool", NOW + 1.0).await.unwrap(); // bi bo qua khoi mau so
+        f.repo.set_scheduling("off", false).await.unwrap(); // bi bo qua khoi mau so
+        assert!(f.pool.all_quota_blocked(NOW).await.unwrap());
+        // het cooling -> cool con luot -> false
+        assert!(!f.pool.all_quota_blocked(NOW + 1.0).await.unwrap());
+
+        // moi tai khoan deu bi chan nhung KHONG co ai quota_blocked -> false (any(quota_blocked))
+        let g = fx_with(
+            &["rl", "lim"],
+            Limits {
+                daily_limit_fast: 1,
+                ..Limits::default()
+            },
+            "",
+        )
+        .await;
+        g.repo
+            .set_rate_limited_until("rl", NOW + 1.0, "r")
+            .await
+            .unwrap();
+        g.repo.set_usage("lim", DAY, Mode::Fast, 1).await.unwrap();
+        assert!(!g.pool.all_quota_blocked(NOW).await.unwrap());
+        assert!(g.pool.all_limited_for(Mode::Fast, NOW).await.unwrap());
+    }
+
+    // ---- scheduling_count — review T17 M7 ----
+
+    #[tokio::test]
+    async fn scheduling_count_chi_dem_tai_khoan_co_thu_muc() {
+        let f = fx(&["a", "b"]).await;
+        assert_eq!(f.pool.scheduling_count().await.unwrap(), 2);
+        // dong DB khong co thu muc -> khong dem
+        f.repo.upsert("khong_dir").await.unwrap();
+        assert_eq!(f.pool.scheduling_count().await.unwrap(), 2);
+        // thu muc moi chua co dong -> dem (mac dinh bat lich, _ensure_meta)
+        std::fs::create_dir(f.dir.path().join("moi")).unwrap();
+        assert_eq!(f.pool.scheduling_count().await.unwrap(), 3);
+        // tat lich -> khong dem; cooldown/rate_limited KHONG anh huong (chi xet scheduling)
+        f.repo.set_scheduling("a", false).await.unwrap();
+        f.repo.set_cooldown_until("b", NOW + 100.0).await.unwrap();
+        assert_eq!(f.pool.scheduling_count().await.unwrap(), 2);
     }
 
     /// Task 17 dung chung `Arc<AccountPool>` giua cac task tokio va giu `Lease` qua `await`.
