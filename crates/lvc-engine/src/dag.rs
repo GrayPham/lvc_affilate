@@ -49,6 +49,32 @@
 //! nay — xem bao cao); su kien `NodeState` "queued" ban dau mang dung `total` (so canh cua node,
 //! tra tu `RunPlan` qua [`node_totals`]) thay vi luon `0`.
 //!
+//! # Fix-round 2 (re-review `task-7-review-r1.md`, commit `f0801cf`)
+//!
+//! **I3-NEW (moi, sua)**: fix-round 1 chi bat panic o TAM RUN (than vong `run_steps`), nhung
+//! `hooks_factory(&task_id)` (`run_video_step`) van duoc goi SAU KHI dong `TaskRow` cua canh do da
+//! ton tai (`TaskRepo::create` + `set_run`) — panic o do de lai dong "queued" mo coi MAI MAI (khong
+//! con code nao con dong lai) VA, voi buoc Video nhieu canh, co the huy giua chung cac job ANH EM
+//! da spawn TRUOC do (drop `JoinSet` giua chung — dung DIEU module nay cam). Sua bang cach CHIA HAI
+//! GIAI DOAN trong [`Engine::run_video_step`]: giai doan 1 goi `hooks_factory` + dang ky token con
+//! (`register_child`) cho TAT CA canh TRUOC, KHONG dung `TaskRepo`; chi khi ca buoc da chuan bi xong
+//! (khong panic nao xay ra) giai doan 2 moi tao dong + spawn. Panic trong giai doan 1 nghia la CHUA
+//! CO dong nao ton tai cho buoc nay, va van nam tren CUNG than vong dong bo voi `run_steps` (chua
+//! spawn job nao) nen lan thang len toi cai bay panic cua I3 (`tokio::spawn(steps_fut)` trong
+//! `run_graph_task`) — run ket thuc `failed` sach se, khong dong mo coi, khong `JoinSet` nao bi bo.
+//!
+//! **M5 (tu Minor "tuy Task 9" thanh Important, sua)**: `TaskRepo::set_run` loi (dong da `create`
+//! nhung KHONG gan duoc `run_id`/`node_id`) truoc day chi `warn!` roi VAN spawn — dong do vo hinh
+//! voi `TaskRepo::list_by_run` (Task 9) MAI MAI du job co the van chay xong. Sua: danh dau NGAY
+//! `Failed` + `finished_at` (`Engine::mark_row_failed`, giong huong xu ly canh bi huy — M3), KHONG
+//! spawn, tinh la 1 canh that bai (ten canh van vao `runs.error` — I1).
+//!
+//! **Doc (2 minor)**: doc them o [`Engine::run_steps`] (buoc Save NGAY SAU mot buoc Video vua bi
+//! huy cung bi bo qua — day la CO Y, khong phai loi: file cua cac canh da `Completed` VAN con trong
+//! `downloads_dir`, duong dan van tren dong `task` cua chung, chi khong duoc copy sang `out_dir`
+//! cua node Luu); `generate.rs` sua lai chu thich cu con nhac `dag::RunCancelHooks` (da bi xoa o
+//! fix-round 1) thanh `register_child`.
+//!
 //! # Thiet ke tu quyet dinh con lai (xem bao cao Task 7 de biet ly do day du)
 //!
 //! **File luu**: ten `<run_id>_<video_node_id>_<scene_index>.mp4` — dung id NODE VIDEO NGUON
@@ -73,7 +99,7 @@ use std::sync::Arc;
 use lvc_browser::BrowserDriver;
 use lvc_browser::dola::{NoopHooks, PollHooks, VideoArtifact};
 use lvc_core::graph::{Graph, RunPlan, SaveJob, Step, VideoJob, plan};
-use lvc_core::{FailureCode, Scene};
+use lvc_core::{FailureCode, Scene, TaskStatus};
 use lvc_store::{BatchRef, RunStatus};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -132,6 +158,16 @@ struct VideoJobResult {
     task_id: String,
     scene_index: u32,
     result: Result<GenerateOutcome, EngineError>,
+}
+
+/// Fix-round 2 (I3-NEW): mot canh da qua GIAI DOAN 1 cua `run_video_step` (hooks + token con da
+/// san sang, KHONG panic) — cho GIAI DOAN 2 (tao dong `TaskRow` + spawn) doc tiep. Khong `Clone`:
+/// `hooks` la `Box<dyn PollHooks>` di chuyen mot lan vao than vong spawn.
+struct PreparedJob {
+    scene_index: u32,
+    scene: Scene,
+    task_id: String,
+    hooks: Box<dyn PollHooks>,
 }
 
 fn new_id(prefix: &str) -> String {
@@ -350,6 +386,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         let mut i = 0usize;
         while i < run_plan.steps.len() {
             // I2 (fix-round 1): huy giua chung -> dung NGAY, KHONG buoc/canh nao moi duoc tao nua.
+            // Fix-round 2 (doc minor, review-r1): kiem tra nay dung TRUOC MOI buoc, ke ca mot buoc
+            // Save nam NGAY SAU buoc Video vua bi huy — nen buoc Save do CUNG bi bo qua, du buoc
+            // Video co the da co vai canh `Completed` truoc khi huy. Day la CO Y (ruling round-2),
+            // KHONG phai loi: cac canh da `Completed` do VAN con file that trong `downloads_dir` va
+            // duong dan van nam tren dong `task` cua chung — chi la KHONG duoc Save copy sang
+            // `out_dir` cua node Luu trong lan chay nay.
             if hard_stop.is_some() || token.is_cancelled() {
                 break;
             }
@@ -465,12 +507,37 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         });
     }
 
+    /// Fix-round 2 (M5, escalated): danh dau MOT `TaskRow` da ton tai la `Failed` + `finished_at`
+    /// NGAY, khong spawn job cho no — dung khi mot buoc DB sau khi tao dong (hien tai: chi
+    /// `TaskRepo::set_run`) that bai, de dong khong ket lai "queued" mai mai (vo hinh voi
+    /// `TaskRepo::list_by_run`). `reason` la thong diep ngan, KHONG chua prompt/cookie/URL ky.
+    async fn mark_row_failed(&self, task_id: &str, reason: &str) {
+        if let Err(e) = self
+            .tasks
+            .set_status(task_id, TaskStatus::Failed, None, Some(reason))
+            .await
+        {
+            warn!(task_id, error = %e, "khong ghi duoc trang thai failed");
+        }
+        if let Err(e) = self.tasks.set_finished(task_id, now_unix()).await {
+            warn!(task_id, error = %e, "khong ghi duoc finished_at");
+        }
+    }
+
     /// Buoc `Video`: tao MOT `TaskRow` cho MOI canh TRUOC KHI spawn (de UI liet ke duoc ngay), roi
     /// `JoinSet` chay dong thoi (limiter/`AccountPool` lo song song — xem `generate.rs`); mot canh
     /// loi KHONG dung cac canh khac (ruling). Ghi `NodeOutputs.videos[node_id]` = cac canh THANH
     /// CONG (sap theo `scene_index`) — canh loi khong co mat, Save (buoc sau) tu dong chi luu canh
     /// OK. Tra `Some(thong diep)` (I1: `"node {node_id}: canh {idx,..} that bai"`) khi CO IT NHAT
     /// 1 canh loi, `None` khi tat ca OK.
+    ///
+    /// Fix-round 2 (I3-NEW): chia HAI GIAI DOAN — giai doan 1 goi `hooks_factory(&task_id)` (ma
+    /// Task 9, CO THE panic) + `register_child` cho TAT CA canh, KHONG dung `TaskRepo`; giai doan 2
+    /// (chi chay neu giai doan 1 xong het, khong panic) moi `TaskRepo::create`/`set_run`/spawn. Neu
+    /// `hooks_factory` panic o giai doan 1: CHUA co dong `TaskRow` nao cho buoc nay ton tai (khong
+    /// orphan `queued`), va panic van nam tren than vong dong bo cua `run_steps` (chua spawn job
+    /// nao vao `JoinSet` — khong co job anh em nao bi huy giua chung) nen lan thang toi cai bay
+    /// panic cua I3 o tang tren (`run_graph_task`).
     async fn run_video_step(
         self: &Arc<Self>,
         run_id: &str,
@@ -483,38 +550,61 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         let total = u32::try_from(jobs.len()).unwrap_or(u32::MAX);
         self.emit_node_state(run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
 
-        let mut set: JoinSet<VideoJobResult> = JoinSet::new();
         let mut failed_indices: Vec<String> = Vec::new();
+
+        // Giai doan 1 (I3-NEW): chuan bi hooks + token con cho TAT CA canh TRUOC — hooks_factory co
+        // the panic (ma Task 9), o day CHUA dong `TaskRow` nao ca nen khong the orphan.
+        let mut prepared: Vec<PreparedJob> = Vec::with_capacity(jobs.len());
         for job in jobs {
-            // I2: huy den GIUA luc dang tao dong task cho cac canh CON LAI cua CHINH buoc nay ->
-            // dung tao them (nhung KHONG bo cac dong DA tao — chung tu ket thuc qua token con,
-            // xem duoi).
+            // I2: huy TRUOC khi kip chuan bi canh nay -> khong can hooks/token cho no nua.
             if run_token.is_cancelled() {
                 failed_indices.push(job.scene_index.to_string());
                 continue;
             }
             let task_id = new_id("task");
+            let hooks = hooks_factory(&task_id);
+            // C1 (fix-round 1): dang ky token cua CANH NAY la CON cua token cua RUN, TRUOC KHI
+            // spawn — xem doc module + `cancel::CancelRegistry::register_child`.
+            let _ = self.cancels().register_child(&task_id, run_token);
+            prepared.push(PreparedJob {
+                scene_index: job.scene_index,
+                scene: job.scene.clone(),
+                task_id,
+                hooks,
+            });
+        }
+
+        // Giai doan 2: tao dong + spawn — chi toi day moi cham `TaskRepo`.
+        let mut set: JoinSet<VideoJobResult> = JoinSet::new();
+        for pj in prepared {
+            let PreparedJob {
+                scene_index,
+                scene,
+                task_id,
+                hooks,
+            } = pj;
             let batch = BatchRef {
                 batch_id: run_id.to_string(),
                 batch_name: node_id.to_string(),
-                scene_index: i64::from(job.scene_index),
+                scene_index: i64::from(scene_index),
             };
-            if let Err(e) = self.tasks.create(&task_id, &job.scene, Some(&batch)).await {
+            if let Err(e) = self.tasks.create(&task_id, &scene, Some(&batch)).await {
                 warn!(run_id, node_id, error = %e, "khong tao duoc dong task cho canh");
-                failed_indices.push(job.scene_index.to_string());
+                failed_indices.push(scene_index.to_string());
                 continue;
             }
             if let Err(e) = self.tasks.set_run(&task_id, run_id, node_id).await {
                 warn!(run_id, node_id, task_id, error = %e, "khong gan duoc run_id/node_id");
+                // M5 (fix-round 2, escalated tu Minor thanh Important — review-r1): dong da tao
+                // nhung THIEU run_id/node_id se vo hinh voi `TaskRepo::list_by_run` MAI MAI neu
+                // chay tiep — danh dau Failed NGAY, KHONG spawn, tinh la 1 canh that bai.
+                self.mark_row_failed(&task_id, &format!("store: set_run: {e}"))
+                    .await;
+                failed_indices.push(scene_index.to_string());
+                continue;
             }
-            // C1 (fix-round 1): dang ky token cua CANH NAY la CON cua token cua RUN, TRUOC KHI
-            // spawn — xem doc module + `cancel::CancelRegistry::register_child`.
-            let _ = self.cancels().register_child(&task_id, run_token);
 
             let engine = Arc::clone(self);
-            let scene = job.scene.clone();
-            let scene_index = job.scene_index;
-            let hooks = hooks_factory(&task_id);
             let tid = task_id.clone();
             set.spawn(async move {
                 let result = engine
@@ -651,7 +741,8 @@ mod tests {
     use lvc_browser::dola::{ConversationId, poll::NOTE_RAW};
     use lvc_browser::{DolaError, FakeCall, FakeDriver, FakeStep};
     use lvc_core::{
-        Edge, FailureCode, Limits, LogoMode, Mode, Model, Node, NodeKind, Ratio, TaskStatus,
+        Edge, FailureCode, Limits, LogoMode, Mode, Model, Node, NodeKind, Ratio, RawScene,
+        TaskStatus,
     };
     use lvc_store::{AccountRepo, Db, TaskRepo};
     use tokio::sync::broadcast;
@@ -1375,11 +1466,16 @@ mod tests {
     /// `run_tokens` ri rac (`cancel_run` tra `true` vinh vien cho mot run da "chet"), khong bao gio
     /// co `RunDone`. Sau fix: than vong con (`tokio::spawn(steps_fut)`) panic, `run_graph_task` bat
     /// duoc qua `Err(JoinError)`, coi la run that bai voi thong diep loi ro rang.
+    ///
+    /// Fix-round 2 (I3-NEW, mo rong theo yeu cau review-r1): do thi 3 canh — `hooks_factory` panic
+    /// NGAY LAN GOI DAU TIEN (canh 1) nen giai doan 1 cua `run_video_step` dung lai TRUOC KHI bat
+    /// ky `TaskRepo::create` nao chay (ca cho canh 1 lan 2 canh con lai) -> KHONG dong task nao
+    /// duoc tao, KHONG job anh em nao bi spawn roi bi huy giua chung.
     #[tokio::test]
     async fn than_vong_buoc_panic_run_ket_thuc_la_failed_khong_treo() {
-        let (dir, engine, _db, driver) = build_engine(&["acc1"], 1, vec![]).await;
+        let (dir, engine, db, driver) = build_engine(&["acc1"], 1, vec![]).await;
         let out_dir = dir.path().join("out");
-        let graph = linear_graph("canh 1", &out_dir);
+        let graph = linear_graph("canh 1\ncanh 2\ncanh 3", &out_dir);
 
         let panicking: HooksFactory = Arc::new(|_task_id: &str| -> Box<dyn PollHooks> {
             panic!("hooks_factory co y panic (I3 test)")
@@ -1402,6 +1498,12 @@ mod tests {
             run_row.error
         );
 
+        // I3-NEW: hooks_factory panic TRUOC bat ky TaskRepo::create nao (giai doan 1) -> khong
+        // dong task nao duoc tao cho buoc Video nay, du do thi co 3 canh.
+        let tasks = TaskRepo::new(&db);
+        let rows = tasks.list_by_run(&run_id).await.unwrap();
+        assert!(rows.is_empty(), "khong dong task nao duoc tao: {rows:?}");
+
         let events = drain_until_run_done(&mut rx).await;
         let last = events.last().expect("phai co it nhat RunDone");
         assert!(
@@ -1412,10 +1514,46 @@ mod tests {
         // run da ket thuc (finish_run da chay, go token) -> cancel_run tra false, khong "song"
         // vinh vien nhu truoc fix.
         assert!(!engine.cancel_run(&run_id));
-        assert!(
-            driver.calls.lock().unwrap().is_empty(),
-            "panic xay ra TRUOC khi spawn job nao - driver chua bi dung toi"
+        assert_eq!(
+            driver.calls.lock().unwrap().len(),
+            0,
+            "panic o giai doan 1 -> khong job nao duoc spawn -> driver chua bi dung toi"
         );
+    }
+
+    /// Fix-round 2 (M5, escalated): unit-test cho `Engine::mark_row_failed` — dong `TaskRow` da co
+    /// san (`TaskRepo::create` truoc, mo phong `TaskRepo::set_run` da loi) phai chuyen dung sang
+    /// `Failed` + dung `error` + co `finished_at`, KHONG con "queued".
+    #[tokio::test]
+    async fn mark_row_failed_ghi_dung_trang_thai_loi_va_finished_at() {
+        let (_dir, engine, db, _driver) = build_engine(&[], 1, vec![]).await;
+        let tasks = TaskRepo::new(&db);
+        let scene = Scene::normalize(
+            &RawScene {
+                prompt: Some("canh mau".into()),
+                ..RawScene::default()
+            },
+            &Limits::default(),
+            None,
+        )
+        .unwrap();
+        tasks.create("t1", &scene, None).await.unwrap();
+        let before = tasks.get("t1").await.unwrap().unwrap();
+        assert_eq!(before.status, TaskStatus::Queued, "{before:?}");
+        assert!(before.finished_at.is_none());
+
+        engine
+            .mark_row_failed("t1", "store: set_run: loi gia lap")
+            .await;
+
+        let after = tasks.get("t1").await.unwrap().unwrap();
+        assert_eq!(after.status, TaskStatus::Failed, "{after:?}");
+        assert_eq!(
+            after.error.as_deref(),
+            Some("store: set_run: loi gia lap"),
+            "{after:?}"
+        );
+        assert!(after.finished_at.is_some(), "{after:?}");
     }
 
     // ---- cac test nho bo tro ----

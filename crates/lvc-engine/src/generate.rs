@@ -166,8 +166,9 @@ pub struct Engine<D: BrowserDriver + 'static> {
     // o tren) — repo cac lan chay workflow (`runs`).
     pub(crate) run_repo: RunRepo,
     // pub(crate): Task 7 (P3) `dag.rs`: token huy THEO RUN (khac `cancels` — theo `task_id`);
-    // `Engine::run_graph` dang ky, `Engine::cancel_run` huy, xoa khi run ket thuc. Moi job video
-    // cua run nhan token nay qua hooks rieng (`dag::RunCancelHooks`) — xem doc `dag.rs`.
+    // `Engine::run_graph` dang ky, `Engine::cancel_run` huy, xoa khi run ket thuc. Moi canh video
+    // cua run dang ky token con cua token nay qua `cancels().register_child` (fix-round 1, C1) —
+    // xem doc `dag.rs`.
     pub(crate) run_tokens: DashMap<String, CancellationToken>,
 }
 
