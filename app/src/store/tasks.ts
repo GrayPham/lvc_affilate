@@ -77,10 +77,22 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
   cancelTask: async (id) => {
     set((s) => ({ pendingIds: new Set(s.pendingIds).add(id) }));
+    // Gom loi vao bien cuc bo thay vi `set({error})` NGAY — `refresh()` (goi trong `finally` ben
+    // duoi) tu dat lai `error: null` luc bat dau doc, nen dat loi TRUOC do se bi xoa mat ngay lap
+    // tuc. Dat lai loi nay SAU KHI `refresh()` xong.
+    let cancelError: string | null = null;
     try {
-      await taskCancel(id);
+      // `taskCancel` tra `false` khi khong con token huy song cho `id` nay — vd task `queued`
+      // mo coi tu phien truoc (`requeue_on_start`) chua duoc mot run moi nhan, hoac task da xong
+      // dung luc lenh toi engine (xem review Task 13 fix round 1, Important #2:
+      // `Engine::cancel` -> `CancelRegistry::cancel`, crates/lvc-engine/src/cancel.rs). Khong bao
+      // cho nguoi dung se la mot no-op im lang — nut "Huỷ" van con, khong giai thich gi.
+      const ok = await taskCancel(id);
+      if (!ok) {
+        cancelError = "Không huỷ được: tác vụ không còn chạy (có thể đã xong hoặc từ phiên trước)";
+      }
     } catch (e) {
-      set({ error: errorText(e) });
+      cancelError = errorText(e);
     } finally {
       set((s) => {
         const next = new Set(s.pendingIds);
@@ -88,15 +100,22 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         return { pendingIds: next };
       });
       await get().refresh();
+      if (cancelError) {
+        set({ error: cancelError });
+      }
     }
   },
 
   resumeTask: async (id) => {
     set((s) => ({ pendingIds: new Set(s.pendingIds).add(id) }));
+    // Cung mot ly do voi `cancelTask` (xem doc o do): dat loi vao bien cuc bo, ap dung SAU
+    // `refresh()` — dat truoc se bi `refresh()`'s `error: null` luc bat dau doc xoa mat ngay
+    // (vd `task_resume` bao `NOT_RESUMABLE` — nguoi dung se khong bao gio thay thong diep do).
+    let resumeError: string | null = null;
     try {
       await taskResume(id);
     } catch (e) {
-      set({ error: errorText(e) });
+      resumeError = errorText(e);
     } finally {
       set((s) => {
         const next = new Set(s.pendingIds);
@@ -104,6 +123,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         return { pendingIds: next };
       });
       await get().refresh();
+      if (resumeError) {
+        set({ error: resumeError });
+      }
     }
   },
 

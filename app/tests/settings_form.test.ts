@@ -1,10 +1,11 @@
-// TDD Task 13 buoc 1: `validateSettings`/`toAppSettings` (src/components/SettingsForm.tsx) mirror
-// hai dieu kien server CHAC CHAN se bac (`crates/lvc-core/src/settings.rs::parse_threads`/
-// `parse_duration`, xem doc dau file SettingsForm.tsx) + chuan hoa phong thu truoc khi goi
-// `settingsSet`.
+// TDD Task 13 buoc 1: `validateSettings` (src/components/SettingsForm.tsx) mirror hai dieu kien
+// server CHAC CHAN se bac (`crates/lvc-core/src/settings.rs::parse_threads`/`parse_duration`, xem
+// doc dau file SettingsForm.tsx) + `toAppSettings` (src/store/settings.ts, chuyen sang day o fix
+// round 1 — review task-13-review.md Minor #2) chuan hoa phong thu truoc khi goi `settingsSet`.
 import { describe, expect, it } from "vitest";
 
-import { THREADS_MAX, toAppSettings, validateSettings } from "../src/components/SettingsForm";
+import { validateSettings } from "../src/components/SettingsForm";
+import { THREADS_MAX, toAppSettings } from "../src/store/settings";
 import type { AppSettings } from "../src/ipc/types";
 
 /** Khop `AppSettings::default()` (crates/lvc-core/src/settings.rs, fixtures/app_settings.json). */

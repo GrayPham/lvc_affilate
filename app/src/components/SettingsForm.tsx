@@ -1,17 +1,17 @@
 // Form "Cài đặt" (Task 13 brief) — bound truc tiep vao `store/settings.ts` (`draft`/`saved`/
-// `warnings`/`dirty`). Xuat CA HAI ham thuan `validateSettings`/`toAppSettings` (tested rieng o
+// `warnings`/`dirty`). Xuat ham thuan `validateSettings` (tested rieng o
 // `tests/settings_form.test.ts`, cung mot quy uoc voi `graph/rules.ts` cua Task 12 — mirror phia
 // client CHI de UX muot, server (`AppSettings::from_map`, crates/lvc-core/src/settings.rs) van la
-// nguon su that cuoi cung va tu chuan hoa + tra `warnings` rieng):
-// - `validateSettings`: chan nut "Lưu" khi ro rang sai (threads ngoai [1,64], thời lượng mặc định
-//   khong nam trong `allowedDurations(mode, model)` — hai dieu duy nhat CHAC CHAN server se bac,
-//   xem `crates/lvc-core/src/settings.rs::parse_threads`/`parse_duration`). Hai thu muc (accounts/
-//   output) KHONG bi bat buoc non-empty: rong la gia tri HOP LE, nghia la "de app tu chon"
-//   (`crates/lvc-engine/src/settings.rs::resolve_dir` — rong sau trim -> `app_data_dir/accounts`
-//   hoac `app_data_dir/downloads`), khong phai loi.
-// - `toAppSettings`: chuan hoa PHONG THU truoc khi goi `settingsSet` (kep threads ve [1, THREADS_MAX],
-//   trim hai duong dan) — ke ca khi `validateSettings` da qua, dam bao khong bao gio gui mot gia
-//   tri ma chinh server se phai tu sua.
+// nguon su that cuoi cung va tu chuan hoa + tra `warnings` rieng): chan nut "Lưu" khi ro rang sai
+// (threads ngoai [`THREADS_MIN`,`THREADS_MAX`], thời lượng mặc định khong nam trong
+// `allowedDurations(mode, model)` — hai dieu duy nhat CHAC CHAN server se bac, xem
+// `crates/lvc-core/src/settings.rs::parse_threads`/`parse_duration`). Hai thu muc (accounts/
+// output) KHONG bi bat buoc non-empty: rong la gia tri HOP LE, nghia la "de app tu chon"
+// (`crates/lvc-engine/src/settings.rs::resolve_dir` — rong sau trim -> `app_data_dir/accounts`
+// hoac `app_data_dir/downloads`), khong phai loi.
+//
+// `toAppSettings`/`THREADS_MAX`/`THREADS_MIN` chuyen sang `store/settings.ts` (review Task 13 fix
+// round 1, Minor #2 — tranh store<->component gan-vong-tron).
 import { useState } from "react";
 
 import {
@@ -26,11 +26,7 @@ import {
 import { allowedDurations } from "../graph/rules";
 import { pickDirectory } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
-import { useSettingsStore } from "../store/settings";
-
-/** `lvc_core::settings::THREADS_MAX` (crates/lvc-core/src/settings.rs) — tran tren `threads`. */
-export const THREADS_MAX = 64;
-const THREADS_MIN = 1;
+import { THREADS_MAX, THREADS_MIN, useSettingsStore } from "../store/settings";
 
 const MODE_LABEL_VI: Record<Mode, string> = {
   fast: "Nhanh",
@@ -63,18 +59,6 @@ export function validateSettings(draft: AppSettings): string[] {
     );
   }
   return errors;
-}
-
-/** Chuan hoa phong thu truoc khi goi `settingsSet` — xem doc module. */
-export function toAppSettings(draft: AppSettings): AppSettings {
-  const roundedThreads = Number.isFinite(draft.threads) ? Math.round(draft.threads) : THREADS_MIN;
-  const threads = Math.min(THREADS_MAX, Math.max(THREADS_MIN, roundedThreads));
-  return {
-    ...draft,
-    threads,
-    accountsDir: draft.accountsDir.trim(),
-    outputDir: draft.outputDir.trim(),
-  };
 }
 
 export default function SettingsForm() {

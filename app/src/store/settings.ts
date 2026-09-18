@@ -1,16 +1,36 @@
 // Store zustand cho man "Cài đặt" (Task 13): `draft` (dang sua tren form) / `saved` (gia tri
 // server xac nhan lan doc/luu gan nhat) / `warnings` (server tra ve tu `settings_set`, xem
-// `crates/lvc-app/src/commands/settings.rs::settings_set_impl`) / `dirty` (draft != saved). Tach
-// rieng khoi `SettingsForm.tsx` (component) de test duoc doc lap khong can render React — hai ham
-// THUAN `validateSettings`/`toAppSettings` van nam o `SettingsForm.tsx` (xuat cung component,
-// import lai o day cho `save()`; xem doc trong file do vi sao — cung mot ly do
-// `store/graph.ts` dung `graph/rules.ts::isValidConnection` thay vi tu viet lai).
+// `crates/lvc-app/src/commands/settings.rs::settings_set_impl`) / `dirty` (draft != saved).
+//
+// `toAppSettings`/`THREADS_MAX`/`THREADS_MIN` nam O DAY (khong o `components/SettingsForm.tsx`
+// nhu ban dau) — review Task 13 fix round 1 (Minor #2): tranh store<->component gan-vong-tron
+// (`SettingsForm.tsx` da can `useSettingsStore` tu file nay; truoc do file nay lai import nguoc
+// `toAppSettings` tu `SettingsForm.tsx`). `validateSettings` (con dung React-adjacent — goi
+// `allowedDurations` de hien loi ngay tren form) VAN o `SettingsForm.tsx`, import `THREADS_MAX`/
+// `THREADS_MIN` tu day.
 import { create } from "zustand";
 
 import { settingsGet, settingsSet } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 import type { AppSettings } from "../ipc/types";
-import { toAppSettings } from "../components/SettingsForm";
+
+/** `lvc_core::settings::THREADS_MAX` (crates/lvc-core/src/settings.rs) — tran tren `threads`. */
+export const THREADS_MAX = 64;
+export const THREADS_MIN = 1;
+
+/** Chuan hoa phong thu truoc khi goi `settingsSet` (kep threads ve [`THREADS_MIN`,
+ * `THREADS_MAX`], trim hai duong dan) — ke ca khi `validateSettings` da qua, dam bao khong bao
+ * gio gui mot gia tri ma chinh server se phai tu sua. */
+export function toAppSettings(draft: AppSettings): AppSettings {
+  const roundedThreads = Number.isFinite(draft.threads) ? Math.round(draft.threads) : THREADS_MIN;
+  const threads = Math.min(THREADS_MAX, Math.max(THREADS_MIN, roundedThreads));
+  return {
+    ...draft,
+    threads,
+    accountsDir: draft.accountsDir.trim(),
+    outputDir: draft.outputDir.trim(),
+  };
+}
 
 function isDirty(draft: AppSettings | null, saved: AppSettings | null): boolean {
   if (!draft || !saved) {

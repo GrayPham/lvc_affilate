@@ -1,53 +1,12 @@
-// "Nhập dữ liệu từ bản Python" (Task 13 brief) — chon thu muc bang Python cu (`pick_directory`,
-// da co trong `src/ipc/commands.ts`) -> xac nhan -> `legacy_import` -> hien bao cao.
-//
-// `legacy_import` (lenh Tauri + kieu `LegacyImportReport`) DA CO tren nhanh Rust
-// (`crates/lvc-app/src/commands/accounts.rs`, `crates/lvc-engine/src/accounts.rs`) nhung CHUA
-// duoc boc trong `src/ipc/commands.ts` tinh den LUC BAT DAU viet file nay (Task 14 — man Tai
-// khoan — dang so huu file do trong dot nay, xem brief Task 13). Theo dung huong dan brief: goi
-// thang `invoke("legacy_import", { pythonDir })` qua shim `src/ipc/tauri.ts` (KHONG dung
-// `@tauri-apps/api/core` truc tiep), tu dinh nghia zod schema o day khop CHINH XAC
-// `LegacyImportReport` (crates/lvc-engine/src/accounts.rs, doc source that vi fixture
-// `app/src/ipc/fixtures/import_reports.json` cua Task 10 KHONG khop struct hien tai — xem Concerns
-// trong report Task 13):
-//   pub struct LegacyImportReport {
-//       pub tasks: usize, pub accounts: usize, pub usage: usize, pub settings: usize,
-//       pub skipped: Vec<String>, pub profiles_copied: usize, pub profiles_skipped: Vec<String>,
-//   }
-// (`#[serde(rename_all = "camelCase")]` -> wire: tasks/accounts/usage/settings/skipped/
-// profilesCopied/profilesSkipped).
-//
-// CAP NHAT (cuoi phien lam Task 13): Task 14 vua them `legacyImport()`/`LegacyImportReportSchema`
-// vao `src/ipc/commands.ts`/`src/ipc/types.ts` GIUA LUC dang lam task nay — kieu hoan toan khop
-// ban tay o day (da doi chieu tung truong). CO CHU DICH KHONG doi sang dung ban do vi thoi diem do
-// `commands.ts`/`types.ts` van dang duoc agent kia sua tiep (working tree KHONG worktree rieng —
-// `pnpm typecheck` dang do vi mot file khac cua ho, `format/account.ts`), va brief Task 13 noi ro
-// giu ban wrapper rieng roi bao cao de controller gop — xem "Concerns" trong task-13-report.md.
-// Viec don gian hoa (xoa ham/schema o day, doi sang `import { legacyImport } from "../ipc/commands"`)
-// an toan de lam sau, khi nhanh Task 14 on dinh.
+// "Nhập dữ liệu từ bản Python" (Task 13 brief) — chon thu muc bang Python cu (`pick_directory`)
+// -> xac nhan -> `legacy_import` -> hien bao cao. `legacyImport`/`LegacyImportReport` dung chung
+// tu `src/ipc/commands.ts`/`src/ipc/types.ts` (Task 14 da them, review Task 13 fix round 1 I1:
+// xoa ban wrapper/schema tay tung co o day de tranh trung lap voi ban chinh thuc).
 import { useState } from "react";
-import { z } from "zod";
 
-import { invoke } from "../ipc/tauri";
-import { pickDirectory } from "../ipc/commands";
+import { legacyImport, pickDirectory } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
-
-const LegacyImportReportSchema = z.object({
-  tasks: z.number(),
-  accounts: z.number(),
-  usage: z.number(),
-  settings: z.number(),
-  skipped: z.array(z.string()),
-  profilesCopied: z.number(),
-  profilesSkipped: z.array(z.string()),
-});
-type LegacyImportReport = z.infer<typeof LegacyImportReportSchema>;
-
-/** Boc tay `legacy_import` — xem doc dau file. */
-async function legacyImport(pythonDir: string): Promise<LegacyImportReport> {
-  const res = await invoke<unknown>("legacy_import", { pythonDir });
-  return LegacyImportReportSchema.parse(res);
-}
+import type { LegacyImportReport } from "../ipc/types";
 
 export default function LegacyImport() {
   const [busy, setBusy] = useState(false);
@@ -67,7 +26,8 @@ export default function LegacyImport() {
     const confirmed = window.confirm(
       `Nhập dữ liệu từ bản Python cũ tại:\n"${dir}"\n\n` +
         "Sẽ đọc DB task/tài khoản/lượt dùng/cài đặt của bản cũ và ghi vào dữ liệu hiện tại " +
-        "(hồ sơ trình duyệt tài khoản đã có sẵn ở đây sẽ KHÔNG bị ghi đè). Tiếp tục?",
+        "(hồ sơ trình duyệt tài khoản đã có sẵn ở đây sẽ KHÔNG bị ghi đè). Thư mục bản Python cũ " +
+        "chỉ được ĐỌC (mở chế độ read-only) và giữ nguyên, không bị sửa/xoá gì. Tiếp tục?",
     );
     if (!confirmed) {
       return;
