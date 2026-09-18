@@ -49,7 +49,7 @@ pub use pro_prompt::{agent_prompt, pro_max_prompt, pro_prompt};
 pub use progress::{BatchProgress, TaskStatus, batch_progress};
 pub use proxy::{DIRECT, ProxySpec, effective_proxy, mask_proxy, parse_proxy};
 pub use scene::{DEFAULT_DURATION, DURATIONS, RawScene, Scene};
-pub use scene_txt::{format_txt, parse_txt};
+pub use scene_txt::{format_txt, normalize_prompt_line, parse_txt};
 pub use scheduling::{
     LIMIT_RESET_TZ_OFFSET_S, fit_duration_to_mode, mode_fallback_chain, next_limit_reset, tokyo_day,
 };

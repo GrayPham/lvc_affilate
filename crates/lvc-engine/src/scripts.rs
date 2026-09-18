@@ -10,7 +10,7 @@
 //! `import_legacy`, xem `generate.rs`), khong can them mot repo thuong tru chi de doc/ghi 2 bang
 //! it dung.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,16 +20,23 @@ use lvc_core::graph::{Edge, Graph, Node, NodeKind};
 use lvc_core::{AppSettings, LogoMode, RawScene, Scene, format_txt, parse_txt};
 use lvc_store::{ReplaceScenesError, SceneIn, SceneRow, ScriptRepo};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
-use crate::dag::noop_hooks_factory;
+use crate::dag::{TaskRef, noop_hooks_factory};
 use crate::error::EngineError;
 use crate::generate::Engine;
 
-/// So lan doi toi da khi doi cac dong `TaskRow` cua mot lan chay duoc tao (xem doc
-/// [`Engine::run_script`]) — `POLL_INTERVAL * POLL_MAX_TRIES` = 2s, giong nguong cho trong cac
-/// test `run_start`/`run_cancel` co san (`crates/lvc-app/src/commands/workflow.rs`).
-const POLL_MAX_TRIES: u32 = 200;
-const POLL_INTERVAL: Duration = Duration::from_millis(10);
+/// Han an toan khi doi `RunHandle::tasks_ready` thuc day (xem doc [`Engine::run_script`]) — CUC
+/// HIEM moi can toi (vd panic truoc khi kip "chot", xem doc `dag::run_steps`); tao dong `TaskRow`
+/// binh thuong nhanh hon nhieu (chi ghi `SQLite`, khong doi video). Dai hon nhieu so voi poll ~2s cu
+/// vi day chi la backstop, khong phai duong di chinh.
+const SAFETY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Ma loi khi mot canh KHONG co dong `TaskRow` tuong ung sau khi `tasks_ready` da thuc day (fix-
+/// round 1, I1(b)) — run that bai/bi huy TRUOC khi kip tao dong cho canh nay, hoac an toan timeout
+/// het han (cuc hiem). Rieng voi `SCENE_RUNNING`/`SCENE_EMPTY`/`SCENE_INVALID` (loi PHAT HIEN
+/// TRUOC khi chay), day la loi PHAT HIEN SAU KHI da goi `run_graph`.
+const RUN_FAILED: &str = "RUN_FAILED";
 
 /// Loi rieng cua [`Engine::import_txt_to_script`]/[`Engine::delete_script`] — `Engine::run_script`
 /// KHONG dung kieu nay (chu ky cong khai cua no la `Result<_, EngineError>`, xem task-1-brief.md;
@@ -162,9 +169,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// dung DUNG cac id do, theo thu tu `idx` cua kich ban (KHONG theo thu tu `scene_ids` truyen
     /// vao — giong `scripts_api.py:171-176 run_scenes`).
     ///
-    /// Voi MOI canh duoc chon: dang `queued`/`processing` -> loi `SCENE_RUNNING`; prompt rong (sau
-    /// trim) -> loi `SCENE_EMPTY`; `style` khong rong va CHUA co trong prompt (khong phan biet hoa
-    /// thuong) -> noi `"\nStyle: {style}"` (`scripts_api.py:189-193`); cuoi cung chuan hoa qua
+    /// Voi MOI canh duoc chon: dang `queued`/`processing` -> loi `SCENE_RUNNING`; prompt CHUAN HOA
+    /// (fix-round 1, C1: [`lvc_core::normalize_prompt_line`] — gop xuong dong that thanh dau cach,
+    /// trim; xem doc ham do) rong -> loi `SCENE_EMPTY`; `style` khong rong va CHUA co trong prompt
+    /// (khong phan biet hoa thuong) -> noi `" Style: {style}"` (`scripts_api.py:189-193` dung `\n`
+    /// that — o day dung dau cach, xem doc noi bo o duoi); cuoi cung chuan hoa qua
     /// [`Scene::normalize`] (mac dinh tu `defaults`, xem [`scene_row_to_raw`]) — loi chuan hoa ->
     /// `SCENE_INVALID`. Canh loi bi LOAI KHOI lan chay (khong dung ca lo, giong Python: moi canh
     /// doc lap).
@@ -173,10 +182,14 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// mode/model/ratio/duration tu `defaults`) -> node Luu (`dir` kich ban, rong -> thu muc con
     /// cua `downloads_dir` dat theo ten kich ban) roi chay qua [`Engine::run_graph`] (tai su dung
     /// DAG, su kien, huy — R1). `run_graph` tra ve NGAY (chay nen — xem doc `dag.rs`); ham nay CHO
-    /// (toi da ~2s, poll ngan) den khi cac dong `TaskRow` cua lan chay xuat hien roi anh xa
-    /// `scene_index` (1-based, dung thu tu voi cac canh hop le) sang tung canh — KHONG cho ca lan
-    /// chay hoan tat (video co the mat vai phut/canh): "Dung tat ca" (`run_cancel`, Task 2) can
-    /// `run_id` con dung khi video con dang tao.
+    /// `RunHandle::tasks_ready` thuc day (fix-round 1, I1 — thay poll ~2s truoc day: kenh `watch`
+    /// bao NGAY khi cac dong `TaskRow` cua buoc Video da tao xong, KHONG doi video tao xong; an
+    /// toan toi da [`SAFETY_TIMEOUT`]) roi anh xa THEO `scene_index` (KHONG theo vi tri tra ve —
+    /// dong `scene_index` bat thuong bi bo qua + canh bao) — KHONG cho ca lan chay hoan tat (video
+    /// co the mat vai phut/canh): "Dung tat ca" (`run_cancel`, Task 2) can `run_id` con dung khi
+    /// video con dang tao. Canh KHONG co dong tuong ung sau khi `tasks_ready` thuc day (run that
+    /// bai/bi huy truoc khi kip tao dong, hoac an toan timeout het han) -> loi `RUN_FAILED`, KHONG
+    /// gia mao thanh cong.
     ///
     /// # Errors
     /// `EngineError::Graph`/`EngineError::Store` tu `run_graph`/doc DB — loi tung canh KHONG nam
@@ -231,7 +244,10 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 });
                 continue;
             }
-            let base_prompt = scene.prompt.trim();
+            // Fix-round 1 (C1 — Critical): chuan hoa NGAY LUC DOC (khong chi `.trim()`) — phong
+            // du lieu cu con xuong dong that (ghi truoc ban sua nay, hoac nhap legacy R5 ghi thang
+            // khong qua `ScriptRepo::replace_scenes`, xem doc `normalize_prompt_line`).
+            let base_prompt = lvc_core::normalize_prompt_line(&scene.prompt);
             if base_prompt.is_empty() {
                 errors.push(ScriptRunError {
                     scene_id: scene.id.clone(),
@@ -239,7 +255,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 });
                 continue;
             }
-            let mut prompt = base_prompt.to_string();
+            let mut prompt = base_prompt;
             // scripts_api.py:189-193: ban Python noi "\nStyle: <style>" TRUC TIEP vao prompt roi
             // tao task ngay (khong qua TXT). O day prompt con phai di qua format_txt/parse_txt
             // (R1 — Prompt node dung MOT khoi TXT, moi dong la MOT canh) TRUOC khi thanh task:
@@ -340,26 +356,64 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .await?;
         let run_id = handle.run_id.clone();
 
-        // run_graph() chi tao dong NEN (spawn) roi tra ve NGAY — cho toi khi cac dong TaskRow
-        // xuat hien (tao rat nhanh, KHONG doi video tao xong) de anh xa scene_id -> task_id; xem
-        // doc ham ve ly do khong `handle.join.await` (se khoa "Dung tat ca" cho toi khi xong het).
-        let expected = valid.len();
-        let mut rows = self.tasks.list_by_run(&run_id).await?;
-        for _ in 0..POLL_MAX_TRIES {
-            if rows.len() >= expected {
-                break;
+        // Fix-round 1 (I1(b)): run_graph() chi tao dong NEN (spawn) roi tra ve NGAY — thay vi poll
+        // `TaskRepo` moi ~10ms, cho `tasks_ready` (kenh watch, xem doc `dag::RunHandle::tasks_ready`)
+        // thuc day DUT KHOAT NGAY khi dong TaskRow cua buoc Video da tao xong (KHONG doi video tao
+        // xong — xem doc ham ve ly do khong `handle.join.await`). Sender bi drop ma CHUA TUNG gui
+        // (vd `run_repo.create` that bai truoc khi toi buoc Video) lam `changed()` tra `Err` NGAY,
+        // khong can cho het [`SAFETY_TIMEOUT`].
+        let mut tasks_ready = handle.tasks_ready;
+        let refs: Vec<TaskRef> =
+            match tokio::time::timeout(SAFETY_TIMEOUT, tasks_ready.changed()).await {
+                Ok(Ok(())) => tasks_ready.borrow_and_update().clone(),
+                Ok(Err(_)) | Err(_) => Vec::new(),
+            };
+
+        // I1(a): anh xa THEO `scene_index` (vi tri 1-based trong `valid`), KHONG theo vi tri tra ve
+        // tu kenh — `scene_index` ngoai pham vi (khong nen xay ra sau khi `format_txt`/`plan()` da
+        // chay dung, nhung khong tin tuong mu quang) bi bo qua + canh bao, KHONG panic.
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "so canh da chon trong MOT lan chay kich ban nam rat xa duoi u32::MAX"
+        )]
+        let valid_len = valid.len() as u32;
+        let mut by_scene_index: HashMap<u32, String> = HashMap::with_capacity(refs.len());
+        for r in refs {
+            if r.scene_index == 0 || r.scene_index > valid_len {
+                warn!(
+                    script_id,
+                    run_id,
+                    scene_index = r.scene_index,
+                    task_id = %r.task_id,
+                    "tasks_ready: scene_index ngoai pham vi (1..={valid_len}), bo qua"
+                );
+                continue;
             }
-            tokio::time::sleep(POLL_INTERVAL).await;
-            rows = self.tasks.list_by_run(&run_id).await?;
+            by_scene_index.insert(r.scene_index, r.task_id);
         }
 
-        let mut tasks = Vec::with_capacity(rows.len().min(expected));
-        for ((scene, _), row) in valid.iter().zip(rows.iter()) {
-            repo.set_scene_task(&scene.id, &row.id).await?;
-            tasks.push(ScriptRunTask {
-                scene_id: scene.id.clone(),
-                task_id: row.id.clone(),
-            });
+        let mut tasks = Vec::with_capacity(by_scene_index.len());
+        for (i, (scene, _)) in valid.iter().enumerate() {
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "xem valid_len o tren - i < valid.len()"
+            )]
+            let scene_index = (i + 1) as u32;
+            match by_scene_index.get(&scene_index) {
+                Some(task_id) => {
+                    repo.set_scene_task(&scene.id, task_id).await?;
+                    tasks.push(ScriptRunTask {
+                        scene_id: scene.id.clone(),
+                        task_id: task_id.clone(),
+                    });
+                }
+                // I1(b): run that bai/bi huy TRUOC khi dong nay duoc tao (hoac an toan timeout het
+                // han) — bao loi RIENG cho canh nay, KHONG gia mao coi nhu da chay.
+                None => errors.push(ScriptRunError {
+                    scene_id: scene.id.clone(),
+                    code: RUN_FAILED.to_string(),
+                }),
+            }
         }
 
         Ok(ScriptRunReport {
@@ -570,6 +624,75 @@ mod tests {
             let f = out_dir.join(format!("{run_id}_video_{i}.mp4"));
             assert!(f.exists(), "{f:?} phai ton tai");
         }
+    }
+
+    /// Fix-round 1 (C1 — Critical): canh 1 co `\n` THAT giua prompt (mo phong du lieu cu — ghi
+    /// thang qua SQL, BO QUA `ScriptRepo::replace_scenes` (da tu chuan hoa luc ghi) — giong dung
+    /// nhap legacy R5, khong qua `replace_scenes`) — `run_script` PHAI van chuan hoa luc DOC (xem
+    /// `normalize_prompt_line`) nen KHONG bi tach thanh 2 `VideoJob`: van dung 3 canh -> 3 task, moi
+    /// canh anh xa DUNG `scene_id` -> `task_id` (canh 2/3 KHONG bi lech du canh 1 "bat thuong").
+    #[tokio::test]
+    async fn canh_co_xuong_dong_that_van_map_dung_3_task_khong_lech() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("src.mp4");
+        std::fs::write(&src, b"fake-mp4").unwrap();
+        let (_dir, engine, db) =
+            build_engine(&["acc1", "acc2", "acc3"], happy_steps(3, &src)).await;
+        let scripts = ScriptRepo::new(&db);
+        let s = scripts.create("Demo", "").await.unwrap();
+        let scenes = scripts
+            .replace_scenes(
+                &s.id,
+                vec![scene_in("canh 1"), scene_in("canh 2"), scene_in("canh 3")],
+            )
+            .await
+            .unwrap();
+
+        // Ghi thang qua SQL — bo qua chuan hoa cua replace_scenes, mo phong du lieu cu/nhap legacy.
+        sqlx::query("UPDATE scenes SET prompt = ?2 WHERE id = ?1")
+            .bind(&scenes[0].id)
+            .bind("canh 1 dong mot\ndong hai lac vao")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        let report = engine
+            .run_script(&s.id, &[], "", &lvc_core::AppSettings::default())
+            .await
+            .unwrap();
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(
+            report.tasks.len(),
+            3,
+            "van dung 3 task, khong bi tach lam 4"
+        );
+
+        let tasks = TaskRepo::new(&db);
+        let after = scripts.list_scenes(&s.id).await.unwrap();
+        assert_eq!(after.len(), 3, "khong sinh canh ma nao");
+        for (i, scene) in after.iter().enumerate() {
+            let mapped = report
+                .tasks
+                .iter()
+                .find(|t| t.scene_id == scene.id)
+                .unwrap_or_else(|| panic!("canh {} (idx {}) phai co task", scene.id, scene.idx));
+            let row = wait_task_done(&tasks, &mapped.task_id).await;
+            assert_eq!(
+                row.scene_index,
+                Some(i64::try_from(i + 1).unwrap()),
+                "canh idx={} phai map dung scene_index, khong bi lech do canh 1 co xuong dong",
+                scene.idx
+            );
+        }
+        // Chuan hoa luc doc: prompt gui di khong con ky tu xuong dong that.
+        let scene1_task = &report
+            .tasks
+            .iter()
+            .find(|t| t.scene_id == scenes[0].id)
+            .unwrap()
+            .task_id;
+        let row1 = tasks.get(scene1_task).await.unwrap().unwrap();
+        assert_eq!(row1.prompt, "canh 1 dong mot dong hai lac vao");
     }
 
     #[tokio::test]

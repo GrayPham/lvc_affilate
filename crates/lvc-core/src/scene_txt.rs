@@ -27,6 +27,35 @@ fn escape(s: &str) -> String {
     s.replace('|', "\\|")
 }
 
+/// Thay MOI xuong dong that (`\r\n`/`\r`/`\n`) bang MOT dau cach, roi trim hai dau — dam bao MOT
+/// prompt LUON la DUNG MOT dong TXT. CHI dong toi ky tu xuong dong: khoang trang khac (dau cach,
+/// tab, nhieu dau cach lien tiep...) giu NGUYEN TUNG BYTE — day KHONG phai ham "don dep" chung
+/// chung, chi rieng loai bo ky tu gay sai lech so dong TXT.
+///
+/// Fix-round 1 (P3c Task 1, C1 — Critical, sua lai theo phat hien proptest
+/// `crates/lvc-core/tests/round_trip.rs`): ban dau dung `split_whitespace().join(" ")` — gop LUON
+/// ca cac day dau cach thuong (khong lien quan xuong dong) thanh mot dau cach, lam vo bat bien
+/// `format_txt(parse_txt(x)) == x` cho prompt hop le co nhieu dau cach lien tiep. Sua: CHI thay the
+/// `\r\n` (mot cap) / `\r` don / `\n` don — moi lan xuat hien la MOT dau cach (khong gop nhieu
+/// xuong dong lien tiep thanh mot).
+///
+/// Mot ky tu xuong dong that con lai trong prompt lam `parse_txt`'s `str::lines()` (goi qua
+/// [`parse_lines_raw`]) hieu nham la ranh gioi giua HAI canh, tach MOT canh logic thanh NHIEU dong
+/// TXT — pha vo bat bien "N canh -> N dong TXT -> N job video" ma
+/// `lvc_engine::scripts::run_script` dua vao de anh xa `scene_id -> task_id` theo `scene_index`
+/// (xem doc do). Dung boi CA [`format_txt`] (phong thu — bat ky nguon `Scene` nao, khong chi kich
+/// ban) LAN `lvc_store::scripts::ScriptRepo::replace_scenes`/`lvc_engine::scripts::run_script`
+/// (chuan hoa luc ghi VA luc doc — du lieu cu ghi truoc ban sua nay, hoac nhap legacy R5 ghi thang
+/// khong qua `replace_scenes`, van co the con `\n` that trong cot `prompt`).
+#[must_use]
+pub fn normalize_prompt_line(prompt: &str) -> String {
+    prompt
+        .replace("\r\n", " ")
+        .replace(['\r', '\n'], " ")
+        .trim()
+        .to_string()
+}
+
 /// Phân tích MỘT dòng cú pháp TXT (`prompt | key=value | …`) thành `RawScene` CHƯA chuẩn
 /// hoá — tách khỏi `parse_txt` để `graph::plan` (Task 2, spec §4.3) dùng lại đúng nguyên
 /// cú pháp pipe/escape khi cần hoãn việc điền mặc định tới lúc biết node Tạo video nào
@@ -120,11 +149,15 @@ pub(crate) fn parse_lines_raw(text: &str) -> Result<Vec<(usize, RawScene)>, Scen
 /// hành vi gốc, không phải lỗi mới; bộ điều khiển đã quyết định không thêm ký
 /// tự thoát `\#` vì sẽ làm hỏng file TXT của bản Python. Người gọi không được
 /// dựa vào việc round-trip cho prompt dạng này.
+///
+/// Fix-round 1 (C1): `s.prompt` luon di qua [`normalize_prompt_line`] TRUOC — dam bao KHONG BAO
+/// GIO co ky tu xuong dong that trong dong TXT ghi ra, du `Scene` truyen vao lay tu dau (`format_txt(
+/// parse_txt(x))` khong bao gio doi so dong, xem test `format_txt_khong_bao_gio_doi_so_dong_du_prompt_co_xuong_dong`).
 #[must_use]
 pub fn format_txt(scenes: &[Scene]) -> String {
     let mut lines = Vec::with_capacity(scenes.len());
     for s in scenes {
-        let mut parts = vec![escape(&s.prompt)];
+        let mut parts = vec![escape(&normalize_prompt_line(&s.prompt))];
         if s.ratio != crate::Ratio::default() {
             parts.push(format!("ratio={}", s.ratio.as_str()));
         }
@@ -240,6 +273,97 @@ mod tests {
         let original = parse_txt(r"a \| b | mode=pro", &Limits::default()).unwrap();
         let round = parse_txt(&format_txt(&original), &Limits::default()).unwrap();
         assert_eq!(original, round);
+    }
+
+    /// Fix-round 1 (sua lai theo phat hien tu `tests/round_trip.rs` proptest): CHI xuong dong that
+    /// moi bi thay bang dau cach — dau cach thuong (ke ca nhieu dau cach lien tiep) PHAI giu
+    /// NGUYEN, khong duoc gop lai. Ghim rieng de khong tai dien loi ban dau (dung
+    /// `split_whitespace().join(" ")` gop luon ca day dau cach thuong).
+    #[test]
+    fn normalize_prompt_line_khong_dung_toi_dau_cach_thuong() {
+        assert_eq!(
+            normalize_prompt_line("A  a"),
+            "A  a",
+            "hai dau cach lien tiep (khong lien quan xuong dong) phai giu nguyen"
+        );
+        assert_eq!(
+            normalize_prompt_line("mot   nhieu    dau cach"),
+            "mot   nhieu    dau cach"
+        );
+        // Xuong dong VAN bi thay — chi rieng no.
+        assert_eq!(normalize_prompt_line("a\nb"), "a b");
+    }
+
+    /// Fix-round 1 (P3c Task 1, C1 — Critical): mot Scene co `\n` that GIUA prompt (vd nguoi dung
+    /// dan van ban nhieu dong vao o prompt cua kich ban) PHAI van ra DUNG MOT dong TXT — neu khong,
+    /// `parse_lines_raw`/`parse_txt` (dung `str::lines()`) se tach MOT canh thanh HAI, lam sai lech
+    /// map `scene_index -> task_id` (xem `lvc_engine::scripts::run_script`).
+    #[test]
+    fn format_txt_khong_bao_gio_doi_so_dong_du_prompt_co_xuong_dong() {
+        let scene = Scene {
+            prompt: "dong mot\ndong hai\r\ndong ba\rdong bon".to_string(),
+            ratio: Ratio::default(),
+            duration: DEFAULT_DURATION,
+            model: Model::default(),
+            mode: Mode::default(),
+            logo: LogoMode::default(),
+            reference_images: Vec::new(),
+            account: String::new(),
+        };
+        let text = format_txt(std::slice::from_ref(&scene));
+        assert_eq!(
+            text.lines().count(),
+            1,
+            "mot Scene phai luon ra DUNG mot dong TXT: {text:?}"
+        );
+        assert_eq!(text, "dong mot dong hai dong ba dong bon\n");
+
+        // format_txt(parse_txt(x)) khong bao gio doi so dong — bat bien "N canh -> N dong TXT".
+        let back = parse_txt(&text, &Limits::default()).unwrap();
+        assert_eq!(back.len(), 1, "phai van la DUNG mot canh sau khi parse lai");
+    }
+
+    /// Bat bien tong quat hon (nhieu canh, canh giua co xuong dong) — so dong TXT/so canh khop
+    /// nhau TRUOC va SAU mot vong `format_txt` -> `parse_txt`.
+    #[test]
+    fn format_txt_parse_txt_giu_dung_so_canh_du_mot_canh_co_xuong_dong() {
+        let scenes = vec![
+            Scene {
+                prompt: "canh mot".to_string(),
+                ratio: Ratio::default(),
+                duration: DEFAULT_DURATION,
+                model: Model::default(),
+                mode: Mode::default(),
+                logo: LogoMode::default(),
+                reference_images: Vec::new(),
+                account: String::new(),
+            },
+            Scene {
+                prompt: "canh hai\ndong phu cua canh hai".to_string(),
+                ratio: Ratio::default(),
+                duration: DEFAULT_DURATION,
+                model: Model::default(),
+                mode: Mode::default(),
+                logo: LogoMode::default(),
+                reference_images: Vec::new(),
+                account: String::new(),
+            },
+            Scene {
+                prompt: "canh ba".to_string(),
+                ratio: Ratio::default(),
+                duration: DEFAULT_DURATION,
+                model: Model::default(),
+                mode: Mode::default(),
+                logo: LogoMode::default(),
+                reference_images: Vec::new(),
+                account: String::new(),
+            },
+        ];
+        let text = format_txt(&scenes);
+        assert_eq!(text.lines().count(), 3, "{text:?}");
+        let back = parse_txt(&text, &Limits::default()).unwrap();
+        assert_eq!(back.len(), 3);
+        assert_eq!(back[1].prompt, "canh hai dong phu cua canh hai");
     }
 
     #[test]

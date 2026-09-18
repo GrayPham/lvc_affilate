@@ -197,10 +197,13 @@ pub async fn run_start_impl<D: BrowserDriver + 'static>(
     workflow_id: &str,
     graph: &Graph,
 ) -> Result<RunInfo, IpcError> {
+    // I1 (fix-round 1, P3c Task 1): `..` bo qua `tasks_ready` (moi, `lvc_engine::scripts::
+    // run_script` dung, `run_start`/UI workflow thuong khong can).
     let RunHandle {
         run_id,
         token,
         join,
+        ..
     } = ctx
         .engine
         .run_graph(workflow_id, graph, noop_hooks_factory())

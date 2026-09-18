@@ -472,6 +472,12 @@ impl ScriptRepo {
             }
 
             let refs = serde_json::to_string(&it.refs).unwrap_or_else(|_| "[]".to_string());
+            // Fix-round 1 (C1 — Critical): gop moi xuong dong that (`\r\n`/`\r`/`\n`) + khoang
+            // trang quanh no thanh MOT dau cach, trim — chuan hoa NGAY LUC GHI (bo sung phong thu
+            // o `lvc_engine::scripts::run_script` khi DOC, xem doc `normalize_prompt_line`).
+            // KHONG tu choi/bao loi o day (`ScriptRepo` khong validate gia tri, xem doc dau file)
+            // — rong sau chuan hoa van luu duoc, `SCENE_EMPTY` la viec cua `run_script` luc CHAY.
+            let prompt = lvc_core::normalize_prompt_line(&it.prompt);
             if let Some(id) = existing_id {
                 sqlx::query(
                     "UPDATE scenes SET idx=?2,prompt=?3,ratio=?4,duration=?5,model=?6,mode=?7,\
@@ -479,7 +485,7 @@ impl ScriptRepo {
                 )
                 .bind(&id)
                 .bind(idx)
-                .bind(&it.prompt)
+                .bind(&prompt)
                 .bind(it.ratio.as_deref())
                 .bind(it.duration)
                 .bind(it.model.as_deref())
@@ -501,7 +507,7 @@ impl ScriptRepo {
                 .bind(&id)
                 .bind(script_id)
                 .bind(idx)
-                .bind(&it.prompt)
+                .bind(&prompt)
                 .bind(it.ratio.as_deref())
                 .bind(it.duration)
                 .bind(it.model.as_deref())
@@ -712,6 +718,36 @@ mod tests {
         let single = repo.meta_for(&s.id).await.unwrap().unwrap();
         assert_eq!(single, *m);
         assert!(repo.meta_for("khong-ton-tai").await.unwrap().is_none());
+    }
+
+    /// Fix-round 1 (C1 — Critical): `\r\n`/`\r`/`\n` that trong prompt phai bi gop thanh MOT dau
+    /// cach NGAY LUC GHI — `scenes.prompt` khong bao gio duoc luu con xuong dong that (xem doc
+    /// `normalize_prompt_line`, `lvc_core::scene_txt`).
+    #[tokio::test]
+    async fn replace_scenes_gop_xuong_dong_that_trong_prompt_thanh_dau_cach() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = ScriptRepo::new(&db);
+        let s = repo.create("Demo", "").await.unwrap();
+
+        let saved = repo
+            .replace_scenes(
+                &s.id,
+                vec![scene_in(None, "dong mot\ndong hai\r\ndong ba\rdong bon")],
+            )
+            .await
+            .unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].prompt, "dong mot dong hai dong ba dong bon");
+
+        // Cap nhat lai (UPDATE, khong phai INSERT) mot canh da co id cung phai chuan hoa.
+        let updated = repo
+            .replace_scenes(
+                &s.id,
+                vec![scene_in(Some(&saved[0].id), "sua lai\ncon nhieu dong")],
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated[0].prompt, "sua lai con nhieu dong");
     }
 
     #[tokio::test]
