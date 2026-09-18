@@ -4,10 +4,12 @@
 
 mod edge;
 mod node;
+mod plan;
 mod validate;
 
 pub use edge::Edge;
 pub use node::{Node, NodeKind, PortSpec, PortType};
+pub use plan::{RunPlan, SaveJob, Step, VideoJob, plan};
 pub use validate::{GraphError, topo_order, validate};
 
 use serde::{Deserialize, Serialize};

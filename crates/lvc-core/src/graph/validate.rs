@@ -40,6 +40,25 @@ pub enum GraphError {
     Empty,
     #[error("cong don {port} tren node {node} nhan qua 1 canh")]
     MultipleInputsOnSinglePort { node: String, port: String },
+    // Hai bien duoi day KHONG do validate() sinh ra — plan() (Task 2, spec §4.3) dung
+    // chung enum GraphError de UI xu ly mot kieu loi duy nhat cho ca kiem hop le lan lap
+    // ke hoach chay.
+    /// `SceneError` tu `bulk_scenes`/dòng TXT khi map Prompt → cảnh (message = `SceneError` Display).
+    #[error("node {node}: {message}")]
+    Scene {
+        node: String,
+        line: Option<usize>,
+        message: String,
+    },
+    /// Tổng ảnh tham chiếu (cổng `refs` ∪ TXT `refs=`, đã khử trùng) của một cảnh vượt
+    /// `Limits.reference_image_max_count`.
+    #[error("node {node} canh {scene_index}: qua nhieu anh tham chieu ({count} > {max})")]
+    TooManyRefs {
+        node: String,
+        scene_index: u32,
+        count: usize,
+        max: usize,
+    },
 }
 
 /// Kiểm hợp lệ toàn bộ đồ thị: id node không trùng, cạnh trỏ tới node/cổng tồn tại,

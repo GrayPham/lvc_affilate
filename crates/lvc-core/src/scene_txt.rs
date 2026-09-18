@@ -27,6 +27,45 @@ fn escape(s: &str) -> String {
     s.replace('|', "\\|")
 }
 
+/// Phân tích MỘT dòng cú pháp TXT (`prompt | key=value | …`) thành `RawScene` CHƯA chuẩn
+/// hoá — tách khỏi `parse_txt` để `graph::plan` (Task 2, spec §4.3) dùng lại đúng nguyên
+/// cú pháp pipe/escape khi cần hoãn việc điền mặc định tới lúc biết node Tạo video nào
+/// đang tiêu thụ dòng này (mặc định của node đó, không phải mặc định chung ở đây).
+///
+/// # Errors
+/// `CoreError::ExpectedKeyValue` / `CoreError::UnknownKey` khi cú pháp `key=value` sai.
+pub(crate) fn parse_line(line: &str) -> Result<RawScene, CoreError> {
+    let parts = split_unescaped_pipe(line);
+    let mut scene = RawScene {
+        prompt: Some(unescape(parts[0].trim())),
+        ..RawScene::default()
+    };
+    for part in &parts[1..] {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = part.split_once('=') else {
+            return Err(CoreError::ExpectedKeyValue(part.to_string()));
+        };
+        let key = key.trim().to_lowercase();
+        let value = unescape(value.trim());
+        match key.as_str() {
+            "ratio" => scene.ratio = Some(value),
+            "dur" | "duration" => scene.duration = Some(value),
+            "model" => scene.model = Some(value),
+            "mode" => scene.mode = Some(value),
+            "logo" => scene.logo = Some(value),
+            "ref" | "refs" => {
+                scene.reference_images = Some(value.split(',').map(str::to_string).collect());
+            }
+            "acc" | "account" => scene.account = Some(value),
+            _ => return Err(CoreError::UnknownKey(key)),
+        }
+    }
+    Ok(scene)
+}
+
 /// TXT → danh sách cảnh đã chuẩn hoá.
 ///
 /// # Errors
@@ -39,37 +78,7 @@ pub fn parse_txt(text: &str, limits: &Limits) -> Result<Vec<Scene>, SceneError> 
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let parts = split_unescaped_pipe(line);
-        let mut scene = RawScene {
-            prompt: Some(unescape(parts[0].trim())),
-            ..RawScene::default()
-        };
-        for part in &parts[1..] {
-            let part = part.trim();
-            if part.is_empty() {
-                continue;
-            }
-            let Some((key, value)) = part.split_once('=') else {
-                return Err(SceneError::new(
-                    Some(no),
-                    CoreError::ExpectedKeyValue(part.to_string()),
-                ));
-            };
-            let key = key.trim().to_lowercase();
-            let value = unescape(value.trim());
-            match key.as_str() {
-                "ratio" => scene.ratio = Some(value),
-                "dur" | "duration" => scene.duration = Some(value),
-                "model" => scene.model = Some(value),
-                "mode" => scene.mode = Some(value),
-                "logo" => scene.logo = Some(value),
-                "ref" | "refs" => {
-                    scene.reference_images = Some(value.split(',').map(str::to_string).collect());
-                }
-                "acc" | "account" => scene.account = Some(value),
-                _ => return Err(SceneError::new(Some(no), CoreError::UnknownKey(key))),
-            }
-        }
+        let scene = parse_line(line).map_err(|k| SceneError::new(Some(no), k))?;
         scenes.push(Scene::normalize(&scene, limits, Some(no))?);
         if scenes.len() > limits.batch_max_scenes {
             return Err(SceneError::new(
@@ -79,6 +88,27 @@ pub fn parse_txt(text: &str, limits: &Limits) -> Result<Vec<Scene>, SceneError> 
         }
     }
     Ok(scenes)
+}
+
+/// TXT nhiều dòng → `(số dòng 1-based, RawScene CHƯA chuẩn hoá)` — bỏ qua dòng trống/`#`
+/// giống `parse_txt`, nhưng KHÔNG gọi `Scene::normalize`: dùng bởi `graph::plan` (Task 2,
+/// spec §4.3) để hoãn áp mặc định tới khi biết node Tạo video nào đang tiêu thụ (mặc định
+/// của node đó thắng mặc định chung, còn giá trị TXT trên dòng thắng cả hai).
+///
+/// # Errors
+/// `SceneError` kèm số dòng khi cú pháp `key=value` sai ở dòng đó.
+pub(crate) fn parse_lines_raw(text: &str) -> Result<Vec<(usize, RawScene)>, SceneError> {
+    let mut out = Vec::new();
+    for (no, raw_line) in text.lines().enumerate() {
+        let no = no + 1;
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let scene = parse_line(line).map_err(|k| SceneError::new(Some(no), k))?;
+        out.push((no, scene));
+    }
+    Ok(out)
 }
 
 /// Ngược lại `parse_txt`: chỉ ghi khoá khác mặc định, theo thứ tự
