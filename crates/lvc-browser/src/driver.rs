@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use lvc_core::{BrowserKind, Cookie, ProxySpec, SessionState};
+use lvc_core::{BrowserKind, Cookie, Limits, ProxySpec, SessionState};
 
 use crate::BrowserError;
+use crate::dola::{ConversationId, DolaError, PollHooks, PollOpts, SubmitRequest, VideoArtifact};
 
 /// Mac dinh `launch_timeout` (chromiumoxide cho websocket URL cua tien trinh Chrome).
 pub const DEFAULT_LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
@@ -41,6 +42,11 @@ pub struct LaunchOpts {
     pub launch_timeout: Duration,
     /// Thoi gian toi da cho `goto()` (Page.navigate + cho load).
     pub navigation_timeout: Duration,
+    /// Task 14: thu muc ghi anh chan doan "khong tao hoi thoai" (`SubmitCtx::logs_dir`,
+    /// Python `Path("logs")` `:2591`) — duoc `ChromiumDriver::launch()` ep TUYET DOI (giong
+    /// `profile_dir`, ADR-R012) va luu vao `ChromiumSession` de `submit()` dung dung thu muc
+    /// da chuan bi, khong phu thuoc CWD tai thoi diem goi.
+    pub logs_dir: PathBuf,
 }
 
 impl Default for LaunchOpts {
@@ -54,6 +60,7 @@ impl Default for LaunchOpts {
             window_offscreen: false,
             launch_timeout: DEFAULT_LAUNCH_TIMEOUT,
             navigation_timeout: DEFAULT_NAVIGATION_TIMEOUT,
+            logs_dir: PathBuf::from("logs"),
         }
     }
 }
@@ -70,6 +77,7 @@ impl fmt::Debug for LaunchOpts {
             .field("window_offscreen", &self.window_offscreen)
             .field("launch_timeout", &self.launch_timeout)
             .field("navigation_timeout", &self.navigation_timeout)
+            .field("logs_dir", &self.logs_dir)
             .finish()
     }
 }
@@ -116,6 +124,44 @@ pub trait BrowserDriver: Send + Sync {
     /// # Errors
     /// Loi CDP khi dong trinh duyet.
     async fn close(&self, s: Self::Session) -> Result<(), BrowserError>;
+
+    /// Task 14 (P2): gui mot yeu cau video tren phien `s` — `ChromiumDriver` uy quyen cho
+    /// [`crate::dola::submit`] (qua `SubmitCtx { page, limits, logs_dir }`).
+    ///
+    /// # Errors
+    /// Xem [`crate::dola::submit`].
+    async fn submit(
+        &self,
+        s: &Self::Session,
+        req: &SubmitRequest,
+        limits: &Limits,
+    ) -> Result<ConversationId, DolaError>;
+
+    /// Task 14 (P2): vong poll + tai video cho `conv` — `ChromiumDriver` dung UA that cua phien
+    /// ([`Self::user_agent`]) va proxy da luu luc `launch()` de dung mot `DolaHttp` moi cho MOI
+    /// lan goi (khoi tao re — xem [`crate::dola::http::DolaHttp::new`]), roi uy quyen cho
+    /// [`crate::dola::poll_and_download`].
+    ///
+    /// # Errors
+    /// Xem [`crate::dola::poll_and_download`].
+    #[allow(clippy::too_many_arguments)] // khop chu ky ham thuan da chot o Task 11 (poll.rs)
+    async fn poll_and_download(
+        &self,
+        s: &Self::Session,
+        account: &str,
+        conv: &ConversationId,
+        out_dir: &Path,
+        opts: &PollOpts,
+        limits: &Limits,
+        hooks: &dyn PollHooks,
+    ) -> Result<VideoArtifact, DolaError>;
+
+    /// Task 14 (P2): UA THAT cua phien (`navigator.userAgent`) — dung de dung `DolaHttp` khop UA
+    /// trinh duyet (ruling R2, Task 10).
+    ///
+    /// # Errors
+    /// Loi CDP khi doc `navigator.userAgent`.
+    async fn user_agent(&self, s: &Self::Session) -> Result<String, BrowserError>;
 }
 
 #[cfg(test)]
@@ -133,6 +179,7 @@ mod tests {
         assert!(!d.window_offscreen);
         assert_eq!(d.launch_timeout, Duration::from_secs(20));
         assert_eq!(d.navigation_timeout, Duration::from_secs(60));
+        assert_eq!(d.logs_dir, PathBuf::from("logs"));
     }
 
     /// Ruling P2: `Debug` cua kieu chua bi mat phai che mat khau proxy.

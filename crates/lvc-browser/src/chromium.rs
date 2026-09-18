@@ -20,10 +20,13 @@ use chromiumoxide::listeners::EventStream;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
-use lvc_core::{Cookie, SessionState};
+use lvc_core::{Cookie, Limits, ProxySpec, SessionState};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::task::JoinHandle;
 
+use crate::dola::{
+    self, ConversationId, DolaError, DolaHttp, PollHooks, PollOpts, SubmitRequest, VideoArtifact,
+};
 use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, executable, ops, profile};
 
 /// Khop Python `browser.py` `LAUNCH_ARGS` tung chuoi.
@@ -154,6 +157,12 @@ pub struct ChromiumSession {
     pid: Option<u32>,
     /// Chep tu `LaunchOpts::navigation_timeout` luc launch de `goto()` dung.
     navigation_timeout: Duration,
+    /// Task 14: chep tu `LaunchOpts::proxy` luc launch — `poll_and_download()` dung lai de dung
+    /// `DolaHttp` cung proxy voi Chrome (khong doc lai `LaunchOpts` cua caller moi lan poll).
+    proxy: Option<ProxySpec>,
+    /// Task 14: chep TUYET DOI tu `LaunchOpts::logs_dir` luc launch (giong `profile_dir`,
+    /// ADR-R012) — `submit()` dung cho `SubmitCtx::logs_dir`.
+    logs_dir: PathBuf,
 }
 
 impl ChromiumSession {
@@ -621,10 +630,11 @@ async fn proxy_auth_loop(
 
 /// Ket qua buoc chuan bi THUAN cua `launch()` (khong ghi dia): config da build + duong dan
 /// profile TUYET DOI (dung cho `create_dir_all`/Preferences/lockfile, cung mot gia tri voi
-/// `--user-data-dir`).
+/// `--user-data-dir`) + duong dan logs TUYET DOI (Task 14: `SubmitCtx::logs_dir`).
 struct Prepared {
     config: BrowserConfig,
     profile_dir: PathBuf,
+    logs_dir: PathBuf,
 }
 
 impl ChromiumDriver {
@@ -644,6 +654,9 @@ impl ChromiumDriver {
         // TUYET DOI nap du 79/79. Playwright luon truyen tuyet doi; ta ep o day de khong
         // phu thuoc vao cwd cua tien trinh goi.
         let profile_dir = std::path::absolute(&opts.profile_dir)?;
+        // Task 14: cung mot ly do voi profile_dir — ep TUYET DOI ngay tu buoc chuan bi thuan de
+        // ChromiumSession::submit() ghi dung `logs/no_conv_*.png` bat ke CWD tai thoi diem goi.
+        let logs_dir = std::path::absolute(&opts.logs_dir)?;
         // Review P1 I-6 / ADR-R012: resolve TUONG MINH theo BrowserKind; loi ro neu khong thay.
         // KHONG bao gio de BrowserConfigBuilder::build() roi vao detection::default_executable()
         // (no se vo tinh mo Google Chrome tren profile Chromium 1234 cua patchright).
@@ -676,6 +689,7 @@ impl ChromiumDriver {
         Ok(Prepared {
             config,
             profile_dir,
+            logs_dir,
         })
     }
 }
@@ -689,6 +703,7 @@ impl BrowserDriver for ChromiumDriver {
         let Prepared {
             config,
             profile_dir,
+            logs_dir,
         } = Self::prepare(opts)?;
         tokio::fs::create_dir_all(&profile_dir).await?;
         profile::disable_session_restore(&profile_dir).await?;
@@ -798,6 +813,8 @@ impl BrowserDriver for ChromiumDriver {
             job,
             pid,
             navigation_timeout: opts.navigation_timeout,
+            proxy: opts.proxy.clone(),
+            logs_dir,
         })
     }
 
@@ -936,6 +953,44 @@ impl BrowserDriver for ChromiumDriver {
             shutdown(parts, CLOSE_WAIT).await;
         }
         Ok(())
+    }
+
+    /// Task 14: uy quyen thang cho [`dola::submit`] qua `SubmitCtx { page, limits, logs_dir }`
+    /// (`logs_dir` = duong dan TUYET DOI da chuan bi luc `launch()` — xem [`ChromiumSession`]).
+    async fn submit(
+        &self,
+        s: &ChromiumSession,
+        req: &SubmitRequest,
+        limits: &Limits,
+    ) -> Result<ConversationId, DolaError> {
+        let ctx = dola::SubmitCtx {
+            page: s.page(),
+            limits,
+            logs_dir: s.logs_dir.clone(),
+        };
+        dola::submit(&ctx, req).await
+    }
+
+    /// Task 14: dung `DolaHttp` MOI moi lan goi (re — xem [`DolaHttp::new`]) voi UA THAT cua
+    /// phien va proxy da luu luc `launch()`, roi uy quyen cho [`dola::poll_and_download`].
+    #[allow(clippy::too_many_arguments)] // khop chu ky ham thuan da chot o Task 11 (poll.rs)
+    async fn poll_and_download(
+        &self,
+        s: &ChromiumSession,
+        account: &str,
+        conv: &ConversationId,
+        out_dir: &Path,
+        opts: &PollOpts,
+        limits: &Limits,
+        hooks: &dyn PollHooks,
+    ) -> Result<VideoArtifact, DolaError> {
+        let ua = ops::user_agent(s.page()).await?;
+        let http = DolaHttp::new(ua, s.proxy.clone())?;
+        dola::poll_and_download(s.page(), &http, account, conv, out_dir, opts, limits, hooks).await
+    }
+
+    async fn user_agent(&self, s: &ChromiumSession) -> Result<String, BrowserError> {
+        ops::user_agent(s.page()).await
     }
 }
 
