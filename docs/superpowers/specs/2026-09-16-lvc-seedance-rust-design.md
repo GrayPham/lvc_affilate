@@ -559,6 +559,32 @@ tầng `a_bogus`/fetch hook hay không — cửa tử này chỉ chứng minh *p
 
 **Bác:** sidecar Python (đã bác lần 2 bởi người dùng với đầy đủ thông tin, 2026-09-17).
 
+### ADR-R013 — P2 nghiệm thu: 1 video thật end-to-end bằng chromiumoxide + reqwest (2026-09-18)
+
+**Đo thật:** 2026-09-18 05:09–05:13 UTC, `crates/lvc-engine/examples/gen_one.rs`, tài khoản
+`qertqegfdsacd` (bản copy profile, người dùng đồng ý), binary `ms-playwright/chromium-1234`,
+headed, fast / Seedance 2.0 / 10 s / 9:16, prompt tiếng Anh 41 ký tự, DB `lvc.db` mới.
+
+**Kết quả:** `downloads/qertqegfdsacd_20260918_051334.mp4` — 6 132 217 byte, H.264 720×1280
+10,04 s + AAC, **không logo** (bản raw qua `fallback_api` + `channel=no&codec_type=8&logo_type=unwatermarked`).
+Thời gian: mở Chrome → gửi → có `conversation_id` **16,3 s**; poll HTTP (`/im/chain/single`,
+cookie từ CDP, 5 s/lần) **205 s**; tải **0,7 s**; tổng **222 s**. Không captcha, không 401/403,
+không `RiskControl`; nút mode đọc được `高速`; DB: task `completed`, `usage(fast)=1`; Chrome
+đóng sạch (`closed=1`). Chạy đúng **1 lần** — thành công ngay lần đầu.
+
+**Quyết định:** P2 nghiệm thu. Kiến trúc CDP thô (chromiumoxide) + poll/tải bằng reqwest
+(ADR-R002 phương án A, ruling R2) **giữ nguyên** cho P3-P5. Không cần sidecar Python, không
+cần extension, không cần fork chromiumoxide (R11 chưa kích hoạt).
+
+**Ghi nhận:** (a) chromiumoxide 0.9 cảnh báo `WS Invalid message` 309 lần/video — event CDP
+mới của Chrome 151 mà crate chưa model; vô hại; policy log nối thêm
+`chromiumoxide::handler=error`. (b) Chưa đo: pro/pro_max/agent, ảnh tham chiếu, 15/30 s hook,
+proxy thật, captcha — mỗi thứ có smoke trên fixture nhưng chưa có bằng chứng Dola thật; đo
+dần trong P3 khi UI cho phép chạy từng loại. (c) Poll bằng reqwest với UA thật của browser
+được Dola chấp nhận (không cần `POLL_JS`).
+
+**Bác:** giữ 20 s chờ captcha cố định như Python (R3 đã bỏ); tạm dừng để đo thêm trước P3.
+
 ## 14. Câu hỏi còn mở
 
 1. **Di trú**: có chạy song song bản Python và bản Rust một thời gian không, hay cắt hẳn?
