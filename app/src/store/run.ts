@@ -1,9 +1,11 @@
-// Store zustand cho MOT run dang chay tren canvas (Task 12) — nghe `engine://event` qua
-// `src/ipc/events.ts::listenEngine` (Workflow.tsx goi `ingest` trong handler). Tach rieng ham
+// Store zustand cho MOT run dang chay (Task 12) — nghe `engine://event` qua
+// `src/store/engine_bridge.ts` (dang ky MOT LAN cho ca vong doi app, xem doc file do — KHONG con
+// dang ky tu Workflow.tsx, review fix-round 1 C2: tab nao cung unmount Workflow.tsx khi doi tab,
+// dang ky trong do se mat su kien, ke ca `run_done` ket thuc mot lan chay). Tach rieng ham
 // `applyEvent` THUAN (khong phu thuoc zustand) de test duoc doc lap (`tests/run_reducer.test.ts`)
 // — day la logic dung nhat de kiem: thu tu su kien, dem done/ok/failed, trang thai ket thuc.
 import { create } from "zustand";
-import type { EngineEvent } from "../ipc/types";
+import type { EngineEvent, RunRow, TaskDto } from "../ipc/types";
 
 /** Trang thai mot task (canh) suy ra tu chuoi `task_stage`/`task_done`/`task_failed`. */
 export interface TaskRunState {
@@ -46,28 +48,56 @@ export const EMPTY_RUN_STATE: RunState = {
 };
 
 /**
- * Reducer thuan: `state` sau khi ap dung `event`. KHONG loc theo `runId` — Workflow.tsx chi
- * `ingest` khi da co run dang mo (goi `beginRun` truoc), va engine (Task 4-7) chi phat su kien
- * cua run/task thuoc phien hien tai qua kenh broadcast dung chung; loc them o day la thua so voi
- * nguon that (lvc-engine).
+ * Gioi han `RunState.events` (review fix-round 1 M1: nhat ky chi phuc vu test/debug, khong doc
+ * boi UI nao trong diff nay — nhung van cap thay vi bo han de con dung duoc neu sau nay can) —
+ * giu 500 su kien GAN NHAT, bo cu nhat.
+ */
+const MAX_EVENTS = 500;
+
+function appendEvent(events: readonly EngineEvent[], event: EngineEvent): EngineEvent[] {
+  const next = [...events, event];
+  return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
+}
+
+/**
+ * Reducer thuan: `state` sau khi ap dung `event`.
+ *
+ * Fix-round 1 (review C1): `node_state`/`run_done` mang truong `runId` — neu store DANG theo doi
+ * mot run khac (`state.runId` khac null VA khac `event.runId`), su kien nay thuoc mot run KHAC
+ * (vd mot run mo coi tu "Mới"/"Mở" cu, van con phat tren CUNG kenh broadcast dung chung — xem
+ * `crates/lvc-engine/src/events.rs`) — BO QUA hoan toan (tra nguyen `state`, khong hijack
+ * `runId`/`status`). Khi `state.runId` con `null` (truoc khi `beginRun` kip goi, vd su kien
+ * "queued" dau tien phat trong luc `run_start` con dang await), van cho nhan (adopt) nhu cu — do
+ * la truong hop hop le, khong phai run la.
+ *
+ * `task_stage`/`task_done`/`task_failed` KHONG mang `runId` (chi `taskId`) nen khong loc duoc
+ * theo run o day; ranh gioi run cho nhom su kien nay dua vao UI khong con giu `runId` cua run cu
+ * (RunBar fix-round 1: "Mới"/"Mở" khi dang co run active se hoi truoc, KHONG tu clearRun ngam).
  */
 export function applyEvent(state: RunState, event: EngineEvent): RunState {
-  const events = [...state.events, event];
-
   switch (event.type) {
     case "task_stage": {
       const prev = state.tasks[event.taskId];
+      // Fix-round 1 (review I2): buoc "launching" mang ten tai khoan trong `detail`
+      // (crates/lvc-engine/src/events.rs, generate.rs ~1655) — day la nguon DUY NHAT co account
+      // TRONG LUC dang chay (task_done moi co field `account` rieng, nhung chi toi khi xong).
+      const account =
+        event.stage === "launching" && event.detail ? event.detail : (prev?.account ?? null);
       const next: TaskRunState = {
         taskId: event.taskId,
         status: "running",
         stage: event.stage,
         detail: event.detail,
         elapsedMs: event.elapsedMs,
-        account: prev?.account ?? null,
+        account,
         failureCode: null,
         error: null,
       };
-      return { ...state, events, tasks: { ...state.tasks, [event.taskId]: next } };
+      return {
+        ...state,
+        events: appendEvent(state.events, event),
+        tasks: { ...state.tasks, [event.taskId]: next },
+      };
     }
     case "task_done": {
       const prev = state.tasks[event.taskId];
@@ -81,7 +111,11 @@ export function applyEvent(state: RunState, event: EngineEvent): RunState {
         failureCode: null,
         error: null,
       };
-      return { ...state, events, tasks: { ...state.tasks, [event.taskId]: next } };
+      return {
+        ...state,
+        events: appendEvent(state.events, event),
+        tasks: { ...state.tasks, [event.taskId]: next },
+      };
     }
     case "task_failed": {
       const prev = state.tasks[event.taskId];
@@ -95,9 +129,16 @@ export function applyEvent(state: RunState, event: EngineEvent): RunState {
         failureCode: event.code,
         error: event.message,
       };
-      return { ...state, events, tasks: { ...state.tasks, [event.taskId]: next } };
+      return {
+        ...state,
+        events: appendEvent(state.events, event),
+        tasks: { ...state.tasks, [event.taskId]: next },
+      };
     }
     case "node_state": {
+      if (state.runId !== null && state.runId !== event.runId) {
+        return state;
+      }
       const next: NodeRunState = {
         nodeId: event.nodeId,
         state: event.state,
@@ -108,15 +149,73 @@ export function applyEvent(state: RunState, event: EngineEvent): RunState {
       };
       return {
         ...state,
-        events,
+        events: appendEvent(state.events, event),
         runId: state.runId ?? event.runId,
         nodes: { ...state.nodes, [event.nodeId]: next },
       };
     }
     case "run_done": {
-      return { ...state, events, runId: event.runId, status: event.status };
+      if (state.runId !== null && state.runId !== event.runId) {
+        return state;
+      }
+      return { ...state, events: appendEvent(state.events, event), runId: event.runId, status: event.status };
     }
   }
+}
+
+/**
+ * Dong bo `status` cuc bo tu mot `RunRow` (bang `runs`, doc qua `run_list`) — dung khi nghi ngo
+ * da bo lo `run_done` (review fix-round 1 C2: tab Workflow bi unmount dung luc engine phat su
+ * kien). Chi ap dung khi `row.id` KHOP `state.runId` HIEN TAI (khong duoc doi run dang theo doi)
+ * va `row.status` da la trang thai KET THUC (khac "running") — neu khong thi tra nguyen `state`.
+ */
+export function reconcileFromRunRow(state: RunState, row: RunRow): RunState {
+  if (state.runId !== row.id) {
+    return state;
+  }
+  if (row.status === "running") {
+    return state;
+  }
+  if (state.status === row.status) {
+    return state;
+  }
+  return { ...state, status: row.status };
+}
+
+/**
+ * Dong bo tung dong `tasks` (`TaskDto`, doc qua `task_list`) vao `state.tasks` — bo sung/nang cap
+ * nhung task CHUA co trang thai KET THUC cuc bo (khong ghi de mot su kien song "done"/"failed" da
+ * toi truoc do bang mot ban chup DB co the cu hon do do tre round-trip). Chi xet dto co
+ * `runId === state.runId` (an toan them, phong khi gian tiep truyen nham dto cua run khac).
+ */
+export function reconcileTasksFromDb(state: RunState, dtos: readonly TaskDto[]): RunState {
+  let tasks = state.tasks;
+  for (const dto of dtos) {
+    if (dto.runId !== state.runId) {
+      continue;
+    }
+    const prev = tasks[dto.id];
+    if (prev && (prev.status === "done" || prev.status === "failed")) {
+      continue;
+    }
+    const status: TaskRunState["status"] =
+      dto.status === "completed" ? "done" : dto.status === "failed" ? "failed" : "running";
+    const next: TaskRunState = {
+      taskId: dto.id,
+      status,
+      stage: dto.stage,
+      detail: prev?.detail ?? null,
+      elapsedMs: prev?.elapsedMs ?? 0,
+      account: dto.account ?? prev?.account ?? null,
+      failureCode: dto.failureCode,
+      error: dto.error,
+    };
+    if (tasks === state.tasks) {
+      tasks = { ...state.tasks };
+    }
+    tasks[dto.id] = next;
+  }
+  return tasks === state.tasks ? state : { ...state, tasks };
 }
 
 interface RunStore extends RunState {
@@ -126,13 +225,16 @@ interface RunStore extends RunState {
    * `runId` truoc — xem `applyEvent` nhanh `node_state`). Goi SAU `clearRun()` + `runStart()`.
    */
   beginRun: (runId: string) => void;
-  /** Nhan mot `EngineEvent` (goi trong handler `listenEngine`). */
+  /** Nhan mot `EngineEvent` (goi trong `engine_bridge.ts`). */
   ingest: (event: EngineEvent) => void;
   /**
-   * Ve trang thai rong — goi TRUOC khi goi `runStart` (khong phai sau) de khong co khoang trong
-   * nao ma su kien cua run MOI bi ghi vao roi lai bi xoa boi lan reset sau.
+   * Ve trang thai rong — CHI goi khi KHONG con run nao dang active can theo doi (xem RunBar
+   * fix-round 1: "Mới"/"Mở" trong luc co run active se hoi Huỷ truoc, KHONG tu clearRun ngam de
+   * run mo coi van con "cancellable" — review C1).
    */
   clearRun: () => void;
+  /** Dong bo lai tu DB (`run_list`/`task_list`) — xem `reconcileFromRunRow`/`reconcileTasksFromDb`. */
+  reconcile: (row: RunRow | null, tasks: readonly TaskDto[]) => void;
 }
 
 export const useRunStore = create<RunStore>((set) => ({
@@ -140,4 +242,9 @@ export const useRunStore = create<RunStore>((set) => ({
   beginRun: (runId) => set((s) => ({ runId: s.runId ?? runId })),
   ingest: (event) => set((state) => applyEvent(state, event)),
   clearRun: () => set({ ...EMPTY_RUN_STATE }),
+  reconcile: (row, tasks) =>
+    set((s) => {
+      const afterRow = row ? reconcileFromRunRow(s, row) : s;
+      return reconcileTasksFromDb(afterRow, tasks);
+    }),
 }));

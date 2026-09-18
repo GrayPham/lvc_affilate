@@ -7,6 +7,7 @@ import { z } from "zod";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import { isIpcError, runCancel, runStart, workflowSave, workflowValidate } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import { GraphErrorSchema, type PlanSummary, type WorkflowDoc } from "../ipc/types";
 import { formatGraphError } from "../graph/errors";
 import WorkflowListModal from "./WorkflowListModal";
@@ -68,7 +69,7 @@ export default function RunBar() {
         }
       }
       setValidation(null);
-      setMessage(e instanceof Error ? e.message : String(e));
+      setMessage(errorText(e));
       return false;
     } finally {
       setBusy(false);
@@ -90,7 +91,7 @@ export default function RunBar() {
       const info = await runStart(workflowId, graph);
       beginRun(info.runId);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
+      setMessage(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -104,7 +105,7 @@ export default function RunBar() {
     try {
       await runCancel(runId);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
+      setMessage(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -124,32 +125,69 @@ export default function RunBar() {
       setWorkflowName(meta.name);
       setMessage(`Đã lưu "${meta.name}".`);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
+      setMessage(errorText(e));
     } finally {
       setBusy(false);
     }
   }
 
-  function handleNew(): void {
+  /**
+   * Fix-round 1 (review C1): "Mới"/"Mở" KHONG duoc tu clearRun() ngam khi dang co run active —
+   * run mo coi tu do se van tiep tuc chay/phat su kien tren engine (mot process-wide broadcast
+   * channel dung chung, khong tach rieng theo run), va khong con nut "Huỷ" nao con lai de goi
+   * `run_cancel`. Hoi truoc, cho phep Huỷ; neu nguoi dung dong y HOAC tu choi Huỷ nhung van muon
+   * tiep tuc, chi KHONG clearRun() — giu `runId` de con theo doi/Huỷ duoc toi khi that su nhan
+   * duoc `run_done` (store/run.ts, `applyEvent` fix-round 1 C1 da chan su kien cua run khac hijack
+   * lai `runId` nay). Tra `false` = nguoi dung huy thao tac (khong lam gi them).
+   */
+  async function confirmCancelIfRunning(): Promise<boolean> {
+    if (!running || !runId) {
+      return true;
+    }
+    const proceed = window.confirm(
+      `Đang có lần chạy (run ${runId}) chưa xong. Huỷ lần chạy này để tiếp tục?`,
+    );
+    if (!proceed) {
+      return false;
+    }
+    try {
+      await runCancel(runId);
+    } catch (e) {
+      setMessage(errorText(e));
+    }
+    return true;
+  }
+
+  async function handleNew(): Promise<void> {
+    if (!(await confirmCancelIfRunning())) {
+      return;
+    }
     if (nodes.length > 0 && !window.confirm("Tạo workflow mới? Canvas hiện tại sẽ bị xoá (nếu chưa lưu sẽ mất).")) {
       return;
     }
     resetGraph();
-    clearRun();
+    if (!running) {
+      clearRun();
+    }
     setWorkflowId(newEphemeralId());
     setWorkflowName("Workflow chưa đặt tên");
     setPlanSummary(null);
     setMessage(null);
   }
 
-  function handlePicked(doc: WorkflowDoc): void {
+  async function handlePicked(doc: WorkflowDoc): Promise<void> {
+    if (!(await confirmCancelIfRunning())) {
+      return;
+    }
     setShowOpen(false);
     loadGraph(doc.graph);
     setWorkflowId(doc.meta.id);
     setWorkflowName(doc.meta.name);
     setPlanSummary(null);
     setMessage(null);
-    clearRun();
+    if (!running) {
+      clearRun();
+    }
   }
 
   return (
@@ -203,7 +241,7 @@ export default function RunBar() {
           type="button"
           disabled={busy}
           className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
-          onClick={handleNew}
+          onClick={() => void handleNew()}
         >
           Mới
         </button>
@@ -234,7 +272,9 @@ export default function RunBar() {
         </ul>
       ) : null}
 
-      {showOpen ? <WorkflowListModal onClose={() => setShowOpen(false)} onPicked={handlePicked} /> : null}
+      {showOpen ? (
+        <WorkflowListModal onClose={() => setShowOpen(false)} onPicked={(doc) => void handlePicked(doc)} />
+      ) : null}
     </div>
   );
 }

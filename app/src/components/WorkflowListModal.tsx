@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { workflowGet, workflowList } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import type { WorkflowDoc, WorkflowMeta } from "../ipc/types";
 
 interface WorkflowListModalProps {
@@ -33,7 +34,7 @@ export default function WorkflowListModal({ onClose, onPicked }: WorkflowListMod
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
+          setError(errorText(e));
         }
       });
     return () => {
@@ -48,7 +49,7 @@ export default function WorkflowListModal({ onClose, onPicked }: WorkflowListMod
       const doc = await workflowGet(meta.id);
       onPicked(doc);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setLoadingId(null);
     }

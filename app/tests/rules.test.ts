@@ -124,4 +124,16 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
       isValidConnection({ source: "n1", sourceHandle: "bogus", target: "n1", targetHandle: "out" }, nodes, []),
     ).toBe(false);
   });
+
+  it("review fix-round 1 I3: tu noi mot node vao chinh no (source === target) bi tu choi", () => {
+    // RemoveLogo/EnsureH264: mot cong vao "in" va mot cong ra "out" CUNG kieu Video (node.rs
+    // VIDEO_POST_IN/VIDEO_POST_OUT) — ve kieu cong thi hop le, nhung la mot canh 1-node.
+    const nodes = [node("n1", "ensure_h264")];
+    const ok = isValidConnection(
+      { source: "n1", sourceHandle: "out", target: "n1", targetHandle: "in" },
+      nodes,
+      [],
+    );
+    expect(ok).toBe(false);
+  });
 });

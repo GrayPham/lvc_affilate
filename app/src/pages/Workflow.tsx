@@ -1,7 +1,13 @@
 // Trang Workflow (Task 12) — canvas React Flow that thay placeholder cua Task 11
 // (`WorkflowPage.tsx`, da xoa). Bo cuc: Palette (trai) + canvas (giua) + ProgressPanel (phai),
-// RunBar (tren cung). Nghe `engine://event` MOT lan duy nhat o day (khong o RunBar/ProgressPanel)
-// vi day la trang duy nhat can no dang mo — tranh dang ky nhieu listener trung nhau.
+// RunBar (tren cung).
+//
+// Fix-round 1 (review C2): kenh `engine://event` KHONG con dang ky o day — `App.tsx` chi render
+// `<ActivePage/>` cho tab dang mo nen doi sang tab khac se unmount trang nay hoan toan, huy dang
+// ky va lam mat su kien (ke ca `run_done`); dang ky that su nam o `store/engine_bridge.ts`, goi
+// mot lan tu `main.tsx`, song suot vong doi app. Trang nay chi con lo dong bo lai (reconcile)
+// trang thai run TU DB moi khi MO trang (xem effect ben duoi) — phong truong hop da bo lo
+// `run_done`/cac su kien `task_*` trong luc trang bi unmount.
 import { useCallback, useEffect, useRef } from "react";
 import type { DragEvent } from "react";
 import {
@@ -29,8 +35,17 @@ import { isValidConnection } from "../graph/rules";
 import type { AddableNodeKind } from "../graph/ports";
 import { loadPersistedGraph, useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
-import { listenEngine } from "../ipc/events";
+import { runList, taskList } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 
+// `NodeTypes` (`@xyflow/react`) la `Record<string, ComponentType<NodeProps & {data:any,
+// type:any}>>` — mot kieu DONG NHAT (`any` o hai truong) de chua nhieu component KHAC NHAU. Cac
+// component o day moi cai lai duoc go kieu HEP theo dung `NodeKind` cua no (vd
+// `NodeProps<PromptRFNode>`, xem `nodes/PromptNode.tsx`), nen TS khong tu suy duoc mot object
+// chua nhieu kieu he specific nhu vay la khop `NodeTypes` (bien phuong sai giua cac
+// `ComponentType` cu the va kieu `any` dong nhat) — ep kieu la cach lam chuan cua React Flow
+// trong chinh vi du/README cua ho khi dung custom node duoc go kieu rieng; giu `as unknown as
+// NodeTypes` (khong phai `any` bare) chu khong tach le tung entry vi khong lam gon hon.
 const nodeTypes: NodeTypes = {
   prompt: PromptNode,
   image_upload: ImageUploadNode,
@@ -63,7 +78,6 @@ function WorkflowCanvas() {
   const addNode = useGraphStore((s) => s.addNode);
   const setSelected = useGraphStore((s) => s.setSelected);
   const loadGraph = useGraphStore((s) => s.loadGraph);
-  const ingest = useRunStore((s) => s.ingest);
 
   const reactFlow = useReactFlow<RFNode, RFEdge>();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -78,29 +92,25 @@ function WorkflowCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Dang ky DUY NHAT mot lan cho ca vong doi trang — engine phat su kien cho MOI run dang chay
-  // (khong can dang ky lai theo runId), `ingest` tu route theo `type` cua tung EngineEvent.
+  // Fix-round 1 (review C2, phan 2): moi lan trang nay MO (mount) — kenh su kien that su nam o
+  // `store/engine_bridge.ts` (song suot app, xem doc dau file) — dong bo lai run dang theo doi
+  // (neu co) tu DB, phong truong hop da bo lo `run_done`/cac su kien `task_*` trong luc trang bi
+  // unmount (doi tab). Chi can khi con `runId` nhung `status` van `null` (chua biet ket thuc chua).
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-    listenEngine((event) => ingest(event))
-      .then((fn) => {
-        if (cancelled) {
-          fn();
-          return;
-        }
-        unlisten = fn;
+    const { runId, status } = useRunStore.getState();
+    if (!runId || status !== null) {
+      return;
+    }
+    Promise.all([runList(20), taskList(runId, 200)])
+      .then(([rows, tasks]) => {
+        const row = rows.find((r) => r.id === runId) ?? null;
+        useRunStore.getState().reconcile(row, tasks);
       })
       .catch((e: unknown) => {
-        // Ngoai cua so Tauri that (vd `pnpm dev` mo trong trinh duyet thuong de xem UI nhanh) —
-        // khong co kenh Tauri, bo qua thay vi lam vo trang.
-        console.warn("khong the lang nghe engine://event:", e);
+        console.warn("khong the dong bo lai trang thai run tu DB:", errorText(e));
       });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [ingest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes(DRAG_KIND_MIME)) {

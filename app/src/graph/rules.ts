@@ -73,6 +73,15 @@ export function isValidConnection(
   if (!sourceHandle || !targetHandle) {
     return false;
   }
+  // Fix-round 1 (review I3): tu noi mot node vao chinh no (vd RemoveLogo/EnsureH264 — ca hai deu
+  // Video "in"->"out", cung kieu) tao mot canh 1-node — Rust van bat duoc (nhu mot Cycle 1 node
+  // qua topo_order, xem validate.rs) nhung chi tren vong tron `workflow_validate`, khong o lop
+  // phan hoi tuc thi nay (muc dich cua mirror nay). Khong the xay ra qua Palette o P3 hom nay
+  // (SUPPORTED_IN_P3 khong co node nao vua co in vua co out cung PortType) nhung DisabledNode co
+  // the render lai mot workflow JSON P4 trong tuong lai — chan luon o day cho dung.
+  if (source === target) {
+    return false;
+  }
 
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);

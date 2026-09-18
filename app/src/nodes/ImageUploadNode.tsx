@@ -10,6 +10,7 @@ import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import { pickFiles } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import NodeShell from "./NodeShell";
 
 type ImageUploadKind = Extract<NodeKind, { kind: "image_upload" }>;
@@ -36,7 +37,7 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
       const merged = Array.from(new Set([...data.paths, ...picked]));
       updateNodeData(id, { ...data, paths: merged });
     } catch (e) {
-      setPickError(e instanceof Error ? e.message : String(e));
+      setPickError(errorText(e));
     }
   }
 

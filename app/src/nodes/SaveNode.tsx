@@ -11,6 +11,7 @@ import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import { pickDirectory } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import NodeShell from "./NodeShell";
 
 type SaveKind = Extract<NodeKind, { kind: "save" }>;
@@ -31,7 +32,7 @@ export default function SaveNode({ id, data, selected }: NodeProps<SaveRFNode>) 
       }
       updateNodeData(id, { ...data, out_dir: dir });
     } catch (e) {
-      setPickError(e instanceof Error ? e.message : String(e));
+      setPickError(errorText(e));
     }
   }
 

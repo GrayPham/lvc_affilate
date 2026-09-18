@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import { useRunStore } from "../store/run";
 import { taskList } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import type { TaskDto } from "../ipc/types";
 
 function formatElapsed(ms: number): string {
@@ -62,7 +63,7 @@ export default function ProgressPanel() {
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
+          setError(errorText(e));
         }
       });
     return () => {
