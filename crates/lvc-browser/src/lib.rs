@@ -3,7 +3,7 @@
 //!
 //! **Chinh sach log (P2):** KHONG bat `chromiumoxide` o muc `debug`/`trace` — crate do in nguyen
 //! payload CDP, gom ket qua `Network.getCookies` (gia tri cookie/sessionid) va URL co chu ky.
-//! P3 khi cai `tracing_subscriber` phai noi directive `chromiumoxide=warn` SAU directive cua
+//! P3 khi cai `tracing_subscriber` phai noi directive `chromiumoxide=warn,chromiumoxide::handler=error` SAU directive cua
 //! nguoi dung. Ma trong crate nay khong bao gio log gia tri cookie (chi ten) o bat ky muc nao.
 
 pub mod chromium;
