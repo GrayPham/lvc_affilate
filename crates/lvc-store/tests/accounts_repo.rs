@@ -1,12 +1,10 @@
-// Cac moc thoi gian (REAL) duoc ghi roi doc lai NGUYEN VAN (khong tinh toan trung gian) nen so
-// sanh f64 chinh xac la dung y — khong can epsilon.
-#![allow(
-    clippy::float_cmp,
-    reason = "ghi roi doc lai nguyen van cot REAL, khong co phep tinh trung gian"
-)]
-
 use lvc_core::Mode;
 use lvc_store::{AccountRepo, Db, SettingsRepo};
+
+/// So sanh moc thoi gian (cot REAL) — ghi roi doc lai nguyen van nen sai so < EPSILON.
+fn assert_f64(got: f64, want: f64) {
+    assert!((got - want).abs() < f64::EPSILON, "got {got}, want {want}");
+}
 
 #[tokio::test]
 async fn upsert_hai_lan_khong_nhan_ban() {
@@ -129,12 +127,12 @@ async fn get_tra_none_khi_thieu_va_du_cot_khi_co() {
     assert_eq!(row.name, "acc2");
     assert!(row.login_ok);
     assert!(row.created_at > 0.0);
-    assert_eq!(row.login_checked_at, 0.0);
+    assert_f64(row.login_checked_at, 0.0);
     assert_eq!(row.limit_reason, "");
     assert_eq!(row.quota_reason, "");
     assert_eq!(row.credit_balance, None);
-    assert_eq!(row.credit_checked_at, 0.0);
-    assert_eq!(row.logged_out_at, 0.0);
+    assert_f64(row.credit_checked_at, 0.0);
+    assert_f64(row.logged_out_at, 0.0);
     assert_eq!(row.auto_verify_state, "");
     assert_eq!(row.auto_verify_tries, 0);
 }
@@ -148,14 +146,14 @@ async fn set_login_ok_false_ghi_logged_out_at_true_xoa() {
     repo.set_login_ok("acc2", false, 1000.0).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
     assert!(!row.login_ok);
-    assert_eq!(row.login_checked_at, 1000.0);
-    assert_eq!(row.logged_out_at, 1000.0);
+    assert_f64(row.login_checked_at, 1000.0);
+    assert_f64(row.logged_out_at, 1000.0);
     // browser_pool.py:864-866 verify ok: login_ok=1, login_checked_at=now, logged_out_at=0
     repo.set_login_ok("acc2", true, 2000.0).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
     assert!(row.login_ok);
-    assert_eq!(row.login_checked_at, 2000.0);
-    assert_eq!(row.logged_out_at, 0.0);
+    assert_f64(row.login_checked_at, 2000.0);
+    assert_f64(row.logged_out_at, 0.0);
 }
 
 #[tokio::test]
@@ -180,7 +178,7 @@ async fn set_cooldown_until_ghi_moc() {
     repo.upsert("acc2").await.unwrap();
     repo.set_cooldown_until("acc2", 5000.5).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
-    assert_eq!(row.cooldown_until, 5000.5);
+    assert_f64(row.cooldown_until, 5000.5);
 }
 
 #[tokio::test]
@@ -192,7 +190,7 @@ async fn set_rate_limited_until_ghi_moc_va_ly_do() {
         .await
         .unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
-    assert_eq!(row.rate_limited_until, 7000.0);
+    assert_f64(row.rate_limited_until, 7000.0);
     assert_eq!(row.limit_reason, "daily limit");
 }
 
@@ -205,7 +203,7 @@ async fn set_quota_blocked_until_ghi_moc_va_ly_do() {
         .await
         .unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
-    assert_eq!(row.quota_blocked_until, 8000.0);
+    assert_f64(row.quota_blocked_until, 8000.0);
     assert_eq!(row.quota_reason, "insufficient credits");
 }
 
@@ -216,7 +214,7 @@ async fn touch_last_used_ghi_moc() {
     repo.upsert("acc2").await.unwrap();
     repo.touch_last_used("acc2", 123.25).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
-    assert_eq!(row.last_used_at, 123.25);
+    assert_f64(row.last_used_at, 123.25);
 }
 
 #[tokio::test]
@@ -229,12 +227,12 @@ async fn set_credit_balance_ghi_so_du_va_moc_kiem() {
         .unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
     assert_eq!(row.credit_balance, Some(1));
-    assert_eq!(row.credit_checked_at, 900.0);
+    assert_f64(row.credit_checked_at, 900.0);
     // browser_pool.py:893-897 _unblock_quota: credit_balance=NULL, credit_checked_at=0
     repo.set_credit_balance("acc2", None, 0.0).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
     assert_eq!(row.credit_balance, None);
-    assert_eq!(row.credit_checked_at, 0.0);
+    assert_f64(row.credit_checked_at, 0.0);
 }
 
 #[tokio::test]
@@ -303,18 +301,18 @@ async fn clear_expired_limits_chi_xoa_moc_da_qua() {
     assert_eq!(n, 1, "chi 1 dong bi cham");
 
     let row = repo.get("het_han").await.unwrap().unwrap();
-    assert_eq!(row.rate_limited_until, 0.0);
+    assert_f64(row.rate_limited_until, 0.0);
     assert_eq!(row.limit_reason, "");
-    assert_eq!(row.quota_blocked_until, 0.0);
+    assert_f64(row.quota_blocked_until, 0.0);
     assert_eq!(row.quota_reason, "");
-    assert_eq!(row.cooldown_until, 0.0);
+    assert_f64(row.cooldown_until, 0.0);
 
     let row = repo.get("con_han").await.unwrap().unwrap();
-    assert_eq!(row.rate_limited_until, 300.0);
+    assert_f64(row.rate_limited_until, 300.0);
     assert_eq!(row.limit_reason, "r2");
-    assert_eq!(row.quota_blocked_until, 300.0);
+    assert_f64(row.quota_blocked_until, 300.0);
     assert_eq!(row.quota_reason, "q2");
-    assert_eq!(row.cooldown_until, 300.0);
+    assert_f64(row.cooldown_until, 300.0);
 
     // goi lai khi khong con gi het han -> 0 dong
     assert_eq!(repo.clear_expired_limits(100.0).await.unwrap(), 0);
@@ -334,8 +332,8 @@ async fn clear_expired_limits_xoa_tung_cot_doc_lap() {
         .unwrap();
     assert_eq!(repo.clear_expired_limits(200.0).await.unwrap(), 1);
     let row = repo.get("acc2").await.unwrap().unwrap();
-    assert_eq!(row.rate_limited_until, 0.0);
+    assert_f64(row.rate_limited_until, 0.0);
     assert_eq!(row.limit_reason, "");
-    assert_eq!(row.quota_blocked_until, 300.0);
+    assert_f64(row.quota_blocked_until, 300.0);
     assert_eq!(row.quota_reason, "q");
 }
