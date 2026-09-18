@@ -143,17 +143,28 @@ async fn set_login_ok_false_ghi_logged_out_at_true_xoa() {
     let repo = AccountRepo::new(&db);
     repo.upsert("acc2").await.unwrap();
     // browser_pool.py:651-654 mark_logged_out: login_ok=0, login_checked_at=now, logged_out_at=now
+    // (KHONG dung den auto_verify_* — :663 ghi 'revoked' rieng sau do)
+    repo.set_auto_verify("acc2", "manual", 2).await.unwrap();
     repo.set_login_ok("acc2", false, 1000.0).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
     assert!(!row.login_ok);
     assert_f64(row.login_checked_at, 1000.0);
     assert_f64(row.logged_out_at, 1000.0);
-    // browser_pool.py:864-866 verify ok: login_ok=1, login_checked_at=now, logged_out_at=0
+    assert_eq!(row.auto_verify_state, "manual");
+    assert_eq!(row.auto_verify_tries, 2);
+    // browser_pool.py:864-866 verify ok / :590-593 clear_logged_out: login_ok=1,
+    // login_checked_at=now, logged_out_at=0, auto_verify_state='', auto_verify_tries=0
+    repo.set_auto_verify("acc2", "revoked", 0).await.unwrap();
     repo.set_login_ok("acc2", true, 2000.0).await.unwrap();
     let row = repo.get("acc2").await.unwrap().unwrap();
     assert!(row.login_ok);
     assert_f64(row.login_checked_at, 2000.0);
     assert_f64(row.logged_out_at, 0.0);
+    assert_eq!(
+        row.auto_verify_state, "",
+        "review T16 I1: verify ok phai xoa 'revoked'"
+    );
+    assert_eq!(row.auto_verify_tries, 0);
 }
 
 #[tokio::test]

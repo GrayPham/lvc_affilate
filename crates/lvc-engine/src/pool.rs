@@ -10,20 +10,27 @@
 //! KHONG doc dong ho; Task 17 truyen `SystemTime::now()`. Nho vay moi quy tac (Tokyo midnight,
 //! `PICK_RESERVE`, cooldown) test duoc ma khong cho that.
 //!
+//! **Luong goi (Task 17), giong `server.py:632-634` + `generate_video` :1108-1123):**
+//! 1. Khong `prefer` → `start = pick_account(mode, now)` (ghi `recent_picks`, MOT lan moi job).
+//! 2. `candidates_for(mode, prefer, start, now)` → thu tu tai khoan; KHONG ghi gi — goi lai bao
+//!    nhieu lan (vong poll 0.5 s khi moi profile ban, :1262-1267) cung khong doi trang thai
+//!    (review T16 M1).
+//! 3. Tung tai khoan: `try_lease` (prefer → `lease_wait`), roi `claim` / `mark_*`.
+//!
 //! **Khac Python (co y, ghi trong report Task 16):**
-//! - `candidates_for` gop `pick_account` (:953-972) + `candidates_for(mode, start_account)`
-//!   (:940-951): dau danh sach = tai khoan "tuoi" (chua bi chon trong `PICK_RESERVE` s) co
-//!   `_spread_key` nho nhat, phan con lai sap theo `_spread_key`. Chi port `ACCOUNT_PICK=rotate`
-//!   (mac dinh; `random`/`order` khong port).
+//! - Chi port `ACCOUNT_PICK=rotate` (mac dinh; `random`/`order` khong port). `candidates_for`
+//!   khong co `start` sap theo `_spread_key` (Python: theo ten).
 //! - Tai khoan co chuoi proxy hong (`parse_proxy` loi) bi BO QUA kem `warn` (Python noi o luc mo
 //!   Chrome bang `ValueError` khong ma loi); prefer tai khoan do → `PreferredUnavailable`.
+//! - `prefer`/`start` rong hoac chi khoang trang = `None` (Python `if prefer_account:`), ten duoc
+//!   `trim` (review T16 M7).
 //! - `lease_wait` co gioi han `BUSY_WAIT_MAX` (Python `async with lock` cho vo han khi
 //!   `prefer_account`); het gio → `PreferredUnavailable`.
 //! - `mark_logged_out(revoked = false)` KHONG len lich auto-verify (`_schedule_auto_verify`,
 //!   v0.33 — P3); chi ghi `login_ok = 0`.
 //! - `mark_*` tra `Result` (loi `SQLite` noi len thay vi nuot).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -59,8 +66,9 @@ pub struct AccountPool {
     /// spec §5.2: `DashMap<AccountId, Arc<tokio::Mutex<()>>>` — khoa co y giu qua `await` (lease
     /// tai nguyen, khong phai data guard).
     locks: DashMap<String, Arc<tokio::sync::Mutex<()>>>,
-    /// `browser_pool.py:191` `_recent_picks`: ten -> moc `now` luc duoc chon (chi lon toi da bang
-    /// so tai khoan nen khong can don).
+    /// `browser_pool.py:191` `_recent_picks`: ten -> moc `now` luc duoc chon. Chi ghi trong
+    /// [`AccountPool::pick_account`]; moi lan pick don cac moc da qua [`PICK_RESERVE_S`] (review
+    /// T16 M1) nen kich thuoc <= so tai khoan duoc chon trong 20 s gan nhat.
     recent_picks: Mutex<HashMap<String, f64>>,
     limits: Limits,
     /// config.py `PROXY` — proxy chung; proxy rieng tung tai khoan thang no
@@ -152,19 +160,53 @@ impl AccountPool {
 
     // ===== Chon tai khoan =====
 
-    /// Tai khoan lich duoc cho `mode` luc `now`, theo thu tu nen thu.
+    /// browser_pool.py:953-972 `pick_account` (`ACCOUNT_PICK=rotate`, goi tu `server.py:632-634`
+    /// MOT lan truoc moi task tu dong): tai khoan nen dung cho `mode` luc `now` — trong so tai
+    /// khoan lich duoc, uu tien tai khoan "tuoi" (chua bi chon trong [`PICK_RESERVE_S`]; khong con
+    /// ai tuoi thi xet tat ca — `fresh = [...] or out`) co `_spread_key` nho nhat. Ghi nhan moc
+    /// chon vao `recent_picks` (don cac moc da qua `PICK_RESERVE` truoc). `None` khi khong co tai
+    /// khoan nao lich duoc.
     ///
-    /// - `prefer = None` (browser_pool.py:940-972): loc `_schedulable` (:909-914) → dau danh sach
-    ///   la tai khoan "tuoi" (chua bi chon trong [`PICK_RESERVE_S`] — khong con ai tuoi thi xet
-    ///   tat ca) co `_spread_key` nho nhat, ghi nhan moc chon; phan con lai sap theo `_spread_key`.
-    ///   Rong = khong tai khoan nao dung duoc (Task 17 quyet dinh `AllAccountsLimited` qua
-    ///   [`AccountPool::all_limited_for`]).
-    /// - `prefer = Some(name)` (browser_pool.py:1108-1121): CHI tai khoan do. Khong ton tai (khong
-    ///   co thu muc/dong) → `PreferredUnavailable("account 'x' does not exist")`; khong lich duoc
-    ///   va `_hard_blocked` (:916-919: dang xuat / tat lich / cooling) →
+    /// Ket qua dua vao [`AccountPool::candidates_for`] lam `start`.
+    ///
+    /// # Errors
+    /// `Store` khi doc/ghi DB loi.
+    pub async fn pick_account(&self, mode: Mode, now: f64) -> Result<Option<String>, EngineError> {
+        let out = self.schedulable_snapshots(mode, now).await?;
+        let mut picks = self
+            .recent_picks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        // Don moc cu: sau PICK_RESERVE giay thi "tuoi" lai — giu map nho (review T16 M1).
+        picks.retain(|_, t| now - *t < PICK_RESERVE_S);
+        let best_of = |pred: &dyn Fn(&Snapshot) -> bool| {
+            out.iter()
+                .filter(|s| pred(s))
+                .min_by(|a, b| a.spread_cmp(b))
+                .map(|s| s.row.name.clone())
+        };
+        let picked = best_of(&|s| !picks.contains_key(&s.row.name)).or_else(|| best_of(&|_| true));
+        if let Some(name) = &picked {
+            picks.insert(name.clone(), now);
+        }
+        Ok(picked)
+    }
+
+    /// Tai khoan lich duoc cho `mode` luc `now`, theo thu tu nen thu. KHONG ghi `recent_picks`
+    /// — goi lai bao nhieu lan (vong poll 0.5 s khi moi profile ban) cung khong doi thu tu.
+    ///
+    /// - `prefer = Some(name)` (browser_pool.py:1108-1121, thang `start`): CHI tai khoan do.
+    ///   Khong ton tai (khong co thu muc/dong) → `PreferredUnavailable("account 'x' does not
+    ///   exist")`; khong lich duoc va `_hard_blocked` (:916-919: dang xuat / tat lich / cooling) →
     ///   `PreferredUnavailable("account 'x' not available today (<ly do> for <mode>)")`; trang thai
     ///   mem → van tra ve (`PREFER_ACCOUNT_FORCE`), co `warn`.
+    /// - `prefer = None` (browser_pool.py:940-951 `candidates_for(mode, start_account)`): loc
+    ///   `_schedulable` (:909-914); `start` (ket qua [`AccountPool::pick_account`]) len dau NEU van
+    ///   lich duoc (khong thi bo qua lang le — chi la diem bat dau), phan con lai sap theo
+    ///   `_spread_key`. Rong = khong tai khoan nao dung duoc (Task 17 quyet dinh
+    ///   `AllAccountsLimited` qua [`AccountPool::all_limited_for`]).
     ///
+    /// `prefer`/`start` rong hoac chi khoang trang = `None`; ten duoc `trim` (review T16 M7).
     /// Moi lan goi deu xoa cac moc `rate_limited`/quota/cooldown da qua trong DB
     /// (`_clear_expired_rate_limits`, :459-467, nhu `list_accounts`).
     ///
@@ -174,15 +216,36 @@ impl AccountPool {
         &self,
         mode: Mode,
         prefer: Option<&str>,
+        start: Option<&str>,
         now: f64,
     ) -> Result<Vec<AccountRow>, EngineError> {
-        let snaps = self.snapshot_all(mode, now).await?;
+        let prefer = prefer.map(str::trim).filter(|p| !p.is_empty());
+        let start = start.map(str::trim).filter(|p| !p.is_empty());
         if let Some(name) = prefer {
+            let snaps = self.snapshot_all(mode, now).await?;
             return self
                 .preferred_only(snaps, name, mode, now)
                 .map(|s| vec![s.row]);
         }
-        let mut out: Vec<Snapshot> = snaps
+        let mut out = self.schedulable_snapshots(mode, now).await?;
+        out.sort_by(Snapshot::spread_cmp);
+        if let Some(idx) = start.and_then(|st| out.iter().position(|s| s.row.name == st)) {
+            // browser_pool.py:945-948: head = start_account, rest sap theo _spread_key
+            let head = out.remove(idx);
+            out.insert(0, head);
+        }
+        Ok(out.into_iter().map(|s| s.row).collect())
+    }
+
+    /// browser_pool.py:940-941: `[a for a in list_accounts() if _schedulable(a, mode)]` — them
+    /// dieu kien proxy parse duoc (ruling Task 16; hong → `warn` + bo qua).
+    async fn schedulable_snapshots(
+        &self,
+        mode: Mode,
+        now: f64,
+    ) -> Result<Vec<Snapshot>, EngineError> {
+        let snaps = self.snapshot_all(mode, now).await?;
+        Ok(snaps
             .into_iter()
             .filter(|s| self.schedulable(s, now))
             .filter(|s| match self.proxy_for(&s.row.proxy) {
@@ -192,14 +255,7 @@ impl AccountPool {
                     false
                 }
             })
-            .collect();
-        if out.is_empty() {
-            return Ok(Vec::new());
-        }
-        let head = self.pick_head(&out, now);
-        let head = out.swap_remove(head);
-        out.sort_by(Snapshot::spread_cmp);
-        Ok(std::iter::once(head).chain(out).map(|s| s.row).collect())
+            .collect())
     }
 
     /// browser_pool.py:1108-1121: nhanh `prefer_account`.
@@ -238,33 +294,6 @@ impl AccountPool {
         Ok(chosen)
     }
 
-    /// browser_pool.py:953-972 `pick_account` (`ACCOUNT_PICK=rotate`): chi so cua tai khoan "tuoi"
-    /// (chua bi chon trong `PICK_RESERVE` s; khong con ai tuoi thi xet tat ca) co `_spread_key`
-    /// nho nhat; ghi nhan moc chon.
-    fn pick_head(&self, out: &[Snapshot], now: f64) -> usize {
-        let mut picks = self
-            .recent_picks
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        let is_fresh = |s: &Snapshot| {
-            picks
-                .get(&s.row.name)
-                .is_none_or(|&t| now - t >= PICK_RESERVE_S)
-        };
-        let best_of = |pred: &dyn Fn(&Snapshot) -> bool| {
-            out.iter()
-                .enumerate()
-                .filter(|(_, s)| pred(s))
-                .min_by(|(_, a), (_, b)| a.spread_cmp(b))
-                .map(|(i, _)| i)
-        };
-        let idx = best_of(&is_fresh)
-            .or_else(|| best_of(&|_| true))
-            .expect("out khong rong (da kiem o candidates_for)");
-        picks.insert(out[idx].row.name.clone(), now);
-        idx
-    }
-
     /// browser_pool.py:405-411 `accounts` + :490-548 `list_accounts`: xoa moc het han, quet thu
     /// muc profile (tu them `accounts_meta` cho thu muc moi — `_ensure_meta`), chi giu tai khoan
     /// CO thu muc, kem luot da dung hom nay (ngay Tokyo).
@@ -272,14 +301,15 @@ impl AccountPool {
         self.repo.clear_expired_limits(now).await?;
         let dir_names = self.profile_dirs().await;
         let mut rows = self.repo.list().await?;
-        let mut added = false;
-        for name in &dir_names {
-            if !rows.iter().any(|r| &r.name == name) {
+        let known: HashSet<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+        let missing: Vec<&String> = dir_names
+            .iter()
+            .filter(|n| !known.contains(n.as_str()))
+            .collect();
+        if !missing.is_empty() {
+            for name in missing {
                 self.repo.upsert(name).await?;
-                added = true;
             }
-        }
-        if added {
             rows = self.repo.list().await?;
         }
         let day = tokyo_day(now);
@@ -306,20 +336,22 @@ impl AccountPool {
     }
 
     /// browser_pool.py:405-411: ten thu muc con (khong bat dau bang `.`) cua `accounts_dir`;
-    /// thu muc khong ton tai / khong doc duoc → rong.
-    async fn profile_dirs(&self) -> Vec<String> {
-        let mut names = Vec::new();
+    /// thu muc khong ton tai / khong doc duoc → rong. Dung `metadata` (theo symlink/junction nhu
+    /// `Path.is_dir()` cua Python — review T16 M2) thay vi `DirEntry::file_type`.
+    async fn profile_dirs(&self) -> HashSet<String> {
+        let mut names = HashSet::new();
         let Ok(mut rd) = tokio::fs::read_dir(&self.accounts_dir).await else {
             return names;
         };
         while let Ok(Some(entry)) = rd.next_entry().await {
-            let is_dir = entry.file_type().await.is_ok_and(|t| t.is_dir());
+            let is_dir = tokio::fs::metadata(entry.path())
+                .await
+                .is_ok_and(|m| m.is_dir());
             let name = entry.file_name().to_string_lossy().into_owned();
             if is_dir && !name.starts_with('.') {
-                names.push(name);
+                names.insert(name);
             }
         }
-        names.sort_unstable();
         names
     }
 
@@ -621,12 +653,16 @@ mod tests {
     async fn candidates_loai_dang_cooldown() {
         let f = fx(&["a", "b"]).await;
         f.repo.set_cooldown_until("a", NOW + 100.0).await.unwrap();
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(names(&rows), ["b"]);
         // dung moc cooldown_until (<= now) -> het cooling, ca hai deu vao
         let rows = f
             .pool
-            .candidates_for(Mode::Fast, None, NOW + 100.0)
+            .candidates_for(Mode::Fast, None, None, NOW + 100.0)
             .await
             .unwrap();
         assert_eq!(rows.len(), 2);
@@ -643,13 +679,25 @@ mod tests {
         };
         let f = fx_with(&["a", "b"], limits, "").await;
         f.repo.set_usage("a", DAY, Mode::Pro, 1).await.unwrap();
-        let rows = f.pool.candidates_for(Mode::Pro, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Pro, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(names(&rows), ["b"], "a het han muc pro");
         // han muc tinh RIENG tung mode: fast van con
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 2);
         // sang ngay Tokyo moi -> khoa day khac -> a lai duoc
-        let rows = f.pool.candidates_for(Mode::Pro, None, RESET).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Pro, None, None, RESET)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 2);
     }
 
@@ -666,7 +714,11 @@ mod tests {
             .unwrap();
         f.repo.set_login_ok("lo", false, NOW).await.unwrap();
         f.repo.set_scheduling("off", false).await.unwrap();
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(names(&rows), ["ok"]);
     }
 
@@ -684,7 +736,11 @@ mod tests {
             .await
             .unwrap(); // truoc moc reset -> so cu het hieu luc
         f.repo.set_credit_balance("du", Some(2), NOW).await.unwrap(); // >= 2 -> khong chan
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         let mut got = names(&rows);
         got.sort_unstable();
         assert_eq!(got, ["chua_doc", "du", "thap_cu"]);
@@ -699,7 +755,11 @@ mod tests {
         std::fs::create_dir(f.dir.path().join("moi")).unwrap();
         // thu muc an (bat dau bang '.') bi bo qua
         std::fs::create_dir(f.dir.path().join(".an")).unwrap();
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         let mut got = names(&rows);
         got.sort_unstable();
         assert_eq!(got, ["co_dir", "moi"]);
@@ -717,7 +777,10 @@ mod tests {
             "",
             std::path::Path::new("Z:/khong/ton/tai"),
         );
-        let rows = pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert!(rows.is_empty());
     }
 
@@ -725,12 +788,16 @@ mod tests {
     async fn candidates_bo_proxy_hong() {
         let f = fx(&["hong", "tot"]).await;
         f.repo.set_proxy("hong", "abc").await.unwrap();
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(names(&rows), ["tot"]);
         // prefer tai khoan proxy hong -> PreferredUnavailable mang thong diep parse_proxy
         let e = f
             .pool
-            .candidates_for(Mode::Fast, Some("hong"), NOW)
+            .candidates_for(Mode::Fast, Some("hong"), None, NOW)
             .await
             .unwrap_err();
         let msg = unavailable(&e);
@@ -749,56 +816,139 @@ mod tests {
         f.repo.touch_last_used("c", 10.0).await.unwrap();
         f.repo.touch_last_used("d", 10.0).await.unwrap();
         // used_today cua spread key la FAST ke ca khi xin mode khac (browser_pool.py:936-938)
-        let rows = f.pool.candidates_for(Mode::Pro, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Pro, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(names(&rows), ["c", "d", "b", "a"]);
     }
 
     #[tokio::test]
     async fn pick_reserve_20s() {
+        // browser_pool.py:953-972 pick_account (ACCOUNT_PICK=rotate, PICK_RESERVE=20 s): 3 luong
+        // khoi dong cung luc nhan 3 tai khoan khac nhau.
         let f = fx(&["a", "b", "c"]).await;
-        // 3 luong goi lien tiep: moi luong nhan dau danh sach khac nhau (PICK_RESERVE=20 s)
-        let r1 = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
-        assert_eq!(names(&r1), ["a", "b", "c"]);
-        let r2 = f
-            .pool
-            .candidates_for(Mode::Fast, None, NOW + 1.0)
-            .await
-            .unwrap();
-        // dau = b (a vua duoc chon); phan con lai van co a (Python: candidates_for(start) = head + rest)
-        assert_eq!(names(&r2), ["b", "a", "c"]);
-        let r3 = f
-            .pool
-            .candidates_for(Mode::Fast, None, NOW + 2.0)
-            .await
-            .unwrap();
-        assert_eq!(names(&r3), ["c", "a", "b"]);
+        let p1 = f.pool.pick_account(Mode::Fast, NOW).await.unwrap();
+        assert_eq!(p1.as_deref(), Some("a"));
+        let p2 = f.pool.pick_account(Mode::Fast, NOW + 1.0).await.unwrap();
+        assert_eq!(p2.as_deref(), Some("b"), "a vua duoc chon");
+        let p3 = f.pool.pick_account(Mode::Fast, NOW + 2.0).await.unwrap();
+        assert_eq!(p3.as_deref(), Some("c"));
         // het tai khoan "tuoi" -> lay tren toan bo (Python: `fresh = [...] or out`)
-        let r4 = f
-            .pool
-            .candidates_for(Mode::Fast, None, NOW + 3.0)
-            .await
-            .unwrap();
-        assert_eq!(names(&r4), ["a", "b", "c"]);
-        // qua 20 s ke tu lan pick cua b (NOW+1) nhung a vua pick lai o NOW+3 -> b tuoi truoc
-        let r5 = f
-            .pool
-            .candidates_for(Mode::Fast, None, NOW + 21.5)
-            .await
-            .unwrap();
-        assert_eq!(names(&r5), ["b", "a", "c"]);
+        let p4 = f.pool.pick_account(Mode::Fast, NOW + 3.0).await.unwrap();
+        assert_eq!(p4.as_deref(), Some("a"));
+        // NOW+21.5: b (pick o NOW+1, 20.5 s truoc) da tuoi; a (NOW+3) va c (NOW+2) van moi -> b
+        let p5 = f.pool.pick_account(Mode::Fast, NOW + 21.5).await.unwrap();
+        assert_eq!(p5.as_deref(), Some("b"));
+        // review T16 M1: recent_picks bi don moi lan pick (chi giu moc trong PICK_RESERVE)
+        {
+            let picks = f.pool.recent_picks.lock().unwrap();
+            assert_eq!(picks.len(), 3, "a@NOW+3, c@NOW+2, b@NOW+21.5");
+        }
+        let p6 = f.pool.pick_account(Mode::Fast, NOW + 100.0).await.unwrap();
+        assert_eq!(p6.as_deref(), Some("a"));
+        assert_eq!(f.pool.recent_picks.lock().unwrap().len(), 1, "chi con a");
     }
 
     #[tokio::test]
     async fn pick_reserve_chi_con_mot_tai_khoan_van_tra_no() {
         let f = fx(&["a"]).await;
         for i in 0..3 {
-            let rows = f
+            let p = f
                 .pool
-                .candidates_for(Mode::Fast, None, NOW + f64::from(i))
+                .pick_account(Mode::Fast, NOW + f64::from(i))
                 .await
                 .unwrap();
-            assert_eq!(names(&rows), ["a"]);
+            assert_eq!(p.as_deref(), Some("a"));
         }
+    }
+
+    #[tokio::test]
+    async fn pick_account_khong_co_ung_vien_tra_none() {
+        let f = fx(&["a"]).await;
+        f.repo.set_scheduling("a", false).await.unwrap();
+        assert_eq!(f.pool.pick_account(Mode::Fast, NOW).await.unwrap(), None);
+        // proxy hong cung khong duoc pick (giong candidates_for)
+        f.repo.set_scheduling("a", true).await.unwrap();
+        f.repo.set_proxy("a", "abc").await.unwrap();
+        assert_eq!(f.pool.pick_account(Mode::Fast, NOW).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn pick_account_roi_candidates_for_dua_len_dau() {
+        // review T16 M1: server.py:632-634 pick_account -> generate_video(start_account) ->
+        // candidates_for(mode, start_account) :940-951 = start dau, con lai theo _spread_key.
+        let f = fx(&["a", "b", "c"]).await;
+        f.repo.set_usage("a", DAY, Mode::Fast, 2).await.unwrap();
+        f.repo.set_usage("b", DAY, Mode::Fast, 1).await.unwrap();
+        // thu tu spread: c(0) < b(1) < a(2)
+        let p1 = f.pool.pick_account(Mode::Fast, NOW).await.unwrap();
+        assert_eq!(p1.as_deref(), Some("c"));
+        let p2 = f.pool.pick_account(Mode::Fast, NOW + 1.0).await.unwrap();
+        assert_eq!(p2.as_deref(), Some("b"), "c vua duoc chon");
+        // luong 2: b len dau, phan con lai (c, a) theo spread key — KHONG theo recent_picks
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, p2.as_deref(), NOW + 1.0)
+            .await
+            .unwrap();
+        assert_eq!(names(&rows), ["b", "c", "a"]);
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, p1.as_deref(), NOW + 1.0)
+            .await
+            .unwrap();
+        assert_eq!(names(&rows), ["c", "b", "a"]);
+    }
+
+    #[tokio::test]
+    async fn candidates_for_khong_ghi_recent_picks() {
+        // review T16 M1: vong poll 0.5 s cua Task 17 goi candidates_for nhieu lan khi moi profile
+        // deu ban -> KHONG duoc lam thay doi thu tu, khong "giu cho" tai khoan nao.
+        let f = fx(&["a", "b", "c"]).await;
+        let r1 = f
+            .pool
+            .candidates_for(Mode::Fast, None, Some("b"), NOW)
+            .await
+            .unwrap();
+        let r2 = f
+            .pool
+            .candidates_for(Mode::Fast, None, Some("b"), NOW + 0.5)
+            .await
+            .unwrap();
+        let r3 = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW + 1.0)
+            .await
+            .unwrap();
+        assert_eq!(names(&r1), ["b", "a", "c"]);
+        assert_eq!(names(&r2), ["b", "a", "c"]);
+        assert_eq!(names(&r3), ["a", "b", "c"]);
+        assert!(f.pool.recent_picks.lock().unwrap().is_empty());
+        // pick_account sau do van thay moi tai khoan deu "tuoi" -> a (min spread)
+        let p = f.pool.pick_account(Mode::Fast, NOW + 1.5).await.unwrap();
+        assert_eq!(p.as_deref(), Some("a"));
+    }
+
+    #[tokio::test]
+    async fn start_khong_lich_duoc_hoac_khong_ton_tai_bi_bo_qua_lang_le() {
+        // browser_pool.py:944-948: start_account chi la diem bat dau — khong con lich duoc (vd
+        // vua bi cooldown boi luong khac) thi rot khoi head, KHONG loi (khac prefer).
+        let f = fx(&["a", "b", "c"]).await;
+        f.repo.set_cooldown_until("b", NOW + 10.0).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, Some("b"), NOW)
+            .await
+            .unwrap();
+        assert_eq!(names(&rows), ["a", "c"]);
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, Some("ghost"), NOW)
+            .await
+            .unwrap();
+        assert_eq!(names(&rows), ["a", "c"]);
     }
 
     // ---- prefer (browser_pool.py:1108-1121) ----
@@ -808,7 +958,7 @@ mod tests {
         let f = fx(&["a"]).await;
         let e = f
             .pool
-            .candidates_for(Mode::Fast, Some("ghost"), NOW)
+            .candidates_for(Mode::Fast, Some("ghost"), None, NOW)
             .await
             .unwrap_err();
         assert_eq!(unavailable(&e), "account 'ghost' does not exist");
@@ -836,7 +986,7 @@ mod tests {
         ] {
             let e = f
                 .pool
-                .candidates_for(Mode::Pro, Some(name), NOW)
+                .candidates_for(Mode::Pro, Some(name), None, NOW)
                 .await
                 .unwrap_err();
             assert_eq!(
@@ -868,32 +1018,62 @@ mod tests {
         for name in ["rl", "qb", "lim", "cr"] {
             let rows = f
                 .pool
-                .candidates_for(Mode::Pro, Some(name), NOW)
+                .candidates_for(Mode::Pro, Some(name), None, NOW)
                 .await
                 .unwrap();
             assert_eq!(names(&rows), [name], "{name}");
         }
         // khong prefer -> ca 4 deu bi loai
-        let rows = f.pool.candidates_for(Mode::Pro, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Pro, None, None, NOW)
+            .await
+            .unwrap();
         assert!(rows.is_empty());
     }
 
     #[tokio::test]
-    async fn prefer_khong_dong_vao_recent_picks() {
+    async fn prefer_thang_start_va_khong_dong_vao_recent_picks() {
+        // browser_pool.py:1108-1123: co prefer_account thi bo qua start_account hoan toan.
         let f = fx(&["a", "b"]).await;
         let rows = f
             .pool
-            .candidates_for(Mode::Fast, Some("a"), NOW)
+            .candidates_for(Mode::Fast, Some("a"), Some("b"), NOW)
             .await
             .unwrap();
         assert_eq!(names(&rows), ["a"]);
         // prefer khong phai pick_account -> a van "tuoi" cho luong tu dong ke tiep
+        let p = f.pool.pick_account(Mode::Fast, NOW + 1.0).await.unwrap();
+        assert_eq!(p.as_deref(), Some("a"));
+    }
+
+    #[tokio::test]
+    async fn prefer_hoac_start_rong_coi_nhu_none() {
+        // review T16 M7: Python `if prefer_account:` (:1108) / `if start_account:` (:944) — chuoi
+        // rong (hoac chi khoang trang) = khong chi dinh.
+        let f = fx(&["a", "b"]).await;
+        f.repo.set_usage("a", DAY, Mode::Fast, 1).await.unwrap();
+        for prefer in [Some(""), Some("  ")] {
+            let rows = f
+                .pool
+                .candidates_for(Mode::Fast, prefer, None, NOW)
+                .await
+                .unwrap();
+            assert_eq!(names(&rows), ["b", "a"], "{prefer:?}");
+        }
         let rows = f
             .pool
-            .candidates_for(Mode::Fast, None, NOW + 1.0)
+            .candidates_for(Mode::Fast, None, Some(""), NOW)
             .await
             .unwrap();
-        assert_eq!(names(&rows), ["a", "b"]);
+        assert_eq!(names(&rows), ["b", "a"]);
+        // ten co khoang trang quanh van la ten do (trim)
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, Some(" a "), None, NOW)
+            .await
+            .unwrap();
+        assert_eq!(names(&rows), ["a"]);
     }
 
     // ---- lease (spec §5.2, browser_pool.py:1132-1138) ----
@@ -958,7 +1138,11 @@ mod tests {
         .await;
         f.repo.set_proxy("rieng", "9.9.9.9:9090").await.unwrap();
         f.repo.set_proxy("direct", "direct").await.unwrap();
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 3);
         for r in &rows {
             let lease = f.pool.try_lease(&r.name, &r.proxy).unwrap();
@@ -1009,12 +1193,16 @@ mod tests {
         // bi loai khoi moi mode (rate_limited la co chung) cho den moc reset
         let rows = f
             .pool
-            .candidates_for(Mode::Fast, None, NOW + 1.0)
+            .candidates_for(Mode::Fast, None, None, NOW + 1.0)
             .await
             .unwrap();
         assert_eq!(names(&rows), ["b"]);
         // dung moc reset: het rate_limited + sang ngay moi -> usage ngay moi = 0 -> a tro lai
-        let rows = f.pool.candidates_for(Mode::Pro, None, RESET).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Pro, None, None, RESET)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(
             f.repo
@@ -1052,7 +1240,11 @@ mod tests {
         assert!((row.logged_out_at - NOW).abs() < f64::EPSILON);
         assert!((row.login_checked_at - NOW).abs() < f64::EPSILON);
         assert_eq!(row.auto_verify_state, "");
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert_eq!(names(&rows), ["b"]);
         // revoked (browser_pool.py:663-665): auto_verify_state='revoked', tries=0
         f.pool
@@ -1090,11 +1282,15 @@ mod tests {
         assert_eq!(row.quota_reason, "Insufficient credits");
         assert!((row.last_used_at - NOW).abs() < f64::EPSILON);
 
-        let rows = f.pool.candidates_for(Mode::Fast, None, NOW).await.unwrap();
+        let rows = f
+            .pool
+            .candidates_for(Mode::Fast, None, None, NOW)
+            .await
+            .unwrap();
         assert!(rows.is_empty());
         let rows = f
             .pool
-            .candidates_for(Mode::Fast, None, RESET)
+            .candidates_for(Mode::Fast, None, None, RESET)
             .await
             .unwrap();
         assert_eq!(rows.len(), 2, "cooldown 300 s va quota deu het o moc reset");

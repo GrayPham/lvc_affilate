@@ -139,16 +139,21 @@ impl AccountRepo {
 
     /// Trạng thái phiên (Task 16 `AccountPool::mark_logged_out` + Verify/cookie ở P3):
     /// - `ok = false` (browser_pool.py:651-654 `mark_logged_out`): `login_ok=0`,
-    ///   `login_checked_at=at`, `logged_out_at=at`.
+    ///   `login_checked_at=at`, `logged_out_at=at`; KHÔNG đụng `auto_verify_*` (`:663` ghi
+    ///   `revoked` riêng qua [`AccountRepo::set_auto_verify`]). Lưu ý: đường verify-*thất bại*
+    ///   (`:864-865`) không ghi `logged_out_at` — P3 không được dùng hàm này cho đường đó.
     /// - `ok = true` (browser_pool.py:864-866 verify thành công / 590-593 `clear_logged_out`):
-    ///   `login_ok=1`, `login_checked_at=at`, `logged_out_at=0`.
+    ///   `login_ok=1`, `login_checked_at=at`, `logged_out_at=0`, `auto_verify_state=''`,
+    ///   `auto_verify_tries=0` (review T16 I1).
     ///
     /// # Errors
     /// `StoreError::Sqlx` khi ghi thất bại.
     pub async fn set_login_ok(&self, name: &str, ok: bool, at: f64) -> Result<(), StoreError> {
         let logged_out_at = if ok { 0.0 } else { at };
         sqlx::query(
-            "UPDATE accounts_meta SET login_ok = ?2, login_checked_at = ?3, logged_out_at = ?4
+            "UPDATE accounts_meta SET login_ok = ?2, login_checked_at = ?3, logged_out_at = ?4,
+               auto_verify_state = CASE WHEN ?2 = 1 THEN '' ELSE auto_verify_state END,
+               auto_verify_tries = CASE WHEN ?2 = 1 THEN 0  ELSE auto_verify_tries END
              WHERE name = ?1",
         )
         .bind(name)
@@ -277,7 +282,9 @@ impl AccountRepo {
     /// browser_pool.py:459-467 `_clear_expired_rate_limits`: mốc `rate_limited_until` /
     /// `quota_blocked_until` đã qua (`> 0 AND <= now`) → 0 và xoá lý do; ruling Task 16 gộp thêm
     /// `cooldown_until` (Python để nguyên mốc cũ, chỉ so `> now` khi đọc — kết quả như nhau).
-    /// Mỗi cột xét độc lập. Trả về số dòng bị chạm.
+    /// Mỗi cột xét độc lập — KHÁC Python: một `UPDATE` xoá cả 4 cột khi *một trong hai* mốc hết
+    /// hạn (mốc quota chưa hết cũng bị xoá theo); ở đây chỉ xoá đúng cột đã hết hạn (review T16
+    /// M3, chấp nhận — thực tế hai mốc luôn cùng bằng lần reset kế tiếp). Trả về số dòng bị chạm.
     ///
     /// # Errors
     /// `StoreError::Sqlx` khi ghi thất bại.
