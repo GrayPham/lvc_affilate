@@ -12,6 +12,12 @@ import {
   PlanSummarySchema,
   RunInfoSchema,
   RunRowSchema,
+  ScriptDocSchema,
+  ScriptMetaSchema,
+  ScriptResetReportSchema,
+  ScriptRowSchema,
+  ScriptRunReportSchema,
+  SceneRowSchema,
   TaskDtoSchema,
   TaskResumeInfoSchema,
   VerifyReportSchema,
@@ -27,6 +33,13 @@ import {
   type PlanSummary,
   type RunInfo,
   type RunRow,
+  type SceneIn,
+  type SceneRow,
+  type ScriptDoc,
+  type ScriptMeta,
+  type ScriptResetReport,
+  type ScriptRow,
+  type ScriptRunReport,
   type TaskDto,
   type TaskResumeInfo,
   type VerifyReport,
@@ -177,4 +190,66 @@ export async function accountDelete(name: string): Promise<boolean> {
 export async function legacyImport(pythonDir: string): Promise<LegacyImportReport> {
   const res = await invoke<unknown>("legacy_import", { pythonDir });
   return LegacyImportReportSchema.parse(res);
+}
+
+// ---- scripts.rs (P3c Task 1/2) --------------------------------------------------------------
+// Xem task-1-report.md "Lenh IPC cho Task 2" cho bang doi chieu day du (tham so/ma loi). Tham so
+// Rust snake_case (`scene_ids`) -> JS camelCase (`sceneIds`) tu dong qua Tauri 2, giong moi lenh
+// khac trong file nay.
+
+export async function scriptList(): Promise<ScriptMeta[]> {
+  const res = await invoke<unknown>("script_list");
+  return z.array(ScriptMetaSchema).parse(res);
+}
+
+export async function scriptCreate(name: string, dir: string): Promise<ScriptRow> {
+  const res = await invoke<unknown>("script_create", { name, dir });
+  return ScriptRowSchema.parse(res);
+}
+
+/** `name`/`dir` luon duoc gui (khong `undefined`) — UI o day luon biet ca hai gia tri hien tai
+ * khi sua (khong co UI sua "chi mot truong, giu nguyen truong kia" nhu `Option<String>` phia
+ * Rust cho phep). */
+export async function scriptUpdate(id: string, name: string, dir: string): Promise<ScriptRow> {
+  const res = await invoke<unknown>("script_update", { id, name, dir });
+  return ScriptRowSchema.parse(res);
+}
+
+/** Lenh Rust tra `()` (unit) -> `null` qua JSON. */
+export async function scriptDelete(id: string): Promise<null> {
+  const res = await invoke<unknown>("script_delete", { id });
+  return z.null().parse(res);
+}
+
+export async function scriptGet(id: string): Promise<ScriptDoc> {
+  const res = await invoke<unknown>("script_get", { id });
+  return ScriptDocSchema.parse(res);
+}
+
+export async function scriptPutScenes(id: string, scenes: SceneIn[]): Promise<SceneRow[]> {
+  const res = await invoke<unknown>("script_put_scenes", { id, scenes });
+  return z.array(SceneRowSchema).parse(res);
+}
+
+/** `sceneIds` rong = moi canh chua chay/da that bai (R1); `style` rong = khong noi "Style: ...".
+ * Loi TUNG canh (`SCENE_RUNNING`/`SCENE_EMPTY`/`SCENE_INVALID`) nam trong `ScriptRunReport.errors`
+ * — KHONG lam `invoke()` nay reject. */
+export async function scriptRun(
+  id: string,
+  sceneIds: string[],
+  style: string,
+): Promise<ScriptRunReport> {
+  const res = await invoke<unknown>("script_run", { id, sceneIds, style });
+  return ScriptRunReportSchema.parse(res);
+}
+
+export async function scriptResetScenes(id: string, sceneIds: string[]): Promise<ScriptResetReport> {
+  const res = await invoke<unknown>("script_reset_scenes", { id, sceneIds });
+  return ScriptResetReportSchema.parse(res);
+}
+
+/** Thay TOAN BO canh cua kich ban bang noi dung TXT (R4) — tra ve so canh moi. */
+export async function scriptImportTxt(id: string, text: string): Promise<number> {
+  const res = await invoke<unknown>("script_import_txt", { id, text });
+  return z.number().parse(res);
 }

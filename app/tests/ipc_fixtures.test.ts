@@ -22,12 +22,13 @@ import {
   RequeueReportSchema,
   RunRowSchema,
   STAGES,
+  ScriptDocSchema,
+  ScriptMetaSchema,
+  ScriptRunReportSchema,
   StageSchema,
   TaskDtoSchema,
   WorkflowMetaSchema,
 } from "../src/ipc/types";
-// TODO(P3c T2): thay z.record(z.unknown()) bang schema zod that cho ScriptMeta/ScriptDoc/
-// ScriptRunReport khi Task 2 (frontend) them cac kieu do vao src/ipc/types.ts.
 import { PORTS } from "../src/graph/ports";
 
 const FIXTURES_DIR = path.join(
@@ -62,14 +63,14 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["stages.json", z.array(StageSchema)],
   ["task_dto.json", z.array(TaskDtoSchema)],
   ["workflow_meta.json", WorkflowMetaSchema],
-  // P3c Task 1 (backend): 3 fixture moi cho tab Kich ban — schema chi la placeholder cho toi
-  // khi Task 2 them ScriptMeta/ScriptDoc/ScriptRunReportSchema that vao src/ipc/types.ts.
-  ["script_meta.json", z.record(z.string(), z.unknown())],
-  ["script_doc.json", z.record(z.string(), z.unknown())],
-  ["script_run_report.json", z.record(z.string(), z.unknown())],
+  // P3c Task 2 (frontend): 3 fixture kich ban sinh boi Task 1 (Rust) — xem
+  // task-1-report.md "DTO" + task-2-report.md.
+  ["script_meta.json", ScriptMetaSchema],
+  ["script_doc.json", ScriptDocSchema],
+  ["script_run_report.json", ScriptRunReportSchema],
 ];
 
-describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1 kich ban) parse dung voi schema zod (Task 11/14)", () => {
+describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban) parse dung voi schema zod (Task 11/14)", () => {
   it("bao phu dung 17 file da commit — khong sot, khong thua", () => {
     expect(FIXTURE_CASES).toHaveLength(17);
   });

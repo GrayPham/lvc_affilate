@@ -447,7 +447,10 @@ export type VerifyReport = z.infer<typeof VerifyReportSchema>;
 /**
  * Ket qua `legacy_import`. `profilesSkipped` la truong MOI (Task 10 fix-round 1, dang chay song
  * song luc Task 14 viet file nay) — `.default([])` de vAn parse duoc fixture CU (chua co truong
- * nay) LAN fixture MOI (da them), khong ep mot phia phai xong truoc.
+ * nay) LAN fixture MOI (da them), khong ep mot phia phai xong truoc. `scripts`/`scenes` (P3c Task
+ * 1, R5) la truong PLAIN `usize` phia Rust (khong `Option`, luon duoc serialize) — fixture
+ * `import_reports.json` da tai sinh voi ca hai (`scripts: 2, scenes: 5`), nen KHONG can
+ * `.default()` nhu `profilesSkipped`.
  */
 export const LegacyImportReportSchema = z.object({
   tasks: z.number(),
@@ -457,6 +460,8 @@ export const LegacyImportReportSchema = z.object({
   skipped: z.array(z.string()),
   profilesCopied: z.number(),
   profilesSkipped: z.array(z.string()).default([]),
+  scripts: z.number(),
+  scenes: z.number(),
 });
 export type LegacyImportReport = z.infer<typeof LegacyImportReportSchema>;
 
@@ -469,3 +474,134 @@ export const ImportReportsFixtureSchema = z.object({
   cookies: ImportCookiesReportSchema,
   legacy: LegacyImportReportSchema,
 });
+
+// ---------------------------------------------------------------------------------------------
+// Kich ban (P3c Task 2, `crates/lvc-app/src/commands/scripts.rs` + `crates/lvc-store/src/
+// scripts.rs` + `crates/lvc-engine/src/scripts.rs`) — 9 lenh `script_*`. Nullable vs optional
+// khop DUNG task-1-report.md "DTO" + 3 fixture `script_meta.json`/`script_doc.json`/
+// `script_run_report.json`: `ratio`/`duration`/`model`/`mode`/`logo` la `null` khi canh CHUA dat
+// gia tri rieng (dung mac dinh AppSettings luc chay) — KHONG phai chuoi rong.
+// ---------------------------------------------------------------------------------------------
+
+/** `lvc_store::scripts::ScriptMeta` — mot kich ban + so dem canh theo trang thai (`running` gop
+ * CA `queued` LAN `processing`, khac ban Python tach rieng — xem task-1-report.md "DTO"). */
+export const ScriptMetaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  dir: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+  total: z.number(),
+  done: z.number(),
+  failed: z.number(),
+  running: z.number(),
+});
+export type ScriptMeta = z.infer<typeof ScriptMetaSchema>;
+
+/** `lvc_store::scripts::ScriptRow` — ket qua `script_create`/`script_update` (khong kem so dem). */
+export const ScriptRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  dir: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type ScriptRow = z.infer<typeof ScriptRowSchema>;
+
+/** `lvc_app::commands::scripts::SceneDto` — mot canh + trang thai task hien tai (`script_get`).
+ * `taskStatus` la mot trong `"queued"|"processing"|"completed"|"failed"` hoac `null` (chua tung
+ * chay HOAC `taskId` da "mo coi" — task bi xoa o noi khac). `failureCode` la mot trong 15 gia tri
+ * `FailureCode` hoac `null`. */
+export const SceneDtoSchema = z.object({
+  id: z.string(),
+  idx: z.number(),
+  prompt: z.string(),
+  ratio: z.string().nullable(),
+  duration: z.number().nullable(),
+  model: z.string().nullable(),
+  mode: z.string().nullable(),
+  logo: z.string().nullable(),
+  account: z.string(),
+  refs: z.array(z.string()),
+  taskId: z.string().nullable(),
+  taskStatus: z.string().nullable(),
+  failureCode: z.string().nullable(),
+  localPath: z.string().nullable(),
+});
+export type SceneDto = z.infer<typeof SceneDtoSchema>;
+
+/** Ket qua `script_get`. */
+export const ScriptDocSchema = z.object({
+  meta: ScriptMetaSchema,
+  scenes: z.array(SceneDtoSchema),
+});
+export type ScriptDoc = z.infer<typeof ScriptDocSchema>;
+
+/** `lvc_store::scripts::SceneRow` — ket qua `script_put_scenes` (khong kem trang thai task, khac
+ * `SceneDto`). */
+export const SceneRowSchema = z.object({
+  id: z.string(),
+  scriptId: z.string(),
+  idx: z.number(),
+  prompt: z.string(),
+  ratio: z.string().nullable(),
+  duration: z.number().nullable(),
+  model: z.string().nullable(),
+  mode: z.string().nullable(),
+  logo: z.string().nullable(),
+  account: z.string(),
+  refs: z.array(z.string()),
+  taskId: z.string().nullable(),
+  updatedAt: z.number(),
+});
+export type SceneRow = z.infer<typeof SceneRowSchema>;
+
+/**
+ * `lvc_store::scripts::SceneIn` — dau vao `script_put_scenes`. Rust chap nhan MOI truong TRU
+ * `id`/`prompt` vang mat (`#[serde(default)]`) — UI o day luon gui du CA object (khong dua vao
+ * mac dinh phia server), nen schema doi hoi du truong thay vi `.optional()`/`.default()`.
+ */
+export const SceneInSchema = z.object({
+  id: z.string().nullable(),
+  prompt: z.string(),
+  ratio: z.string().nullable(),
+  duration: z.number().nullable(),
+  model: z.string().nullable(),
+  mode: z.string().nullable(),
+  logo: z.string().nullable(),
+  account: z.string(),
+  refs: z.array(z.string()),
+});
+export type SceneIn = z.infer<typeof SceneInSchema>;
+
+/** `lvc_engine::scripts::ScriptRunTask` — mot canh da duoc gan `taskId` sau `script_run`. */
+export const ScriptRunTaskSchema = z.object({
+  sceneId: z.string(),
+  taskId: z.string(),
+});
+export type ScriptRunTask = z.infer<typeof ScriptRunTaskSchema>;
+
+/** `lvc_engine::scripts::ScriptRunError` — `code` la mot trong `SCENE_RUNNING`/`SCENE_EMPTY`/
+ * `SCENE_INVALID` (xem `format/scene.ts::scriptErrorLabel`). */
+export const ScriptRunErrorSchema = z.object({
+  sceneId: z.string(),
+  code: z.string(),
+});
+export type ScriptRunError = z.infer<typeof ScriptRunErrorSchema>;
+
+/** Ket qua `script_run`. `runId: null` = KHONG canh nao hop le de chay (moi canh chon deu roi
+ * vao `errors`) — UI khong goi `run_cancel` khi `runId` la `null`. */
+export const ScriptRunReportSchema = z.object({
+  runId: z.string().nullable(),
+  tasks: z.array(ScriptRunTaskSchema),
+  errors: z.array(ScriptRunErrorSchema),
+});
+export type ScriptRunReport = z.infer<typeof ScriptRunReportSchema>;
+
+/** Ket qua `script_reset_scenes` (Rust: `ResetReport`, doi ten sang `ScriptResetReport` o day de
+ * ro rang la mot kieu cua mien "kich ban" khi doc doc lap voi `commands/scripts.rs`). */
+export const ScriptResetReportSchema = z.object({
+  reset: z.array(z.string()),
+  skipped: z.array(z.string()),
+});
+export type ScriptResetReport = z.infer<typeof ScriptResetReportSchema>;

@@ -66,7 +66,7 @@ export default function LegacyImport() {
         <div className="rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
           <p>
             Đã nhập {report.tasks} task, {report.accounts} tài khoản, {report.usage} lượt dùng,{" "}
-            {report.settings} cài đặt.
+            {report.settings} cài đặt, {report.scripts} kịch bản ({report.scenes} cảnh).
           </p>
           <p>
             Đã sao chép {report.profilesCopied} hồ sơ trình duyệt

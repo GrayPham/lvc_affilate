@@ -1,12 +1,15 @@
 import type { JSX } from "react";
 import { useUiStore, type TabId } from "./store/uiStore";
 import Workflow from "./pages/Workflow";
+import ScriptsPage from "./pages/ScriptsPage";
 import TasksPage from "./pages/TasksPage";
 import SettingsPage from "./pages/SettingsPage";
 import AccountsPage from "./pages/AccountsPage";
 
+// P3c Task 2: tab "Kịch bản" dat NGAY SAU "Workflow" (5 tab, theo dung brief).
 const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "workflow", label: "Workflow" },
+  { id: "scripts", label: "Kịch bản" },
   { id: "tasks", label: "Tác vụ" },
   { id: "settings", label: "Cài đặt" },
   { id: "accounts", label: "Tài khoản" },
@@ -14,6 +17,7 @@ const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
 
 const PAGES: Record<TabId, () => JSX.Element> = {
   workflow: Workflow,
+  scripts: ScriptsPage,
   tasks: TasksPage,
   settings: SettingsPage,
   accounts: AccountsPage,
