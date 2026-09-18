@@ -12,15 +12,45 @@
 mod common;
 
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use chromiumoxide::cdp::browser_protocol::network::CookieParam;
 use common::{Fx, RECENT_CONV_NEW_ID};
 use lvc_browser::dola::DolaError;
 use lvc_browser::dola::compose::hook_state;
-use lvc_browser::dola::submit::{ConversationId, SubmitCtx, SubmitRequest, submit_at};
+use lvc_browser::dola::submit::{
+    ConversationId, NoopSubmitHooks, SubmitCtx, SubmitHooks, SubmitRequest, submit_at,
+};
 use lvc_browser::ops;
 use lvc_core::{FailureCode, Limits, Mode, Model, Ratio};
+
+/// P3 Task 4: ghi stage; `cancel_at` = thay stage do thi `should_cancel` = true tu do ve sau.
+#[derive(Default)]
+struct RecHooks {
+    stages: Mutex<Vec<String>>,
+    cancel: AtomicBool,
+    cancel_at: Option<&'static str>,
+}
+
+impl RecHooks {
+    fn stages(&self) -> Vec<String> {
+        self.stages.lock().unwrap().clone()
+    }
+}
+
+impl SubmitHooks for RecHooks {
+    fn on_stage(&self, stage: &str) {
+        self.stages.lock().unwrap().push(stage.to_string());
+        if self.cancel_at == Some(stage) {
+            self.cancel.store(true, Ordering::SeqCst);
+        }
+    }
+    fn should_cancel(&self) -> bool {
+        self.cancel.load(Ordering::SeqCst)
+    }
+}
 
 const ACCOUNT: &str = "acc_test";
 const PROMPT: &str = "một con mèo chạy trên bãi biển lúc hoàng hôn";
@@ -80,7 +110,8 @@ async fn submit_fast_tra_conv_id() {
     let p = fx.page();
     set_fake_dola_sessionid(p).await;
     let limits = Limits::default();
-    let ctx = SubmitCtx::new(p, &limits);
+    let hooks = RecHooks::default();
+    let ctx = SubmitCtx::new(p, &limits).with_hooks(&hooks);
     let t0 = Instant::now();
     let id = submit_at(
         &ctx,
@@ -91,6 +122,18 @@ async fn submit_fast_tra_conv_id() {
     .unwrap();
     let dt = t0.elapsed();
     assert_eq!(id, ConversationId("123456789012".into()));
+    // P3 Task 4: chuoi stage dung thu tu Python (khong `refs` vi khong co anh)
+    assert_eq!(
+        hooks.stages(),
+        vec![
+            "page",
+            "mode",
+            "composer",
+            "prompt",
+            "sending",
+            "generating"
+        ]
+    );
     assert_eq!(id.to_string(), "123456789012");
     // goto + 5 s (:2465) + settle/composer/ratio/type + >= 1 nhip
     assert!(dt >= Duration::from_secs(9), "{dt:?}");
@@ -239,6 +282,7 @@ async fn submit_fast_khong_conv_bao_no_conversation() {
         page: p,
         limits: &limits,
         logs_dir: logs_dir.clone(),
+        hooks: &NoopSubmitHooks,
     };
     let t0 = Instant::now();
     let err = submit_at(&ctx, &req(Mode::Fast, 10, None), &fx.url("chat?noconv=1"))
@@ -303,6 +347,7 @@ async fn submit_fast_khong_conv_ma_hien_login_bao_logged_out_revoked() {
         page: p,
         limits: &limits,
         logs_dir: logs.path().join("logs"),
+        hooks: &NoopSubmitHooks,
     };
     let err = submit_at(
         &ctx,
@@ -439,6 +484,60 @@ async fn submit_khong_sessionid_bao_logged_out_truoc_khi_gui() {
     let log = fx.log().await;
     assert_eq!(count(&log, "send \""), 0, "{log}");
     assert_eq!(count(&log, "click create-btn"), 0, "{log}");
+    fx.close().await;
+}
+
+/// P3 Task 4 (R4 "truoc submit"): nguoi dung bam Dung khi dang o stage `mode` -> `Cancelled` ngay
+/// truoc `prompt`: KHONG go/Enter (`send` = 0 trong log fixture), composer da mo (`click create-btn`
+/// = 1), stage dung `page, mode, composer` (khong `prompt`/`sending`), ma `cancelled`, khong xoay.
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test submit_smoke -- --ignored"]
+async fn submit_huy_truoc_prompt_khong_gui() {
+    let fx = Fx::open("chat").await;
+    let p = fx.page();
+    set_fake_dola_sessionid(p).await;
+    let limits = Limits::default();
+    let hooks = RecHooks {
+        cancel_at: Some("mode"),
+        ..RecHooks::default()
+    };
+    let ctx = SubmitCtx::new(p, &limits).with_hooks(&hooks);
+    let err = submit_at(&ctx, &req(Mode::Fast, 10, None), &fx.url("chat"))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DolaError::Cancelled), "{err:?}");
+    assert_eq!(err.to_string(), "cancelled");
+    assert_eq!(err.failure_code(), Some(FailureCode::Cancelled));
+    assert!(!err.rotates_account());
+    assert_eq!(hooks.stages(), vec!["page", "mode", "composer"]);
+    let log = fx.log().await;
+    assert_eq!(count(&log, "send \""), 0, "khong duoc gui: {log}");
+    assert_eq!(count(&log, "click create-btn"), 1, "{log}");
+    assert!(!log.contains("pushState"), "{log}");
+    fx.close().await;
+}
+
+/// P3 Task 4 (R4 "truoc page"): co huy bat tu dau -> `Cancelled` truoc khi cham trang (khong goto,
+/// khong stage nao, < 1 s).
+#[tokio::test]
+#[ignore = "can Chromium tren may; chay: cargo test -p lvc-browser --test submit_smoke -- --ignored"]
+async fn submit_huy_truoc_page_khong_dieu_huong() {
+    let fx = Fx::open("chat.html").await;
+    let p = fx.page();
+    set_fake_dola_sessionid(p).await;
+    let limits = Limits::default();
+    let hooks = RecHooks::default();
+    hooks.cancel.store(true, Ordering::SeqCst);
+    let ctx = SubmitCtx::new(p, &limits).with_hooks(&hooks);
+    let t0 = Instant::now();
+    let err = submit_at(&ctx, &req(Mode::Fast, 10, None), &fx.url("chat"))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DolaError::Cancelled), "{err:?}");
+    assert!(t0.elapsed() < Duration::from_secs(1), "{:?}", t0.elapsed());
+    assert!(hooks.stages().is_empty());
+    assert_eq!(loads(&fx).await, 1, "khong goto");
+    assert!(ops::url(p).await.unwrap().ends_with("/chat.html"));
     fx.close().await;
 }
 

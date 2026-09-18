@@ -16,6 +16,7 @@
 //! | — `pull_chain` loi | `:1500-1509` | "closed" → [`DolaError::BrowserClosed`] ([`is_browser_closed_msg`], tu loi CDP); loi HTTP → `warn` + `continue` |
 //! | — 401/403 | `:1510-1512` `is_auth_status` | [`DolaError::LoggedOut`] `revoked: false` |
 //! | — `on_poll` | `:1514-1517` | ≤ 1 lan / 30 s ([`ON_POLL_EVERY`]), lan dau ngay |
+//! | — `should_cancel` | (khong co — P3 R4) | dau moi nhip (truoc `sleep`) + sau `sleep` (truoc captcha/`pull_chain`) + truoc `download` → [`DolaError::Cancelled`] |
 //! | [`should_extend`] | `modes.py:361-363` | gia han khi agent con noi |
 //! | — timeout | `:1522-1524` | `TIMEOUT: No video generated within {N}s (conversation_id={id}) \| agent: {duoi 400 ky tu}` ([`latest_tail`]) |
 //! | [`handle_poll`] | `_handle_poll` `:1275-1429` | bang thu tu duoi |
@@ -185,6 +186,13 @@ pub trait PollHooks: Send + Sync {
     /// `latest` doi (buoc 1) — cac khoi noi bang `\n`.
     fn on_agent_reply(&self, text: &str) {
         let _ = text;
+    }
+    /// P3 Task 4 (R4): nguoi dung da bam Dung? Vong poll hoi o DAU moi nhip (truoc `sleep`), NGAY
+    /// SAU `sleep` (truoc captcha/`pull_chain` — khong goi HTTP nao nua) va TRUOC khi tai file;
+    /// `true` -> [`DolaError::Cancelled`] (engine giu `conversation_id` de Resume, khong xoay, khong
+    /// dong phien). Mac dinh `false` (khong bao gio huy).
+    fn should_cancel(&self) -> bool {
+        false
     }
 }
 
@@ -740,13 +748,15 @@ pub(crate) async fn resolve_raw_video(http: &DolaHttp, video_model: &str) -> Opt
 /// `_download_result` `:1265-1272`: stage `downloading`, [`output_path`] (UTC), tai, tra artifact.
 ///
 /// # Errors
-/// [`DolaError::Http`] tu [`DolaHttp::download`].
+/// [`DolaError::Http`] tu [`DolaHttp::download`]; [`DolaError::Cancelled`] (P3 R4 diem 5, truoc tai).
 async fn download_result(
     ctx: &LoopCtx<'_>,
     url: &str,
     note: &'static str,
 ) -> Result<VideoArtifact, DolaError> {
     let account = ctx.account;
+    // P3 R4 diem 5: huy giua `pull_chain` va tai file (cung nhip) -> khong tai, khong phat stage.
+    cancel_check(ctx.hooks, account, "truoc download")?;
     info!(account, note, url = %url_host_path(url), "Completed! Downloading...");
     ctx.hooks.on_stage(STAGE_DOWNLOADING);
     let local_path = output_path(ctx.out_dir, account, SystemTime::now());
@@ -832,7 +842,8 @@ struct LoopCtx<'a> {
 /// - loi cua [`handle_poll`] (limit/credit/refusal/policy/question/idle);
 /// - [`DolaError::Browser`] khi gui tra loi xac nhan that bai (Python: ngoai le lan ra);
 /// - [`DolaError::Http`] tai file that bai;
-/// - [`DolaError::Timeout`] het gio (`:1522-1524`).
+/// - [`DolaError::Timeout`] het gio (`:1522-1524`);
+/// - [`DolaError::Cancelled`] khi `hooks.should_cancel()` (P3 R4: dau/sau `sleep` moi nhip, truoc tai).
 // PF-3: nhu `poll_and_download` + `poll_url` (9 tham so).
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn poll_and_download_at<P: PollPage + ?Sized>(
@@ -863,6 +874,9 @@ pub(crate) async fn poll_and_download_at<P: PollPage + ?Sized>(
     hooks.on_stage(STAGE_GENERATING); // :1493-1494
     info!(account, conv = %conv, timeout_s = opts.timeout.as_secs(), "bat dau poll");
     loop {
+        // P3 R4 diem 4: huy o DAU nhip (bat ca truong hop huy TRUOC khi poll bat dau — vd ngay sau
+        // submit) — khong doi het `sleep`.
+        cancel_check(hooks, account, "dau nhip")?;
         // :1496-1500 het gio (tru khi gia han)
         let now = Instant::now();
         let elapsed = now.duration_since(start);
@@ -873,6 +887,8 @@ pub(crate) async fn poll_and_download_at<P: PollPage + ?Sized>(
             break;
         }
         tokio::time::sleep(interval).await; // :1499
+        // P3 R4 diem 4: huy trong luc ngu -> dung TRUOC captcha/cookie/`pull_chain` (0 HTTP them).
+        cancel_check(hooks, account, "sau sleep")?;
         // Ruling #2 captcha + ruling #3 cookie (loi CDP: closed -> Err, khac -> continue)
         let Some(cookie) = read_cookie(page, account, &cookie_overrides).await? else {
             continue;
@@ -1054,6 +1070,16 @@ fn timeout_error(start: Instant, conv: &ConversationId, last_latest: &[String]) 
     DolaError::Timeout(msg)
 }
 
+/// P3 Task 4 (R4): `hooks.should_cancel()` -> `info` + [`DolaError::Cancelled`] (`at` chi de log
+/// biet dung o diem nao).
+fn cancel_check(hooks: &dyn PollHooks, account: &str, at: &str) -> Result<(), DolaError> {
+    if hooks.should_cancel() {
+        info!(account, at, "nguoi dung huy -> dung poll");
+        return Err(DolaError::Cancelled);
+    }
+    Ok(())
+}
+
 /// Loi CDP khi doc trang moi nhip: "closed" → [`DolaError::BrowserClosed`] (`:1503-1506`); khac →
 /// `warn` + `Ok` de vong `continue` (`:1508-1509`).
 fn closed_or_warn(account: &str, what: &str, e: &BrowserError) -> Result<(), DolaError> {
@@ -1086,8 +1112,8 @@ impl fmt::Display for RawFallback {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as B64;
@@ -1944,6 +1970,9 @@ mod tests {
         dom: String,
         cookie_err: Option<&'static str>,
         replies: Mutex<Vec<String>>,
+        /// P3 Task 4: `dom_tail()` bat co nay (chia se voi `CancelHooks`) — mo phong nguoi dung bam
+        /// Dung GIUA `pull_chain` va `download` trong cung mot nhip (diem kiem "truoc download", R4).
+        cancel_on_dom: Option<Arc<AtomicBool>>,
     }
 
     impl FakePollPage {
@@ -1954,6 +1983,7 @@ mod tests {
                 dom: String::new(),
                 cookie_err: None,
                 replies: Mutex::new(Vec::new()),
+                cancel_on_dom: None,
             }
         }
     }
@@ -1970,11 +2000,29 @@ mod tests {
             Ok(self.captcha)
         }
         async fn dom_tail(&self) -> Result<String, BrowserError> {
+            if let Some(flag) = &self.cancel_on_dom {
+                flag.store(true, Ordering::SeqCst);
+            }
             Ok(self.dom.clone())
         }
         async fn send_reply(&self, text: &str) -> Result<(), BrowserError> {
             self.replies.lock().unwrap().push(text.to_string());
             Ok(())
+        }
+    }
+
+    /// P3 Task 4 (R4): `should_cancel` doc co chia se; ghi lai stage de kiem `downloading` KHONG phat.
+    struct CancelHooks {
+        flag: Arc<AtomicBool>,
+        stages: Mutex<Vec<String>>,
+    }
+
+    impl PollHooks for CancelHooks {
+        fn on_stage(&self, stage: &str) {
+            self.stages.lock().unwrap().push(stage.to_string());
+        }
+        fn should_cancel(&self) -> bool {
+            self.flag.load(Ordering::SeqCst)
         }
     }
 
@@ -2371,6 +2419,110 @@ mod tests {
         assert!(matches!(err, DolaError::RiskControl(_)), "{err}");
         assert_eq!(err.to_string(), captcha_error().to_string());
         assert!(requests_to(&server, "/im/chain/single").await.is_empty());
+    }
+
+    /// P3 Task 4 (R4, diem kiem "moi nhip poll"): `should_cancel()` true ngay tu dau -> `Cancelled`
+    /// TRUOC moi HTTP (0 request toi `/im/chain/single`), khong captcha/cookie nao duoc doc.
+    #[tokio::test]
+    async fn vong_huy_dung_truoc_khi_poll() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .mount(&server)
+            .await;
+        let dir = tempdir().unwrap();
+        let page = FakePollPage::new();
+        let hooks = CancelHooks {
+            flag: Arc::new(AtomicBool::new(true)),
+            stages: Mutex::new(Vec::new()),
+        };
+        let err = poll_and_download_at(
+            &page,
+            &http(),
+            &poll_path(&server),
+            ACC,
+            &conv(),
+            dir.path(),
+            &opts(Mode::Fast),
+            &fast_limits(),
+            &hooks,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DolaError::Cancelled), "{err}");
+        assert_eq!(err.to_string(), "cancelled");
+        assert_eq!(err.failure_code(), Some(lvc_core::FailureCode::Cancelled));
+        assert!(!err.rotates_account());
+        assert!(requests_to(&server, "/im/chain/single").await.is_empty());
+        // stage `generating` van phat mot lan luc bat dau (:1493-1494) — truoc diem kiem huy
+        assert_eq!(
+            *hooks.stages.lock().unwrap(),
+            vec![STAGE_GENERATING.to_string()]
+        );
+        assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
+    }
+
+    /// P3 Task 4 (R4, diem kiem "truoc download"): poll dau da co video, nhung nguoi dung bam Dung
+    /// giua `pull_chain` va `download` (co bat luc doc DOM) -> `Cancelled`, KHONG tai file, KHONG
+    /// phat stage `downloading`, 1 request poll + 0 request raw/tai.
+    #[tokio::test]
+    async fn vong_huy_truoc_khi_tai_khong_tai_file() {
+        let server = MockServer::start().await;
+        let raw_api = format!("{}/video/fplay/1/sig/vid?key_seed=abc", server.uri());
+        let model = json!({
+            "fallback_api": raw_api,
+            "video_list": {"v1": {"main_url": B64.encode(format!("{}/video/main.mp4", server.uri())), "bitrate": 100}}
+        })
+        .to_string();
+        Mock::given(method("POST"))
+            .and(path("/im/chain/single"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(chain_body(
+                "できました",
+                Some(("http://v16-dola.dola.com/video/wm.mp4", &model)),
+            )))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0u8; 10]))
+            .mount(&server)
+            .await;
+        let dir = tempdir().unwrap();
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut page = FakePollPage::new();
+        page.cancel_on_dom = Some(Arc::clone(&flag));
+        let hooks = CancelHooks {
+            flag,
+            stages: Mutex::new(Vec::new()),
+        };
+        let err = poll_and_download_at(
+            &page,
+            &http(),
+            &poll_path(&server),
+            ACC,
+            &conv(),
+            dir.path(),
+            &opts(Mode::Fast),
+            &fast_limits(),
+            &hooks,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DolaError::Cancelled), "{err}");
+        assert_eq!(requests_to(&server, "/im/chain/single").await.len(), 1);
+        assert!(
+            requests_to(&server, "/video/raw.mp4").await.is_empty()
+                && requests_to(&server, "/video/main.mp4").await.is_empty(),
+            "khong duoc tai file sau khi huy"
+        );
+        assert_eq!(
+            *hooks.stages.lock().unwrap(),
+            vec![STAGE_GENERATING.to_string()],
+            "khong phat `downloading`"
+        );
+        assert!(
+            std::fs::read_dir(dir.path()).unwrap().next().is_none(),
+            "khong co file nao trong thu muc tai"
+        );
     }
 
     #[tokio::test]

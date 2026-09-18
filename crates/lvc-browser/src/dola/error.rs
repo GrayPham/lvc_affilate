@@ -8,6 +8,11 @@
 //! [`DolaError::rotates_account`] (pool xoay tai khoan — `browser_pool.py:1192-1262` `continue` tren
 //! `AccountLoggedOutError`/`RiskControlError`/`AccountLimitedError`/`Credit*Error`/`ProfileBusyError`;
 //! `generate_video` `:2507-2509` chi dong warm session cho 4 loai dau).
+//!
+//! P3 Task 4 (R4): [`DolaError::Cancelled`] — nguoi dung bam Dung (`PollHooks::should_cancel` /
+//! `SubmitHooks::should_cancel` tra `true` tai mot diem kiem). Ma `cancelled` (`FailureCode::Cancelled`,
+//! chu thuong nhu Python `store.py` `failure_code="cancelled"`), KHONG dead chat (chat van dung de
+//! Resume), KHONG xoay tai khoan, KHONG dong phien (engine tra phien ve cache).
 
 use lvc_core::FailureCode;
 
@@ -61,6 +66,10 @@ pub enum DolaError {
     Browser(#[from] BrowserError),
     #[error("HTTP: {0}")]
     Http(String),
+    /// P3 Task 4 (R4): nguoi dung huy tai mot diem kiem (`should_cancel()` true). `Display` = dung
+    /// chuoi ma `cancelled` (khong co thong diep) de cot `error` khop `failure_code`.
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl DolaError {
@@ -68,6 +77,7 @@ impl DolaError {
     /// the co tien to ma Python (`RATIO_UNAVAILABLE`/`AGENT_NO_VIDEO` them o vong 2, ruling M-1) +
     /// `Browser(ProfileBusy)` -> `PROFILE_BUSY` (vong 1: Python `ProfileBusyError` -> `"PROFILE_BUSY"`);
     /// con lai `None` (loi "khong ma": captcha, het credit, han muc, timeout poll, CDP khac...).
+    /// P3 Task 4: `Cancelled` -> `CANCELLED` (`FailureCode::Cancelled`, chuoi `cancelled`).
     #[must_use]
     pub fn failure_code(&self) -> Option<FailureCode> {
         match self {
@@ -81,6 +91,8 @@ impl DolaError {
             Self::AgentQuestion(_) => Some(FailureCode::AgentQuestion),
             Self::AgentNoVideo(_) => Some(FailureCode::AgentNoVideo),
             Self::Browser(BrowserError::ProfileBusy(_)) => Some(FailureCode::ProfileBusy),
+            // P3 Task 4: huy = Failed + ma `cancelled` (failure.rs: ma, KHONG phai trang thai)
+            Self::Cancelled => Some(FailureCode::Cancelled),
             Self::ModeSwitch { .. }
             | Self::RiskControl(_)
             | Self::AccountLimited(_)
@@ -170,6 +182,8 @@ mod tests {
             (DolaError::Timeout("x".into()), "TIMEOUT: x"),
             (DolaError::BrowserClosed("x".into()), "BROWSER_CLOSED: x"),
             (DolaError::Http("x".into()), "HTTP: x"),
+            // P3 Task 4 (R4): khong co thong diep — Display = dung chuoi ma Python `cancelled`
+            (DolaError::Cancelled, "cancelled"),
         ];
         for (e, want) in cases {
             assert_eq!(e.to_string(), want);
@@ -211,7 +225,7 @@ mod tests {
         assert_eq!(
             rows.len(),
             15,
-            "15 bien the co ma (ModeSwitch/Browser khong ma)"
+            "15 bien the co ma dang `CODE: msg` (ModeSwitch/Browser khong ma; Cancelled chi co ma, khong msg)"
         );
         for (e, code) in rows {
             let s = e.to_string();
@@ -258,9 +272,10 @@ mod tests {
     /// Bang phan loai Task 9 (plan + ruling vong 1/2): `failure_code` (9 bien the co ma +
     /// `Browser(ProfileBusy)` -> `PROFILE_BUSY`, con lai `None`), `is_dead_chat`
     /// (`PromptViolation | AgentQuestion | AgentNoVideo`), `rotates_account` (`LoggedOut | RiskControl |
-    /// AccountLimited | Credit | Browser(ProfileBusy)`). 17 bien the + 2 dong `Browser(_)` khac.
+    /// AccountLimited | Credit | Browser(ProfileBusy)`). 18 bien the + 2 dong `Browser(_)` khac
+    /// (P3 Task 4 them `Cancelled` -> `FailureCode::Cancelled`, khong dead chat, KHONG xoay).
     #[test]
-    fn phan_loai_bang_17_dong() {
+    fn phan_loai_bang_18_dong() {
         use FailureCode as F;
         let rows: Vec<(DolaError, Option<FailureCode>, bool, bool)> = vec![
             (logged_out(), Some(F::LoggedOut), false, true),
@@ -348,8 +363,10 @@ mod tests {
                 false,
                 false,
             ),
+            // P3 Task 4 (R4): nguoi dung huy -> ma `cancelled`; pool KHONG xoay, KHONG dong phien
+            (DolaError::Cancelled, Some(F::Cancelled), false, false),
         ];
-        assert_eq!(rows.len(), 19);
+        assert_eq!(rows.len(), 20);
         for (e, code, dead, rotates) in rows {
             assert_eq!(e.failure_code(), code, "failure_code {e}");
             assert_eq!(e.is_dead_chat(), dead, "is_dead_chat {e}");
@@ -393,6 +410,15 @@ mod tests {
                 .failure_code()
                 .map(FailureCode::as_str),
             Some("AGENT_NO_VIDEO")
+        );
+        // P3 Task 4: `cancelled` chu thuong (failure.rs `FailureCode::Cancelled.as_str()`), khop Display
+        assert_eq!(
+            DolaError::Cancelled.failure_code().map(FailureCode::as_str),
+            Some("cancelled")
+        );
+        assert_eq!(
+            DolaError::Cancelled.to_string(),
+            FailureCode::Cancelled.as_str()
         );
         // Dead chat theo MA (server.py:2006) khop dead chat theo bien the
         for e in [

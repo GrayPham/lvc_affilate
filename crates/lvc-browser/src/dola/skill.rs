@@ -123,6 +123,7 @@ pub async fn open_video_composer_pro(page: &Page) -> Result<(), DolaError> {
 pub async fn submit_pro(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(), DolaError> {
     let page = ctx.page;
     let account = req.account.as_str();
+    ctx.hooks.on_stage(submit::STAGE_COMPOSER); // P3 Task 4
     open_video_composer_pro(page).await?; // :2306
     submit::clear_old_attachments(page, account).await?; // :2307
     submit::attach_refs(ctx, req).await?; // :2308
@@ -132,6 +133,7 @@ pub async fn submit_pro(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(), 
         Some(req.duration),
         ctx.limits.pro_no_bgm,
     ); // :2309
+    submit::before_prompt(ctx, account)?; // P3 R4 + :2122
     compose::type_and_send(page, &format!(" {text}"), true).await?; // :2310
     // :2311 — Python in `text[:60]`; o day KHONG log noi dung
     tracing::info!(
@@ -161,6 +163,7 @@ pub async fn submit_pro_max(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<
         ctx.limits.pro_no_bgm,
         &ctx.limits.pro_max_command,
     ); // :2321
+    submit::before_prompt(ctx, account)?; // P3 R4 + :2122
     compose::type_and_send(page, &text, false).await?; // :2322
     // :2323 — Python in `text[:60]`; o day KHONG log noi dung
     tracing::info!(
@@ -193,6 +196,7 @@ pub async fn submit_agent(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<()
         req.model,
         agent_style(ctx.limits),
     ); // :2379
+    submit::before_prompt(ctx, account)?; // P3 R4 + :2122
     compose::type_and_send(page, &text, false).await?; // :2380
     // :2381 — Python in `text[:60]!r` + `prompt[:100]!r`; o day KHONG log noi dung
     tracing::info!(

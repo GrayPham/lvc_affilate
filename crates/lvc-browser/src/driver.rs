@@ -9,7 +9,9 @@ use async_trait::async_trait;
 use lvc_core::{BrowserKind, Cookie, Limits, ProxySpec, SessionState};
 
 use crate::BrowserError;
-use crate::dola::{ConversationId, DolaError, PollHooks, PollOpts, SubmitRequest, VideoArtifact};
+use crate::dola::{
+    ConversationId, DolaError, PollHooks, PollOpts, SubmitHooks, SubmitRequest, VideoArtifact,
+};
 
 /// Mac dinh `launch_timeout` (chromiumoxide cho websocket URL cua tien trinh Chrome).
 pub const DEFAULT_LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
@@ -126,7 +128,9 @@ pub trait BrowserDriver: Send + Sync {
     async fn close(&self, s: Self::Session) -> Result<(), BrowserError>;
 
     /// Task 14 (P2): gui mot yeu cau video tren phien `s` — `ChromiumDriver` uy quyen cho
-    /// [`crate::dola::submit`] (qua `SubmitCtx { page, limits, logs_dir }`).
+    /// [`crate::dola::submit`] (qua `SubmitCtx { page, limits, logs_dir, hooks }`). P3 Task 4:
+    /// `hooks` nhan stage (`page`/`mode`/`composer`/`refs`/`prompt`/`sending`/`generating`) va tra
+    /// loi "da huy?" (R4) — engine truyen adapter cua no; caller khac dung `&NoopSubmitHooks`.
     ///
     /// # Errors
     /// Xem [`crate::dola::submit`].
@@ -135,6 +139,7 @@ pub trait BrowserDriver: Send + Sync {
         s: &Self::Session,
         req: &SubmitRequest,
         limits: &Limits,
+        hooks: &dyn SubmitHooks,
     ) -> Result<ConversationId, DolaError>;
 
     /// Task 14 (P2): vong poll + tai video cho `conv` — `ChromiumDriver` dung UA that cua phien
@@ -239,6 +244,7 @@ mod tests {
                 (): &(),
                 _: &SubmitRequest,
                 _: &Limits,
+                _: &dyn SubmitHooks,
             ) -> Result<ConversationId, DolaError> {
                 unreachable!()
             }

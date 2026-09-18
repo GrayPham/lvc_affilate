@@ -25,7 +25,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::task::JoinHandle;
 
 use crate::dola::{
-    self, ConversationId, DolaError, DolaHttp, PollHooks, PollOpts, SubmitRequest, VideoArtifact,
+    self, ConversationId, DolaError, DolaHttp, PollHooks, PollOpts, SubmitHooks, SubmitRequest,
+    VideoArtifact,
 };
 use crate::{BrowserDriver, BrowserError, LaunchOpts, SessionProbe, executable, ops, profile};
 
@@ -955,18 +956,21 @@ impl BrowserDriver for ChromiumDriver {
         Ok(())
     }
 
-    /// Task 14: uy quyen thang cho [`dola::submit`] qua `SubmitCtx { page, limits, logs_dir }`
-    /// (`logs_dir` = duong dan TUYET DOI da chuan bi luc `launch()` — xem [`ChromiumSession`]).
+    /// Task 14: uy quyen thang cho [`dola::submit`] qua `SubmitCtx { page, limits, logs_dir, hooks }`
+    /// (`logs_dir` = duong dan TUYET DOI da chuan bi luc `launch()` — xem [`ChromiumSession`];
+    /// `hooks` P3 Task 4: stage + huy).
     async fn submit(
         &self,
         s: &ChromiumSession,
         req: &SubmitRequest,
         limits: &Limits,
+        hooks: &dyn SubmitHooks,
     ) -> Result<ConversationId, DolaError> {
         let ctx = dola::SubmitCtx {
             page: s.page(),
             limits,
             logs_dir: s.logs_dir.clone(),
+            hooks,
         };
         dola::submit(&ctx, req).await
     }

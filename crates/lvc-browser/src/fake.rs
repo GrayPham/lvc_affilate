@@ -16,6 +16,12 @@
 //! Kich ban het TRUOC khi mot ham can no, hoac buoc ke tiep sai loai (vd `submit()` goi nhung
 //! buoc ke tiep la `Poll(..)`), la LOI LOGIC cua test (kich ban sai) — `panic!` ngay voi thong
 //! diep neu ro ham nao goi va kich ban con lai, thay vi tra loi mac dinh im lang.
+//!
+//! P3 Task 4 (huy + su kien): `submit()` phat stage qua `SubmitHooks` dung thu tu Python (`page` ->
+//! `mode` -> `prompt` -> `sending` -> `generating` khi Ok) va hoi `should_cancel()` TRUOC `page` va
+//! TRUOC `prompt` (nhu `dola::submit`) -> `DolaError::Cancelled`; `poll_and_download()` phat
+//! `generating` (:1494) va `downloading` (:1268, chi khi Ok); [`FakeStep::PollUntilCancelled`] lap
+//! 10 ms/nhip toi khi `PollHooks::should_cancel()` -> `Cancelled` (engine test "huy giua poll").
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -25,13 +31,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use async_trait::async_trait;
 use lvc_core::{BrowserKind, Cookie, Limits, Mode, SessionState};
 
-use crate::dola::{ConversationId, DolaError, PollHooks, PollOpts, SubmitRequest, VideoArtifact};
+use crate::dola::poll::{STAGE_DOWNLOADING, STAGE_GENERATING};
+use crate::dola::submit::{STAGE_MODE, STAGE_PAGE, STAGE_PROMPT, STAGE_SENDING};
+use crate::dola::{
+    ConversationId, DolaError, PollHooks, PollOpts, SubmitHooks, SubmitRequest, VideoArtifact,
+};
 use crate::driver::{BrowserDriver, LaunchOpts, SessionProbe};
 use crate::error::BrowserError;
 
 /// UA co dinh tra ve boi [`FakeDriver::user_agent`] — khong dai dien Chrome that nao, chi de
 /// phan biet voi UA that trong log/assert cua test.
 pub const FAKE_USER_AGENT: &str = "FakeUA/1";
+/// Nhip hoi `should_cancel()` cua [`FakeStep::PollUntilCancelled`].
+pub const POLL_UNTIL_CANCELLED_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
 /// Mot buoc kich ban. Chi 3 loai — xem doc module ve ly do cac ham con lai khong can buoc rieng.
 #[derive(Debug)]
@@ -42,6 +54,9 @@ pub enum FakeStep {
     Submit(Result<ConversationId, DolaError>),
     /// `poll_and_download()`.
     Poll(Result<VideoArtifact, DolaError>),
+    /// P3 Task 4: `poll_and_download()` lap 10 ms/nhip toi khi `hooks.should_cancel()` -> `Cancelled`
+    /// (khong bao gio tu tra video) — test "bam Dung trong luc cho video".
+    PollUntilCancelled,
 }
 
 /// Mot loi goi trait da ghi lai, THEO THU TU goi — de test cua engine khang dinh trinh tu
@@ -195,6 +210,7 @@ impl BrowserDriver for FakeDriver {
         s: &FakeSession,
         req: &SubmitRequest,
         limits: &Limits,
+        hooks: &dyn SubmitHooks,
     ) -> Result<ConversationId, DolaError> {
         let _ = limits;
         self.record(FakeCall::Submit {
@@ -202,7 +218,8 @@ impl BrowserDriver for FakeDriver {
             mode: req.mode,
             duration: req.duration,
         });
-        match self.pop() {
+        // Tieu thu buoc TRUOC (kich ban mo ta Dola se tra gi; huy cat ngang truoc khi toi do).
+        let res = match self.pop() {
             Some(FakeStep::Submit(res)) => res,
             Some(other) => panic!(
                 "FakeDriver::submit: buoc kich ban ke tiep la {other:?}, khong phai Submit(..) \
@@ -210,7 +227,22 @@ impl BrowserDriver for FakeDriver {
                 self.remaining_debug()
             ),
             None => panic!("FakeDriver::submit: kich ban da het truoc khi goi submit()"),
+        };
+        // P3 Task 4: cung diem kiem/stage nhu `dola::submit` (R4: truoc page, truoc prompt).
+        if hooks.should_cancel() {
+            return Err(DolaError::Cancelled);
         }
+        hooks.on_stage(STAGE_PAGE);
+        hooks.on_stage(STAGE_MODE);
+        if hooks.should_cancel() {
+            return Err(DolaError::Cancelled);
+        }
+        hooks.on_stage(STAGE_PROMPT);
+        hooks.on_stage(STAGE_SENDING);
+        if res.is_ok() {
+            hooks.on_stage(STAGE_GENERATING);
+        }
+        res
     }
 
     #[allow(clippy::too_many_arguments)] // khop chu ky trait (BrowserDriver::poll_and_download)
@@ -224,13 +256,28 @@ impl BrowserDriver for FakeDriver {
         limits: &Limits,
         hooks: &dyn PollHooks,
     ) -> Result<VideoArtifact, DolaError> {
-        let _ = (s, out_dir, opts, limits, hooks);
+        let _ = (s, out_dir, opts, limits);
         self.record(FakeCall::Poll {
             account: account.to_string(),
             conv: conv.clone(),
         });
         match self.pop() {
-            Some(FakeStep::Poll(res)) => res,
+            Some(FakeStep::Poll(res)) => {
+                hooks.on_stage(STAGE_GENERATING); // :1494
+                if res.is_ok() {
+                    hooks.on_stage(STAGE_DOWNLOADING); // :1268
+                }
+                res
+            }
+            Some(FakeStep::PollUntilCancelled) => {
+                hooks.on_stage(STAGE_GENERATING);
+                loop {
+                    if hooks.should_cancel() {
+                        return Err(DolaError::Cancelled);
+                    }
+                    tokio::time::sleep(POLL_UNTIL_CANCELLED_TICK).await;
+                }
+            }
             Some(other) => panic!(
                 "FakeDriver::poll_and_download: buoc kich ban ke tiep la {other:?}, khong phai \
                  Poll(..) — kich ban con lai: {:?}",
@@ -256,12 +303,65 @@ impl BrowserDriver for FakeDriver {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     use lvc_core::{Mode, Model, Ratio};
 
     use super::*;
+    use crate::dola::submit::{NoopSubmitHooks, SubmitHooks};
     use crate::driver::DEFAULT_LAUNCH_TIMEOUT;
+
+    /// P3 Task 4: ghi lai stage (ca `SubmitHooks` lan `PollHooks`) + co huy chia se; `cancel_at`
+    /// = thay stage nay thi bat co (mo phong nguoi dung bam Dung dung luc do).
+    #[derive(Default)]
+    struct RecHooks {
+        stages: Mutex<Vec<String>>,
+        cancel: AtomicBool,
+        cancel_at: Option<&'static str>,
+    }
+
+    impl RecHooks {
+        fn stages(&self) -> Vec<String> {
+            self.stages.lock().unwrap().clone()
+        }
+        fn see(&self, stage: &str) {
+            self.stages.lock().unwrap().push(stage.to_string());
+            if self.cancel_at == Some(stage) {
+                self.cancel.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+
+    impl SubmitHooks for RecHooks {
+        fn on_stage(&self, stage: &str) {
+            self.see(stage);
+        }
+        fn should_cancel(&self) -> bool {
+            self.cancel.load(Ordering::SeqCst)
+        }
+    }
+
+    impl PollHooks for RecHooks {
+        fn on_stage(&self, stage: &str) {
+            self.see(stage);
+        }
+        fn should_cancel(&self) -> bool {
+            self.cancel.load(Ordering::SeqCst)
+        }
+    }
+
+    fn popts() -> PollOpts {
+        PollOpts {
+            timeout: Duration::from_secs(1),
+            mode: Mode::Fast,
+            duration: 10,
+            ignore_videos: std::collections::HashSet::default(),
+            ignore_links: std::collections::HashSet::default(),
+            accept_links: false,
+        }
+    }
 
     fn opts(account: &str) -> LaunchOpts {
         LaunchOpts {
@@ -313,7 +413,7 @@ mod tests {
         driver.goto(&s, "https://www.dola.com/chat").await.unwrap();
 
         let got_conv = driver
-            .submit(&s, &req("acc1"), &limits)
+            .submit(&s, &req("acc1"), &limits, &NoopSubmitHooks)
             .await
             .expect("submit Ok");
         assert_eq!(got_conv, conv);
@@ -381,7 +481,10 @@ mod tests {
         ]);
         let s = driver.launch(&opts("acc1")).await.unwrap();
         let limits = Limits::default();
-        let err = driver.submit(&s, &req("acc1"), &limits).await.unwrap_err();
+        let err = driver
+            .submit(&s, &req("acc1"), &limits, &NoopSubmitHooks)
+            .await
+            .unwrap_err();
         assert!(
             matches!(&err, DolaError::LoggedOut { account, .. } if account == "acc1"),
             "{err:?}"
@@ -395,7 +498,9 @@ mod tests {
         let driver = FakeDriver::new(vec![FakeStep::Launch(Ok(()))]);
         let s = driver.launch(&opts("acc1")).await.unwrap();
         let limits = Limits::default();
-        let _ = driver.submit(&s, &req("acc1"), &limits).await;
+        let _ = driver
+            .submit(&s, &req("acc1"), &limits, &NoopSubmitHooks)
+            .await;
     }
 
     /// Buoc ke tiep sai LOAI (mong `Submit`, kich ban lai la `Poll`) cung phai panic ro rang.
@@ -409,7 +514,9 @@ mod tests {
         ]);
         let s = driver.launch(&opts("acc1")).await.unwrap();
         let limits = Limits::default();
-        let _ = driver.submit(&s, &req("acc1"), &limits).await;
+        let _ = driver
+            .submit(&s, &req("acc1"), &limits, &NoopSubmitHooks)
+            .await;
     }
 
     /// `account` cua `FakeSession` suy tu ten file cuoi cung cua `profile_dir`.
@@ -469,6 +576,190 @@ mod tests {
         let s2 = driver.launch(&opts("acc2")).await.unwrap();
         assert_eq!(s1.seq, 0);
         assert_eq!(s2.seq, 1);
+    }
+
+    /// P3 Task 4: `submit()` goi `SubmitHooks::on_stage` theo thu tu Python (`page` :2433, `mode`
+    /// :2476, `prompt` :2122, `sending` :2539, `generating` :2603 khi co conv id); `poll_and_download()`
+    /// goi `PollHooks::on_stage` `generating` (:1494) roi `downloading` (:1268) khi Ok.
+    #[tokio::test]
+    async fn submit_va_poll_phat_stage_dung_thu_tu() {
+        let conv = ConversationId("123".into());
+        let driver = FakeDriver::new(vec![
+            FakeStep::Launch(Ok(())),
+            FakeStep::Submit(Ok(conv.clone())),
+            FakeStep::Poll(Ok(artifact("acc1", &conv))),
+        ]);
+        let limits = Limits::default();
+        let hooks = RecHooks::default();
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        driver
+            .submit(&s, &req("acc1"), &limits, &hooks)
+            .await
+            .unwrap();
+        assert_eq!(
+            hooks.stages(),
+            vec!["page", "mode", "prompt", "sending", "generating"]
+        );
+        driver
+            .poll_and_download(
+                &s,
+                "acc1",
+                &conv,
+                Path::new("out"),
+                &popts(),
+                &limits,
+                &hooks,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            hooks.stages(),
+            vec![
+                "page",
+                "mode",
+                "prompt",
+                "sending",
+                "generating",
+                "generating",
+                "downloading"
+            ]
+        );
+    }
+
+    /// P3 Task 4: `Submit(Err)` -> khong phat `generating`; `Poll(Err)` -> khong phat `downloading`.
+    #[tokio::test]
+    async fn submit_loi_va_poll_loi_khong_phat_stage_sau() {
+        let conv = ConversationId("123".into());
+        let driver = FakeDriver::new(vec![
+            FakeStep::Launch(Ok(())),
+            FakeStep::Submit(Err(DolaError::Credit("het".into()))),
+            FakeStep::Poll(Err(DolaError::Timeout("t".into()))),
+        ]);
+        let limits = Limits::default();
+        let hooks = RecHooks::default();
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let err = driver
+            .submit(&s, &req("acc1"), &limits, &hooks)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DolaError::Credit(_)), "{err:?}");
+        assert_eq!(hooks.stages(), vec!["page", "mode", "prompt", "sending"]);
+        let err = driver
+            .poll_and_download(
+                &s,
+                "acc1",
+                &conv,
+                Path::new("out"),
+                &popts(),
+                &limits,
+                &hooks,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DolaError::Timeout(_)), "{err:?}");
+        assert_eq!(
+            hooks.stages(),
+            vec!["page", "mode", "prompt", "sending", "generating"]
+        );
+    }
+
+    /// P3 Task 4 (R4 "truoc submit"): `should_cancel()` true khi toi `prompt` -> `Cancelled`, KHONG
+    /// phat `prompt`/`sending`/`generating` (chua gui, chua ton credit); buoc `Submit(..)` van bi
+    /// tieu thu (kich ban mo ta Dola se tra gi — huy cat ngang truoc do).
+    #[tokio::test]
+    async fn submit_huy_truoc_prompt_bao_cancelled() {
+        let conv = ConversationId("123".into());
+        let driver = FakeDriver::new(vec![
+            FakeStep::Launch(Ok(())),
+            FakeStep::Submit(Ok(conv.clone())),
+        ]);
+        let limits = Limits::default();
+        let hooks = RecHooks {
+            cancel_at: Some("mode"),
+            ..RecHooks::default()
+        };
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let err = driver
+            .submit(&s, &req("acc1"), &limits, &hooks)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DolaError::Cancelled), "{err:?}");
+        assert_eq!(hooks.stages(), vec!["page", "mode"]);
+        assert!(
+            driver.script.lock().unwrap().is_empty(),
+            "buoc Submit da tieu thu"
+        );
+        assert_eq!(driver.calls.lock().unwrap().len(), 2, "launch + submit");
+    }
+
+    /// P3 Task 4 (R4 "truoc launch/page"): co huy da bat TRUOC khi goi `submit()` -> `Cancelled`
+    /// ngay, khong phat stage nao.
+    #[tokio::test]
+    async fn submit_huy_truoc_page_khong_phat_stage() {
+        let driver = FakeDriver::new(vec![
+            FakeStep::Launch(Ok(())),
+            FakeStep::Submit(Ok(ConversationId("1".into()))),
+        ]);
+        let limits = Limits::default();
+        let hooks = RecHooks::default();
+        hooks.cancel.store(true, Ordering::SeqCst);
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let err = driver
+            .submit(&s, &req("acc1"), &limits, &hooks)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DolaError::Cancelled), "{err:?}");
+        assert!(hooks.stages().is_empty());
+    }
+
+    /// P3 Task 4: `FakeStep::PollUntilCancelled` lap (10 ms/nhip) toi khi `should_cancel()` true ->
+    /// `Cancelled`; phat `generating` mot lan, KHONG `downloading`.
+    #[tokio::test]
+    async fn poll_until_cancelled_cho_toi_khi_huy() {
+        let conv = ConversationId("123".into());
+        let driver = FakeDriver::new(vec![FakeStep::Launch(Ok(())), FakeStep::PollUntilCancelled]);
+        let limits = Limits::default();
+        let hooks = Arc::new(RecHooks::default());
+        let s = driver.launch(&opts("acc1")).await.unwrap();
+        let h2 = Arc::clone(&hooks);
+        let flip = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            h2.cancel.store(true, Ordering::SeqCst);
+        });
+        let t0 = std::time::Instant::now();
+        let err = driver
+            .poll_and_download(
+                &s,
+                "acc1",
+                &conv,
+                Path::new("out"),
+                &popts(),
+                &limits,
+                hooks.as_ref(),
+            )
+            .await
+            .unwrap_err();
+        flip.await.unwrap();
+        assert!(matches!(err, DolaError::Cancelled), "{err:?}");
+        assert!(
+            t0.elapsed() >= Duration::from_millis(50),
+            "phai cho toi khi huy ({:?})",
+            t0.elapsed()
+        );
+        assert_eq!(hooks.stages(), vec!["generating"]);
+        assert_eq!(
+            *driver.calls.lock().unwrap(),
+            vec![
+                FakeCall::Launch {
+                    profile_dir: opts("acc1").profile_dir,
+                    browser: BrowserKind::Chromium,
+                },
+                FakeCall::Poll {
+                    account: "acc1".into(),
+                    conv,
+                },
+            ]
+        );
     }
 
     /// Kiem tra an toan doi tuong (object safety) cua `BrowserDriver` — cung la dieu kien de

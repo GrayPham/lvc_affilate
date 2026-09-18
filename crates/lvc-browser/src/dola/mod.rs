@@ -27,6 +27,6 @@ pub use skill::{
     open_video_composer_pro, send_chat_message, submit_agent, submit_pro, submit_pro_max,
 };
 pub use submit::{
-    ConversationId, SubmitCtx, SubmitRequest, captcha_error, has_captcha, submit, submit_at,
-    submit_timeout,
+    ConversationId, NoopSubmitHooks, SubmitCtx, SubmitHooks, SubmitRequest, captcha_error,
+    has_captcha, submit, submit_at, submit_timeout,
 };

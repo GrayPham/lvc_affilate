@@ -18,6 +18,8 @@
 //! | [`has_captcha`] / [`has_captcha_in`] / [`captcha_error`] | `find_captcha_frame` `:692-696`; `RiskControlError` (R6) |
 //! | [`first_fresh`] / [`is_recent_tick`] | `pick_new_conv_id(tail, known, recent)` `:678-689`, `:2578` |
 //! | [`no_conversation_msg`] | `:2600` |
+//! | [`SubmitHooks`] `on_stage` | `task_stage.set_stage` `page` `:2433`, `mode` `:2476`, `refs` `:836` (docstring), `prompt` `:2122`, `sending` `:2539`, `generating` `:2603`; `composer` khong co o Python (P3 them cho UI) |
+//! | [`SubmitHooks`] `should_cancel` | (khong co — P3 R4) | kiem TRUOC `page` va TRUOC `prompt` (sau diem nay co the ton credit) → [`DolaError::Cancelled`] |
 //!
 //! # Khac Python (ruling R3 — captcha song song voi cho conv id)
 //! Python `_after_submit` cho **tuan tu**: 20 x 1 s tim iframe `bdcaptcha.html` (`:2540-2548`, roi
@@ -80,6 +82,41 @@ const URL_SNIPPET: usize = 80;
 /// `:2594-2595` `except Exception: shot = "(khong chup duoc)"`.
 const SHOT_FAILED: &str = "(khong chup duoc)";
 
+/// `task_stage.set_stage("page", account)` `:2433` — mo/kiem trang chat.
+pub const STAGE_PAGE: &str = "page";
+/// `task_stage.set_stage("mode", target_mode)` `:2476`.
+pub const STAGE_MODE: &str = "mode";
+/// P3 (khong co o Python): mo composer video (`open_video_composer_*`).
+pub const STAGE_COMPOSER: &str = "composer";
+/// `attach_reference_images` docstring `:836-839` — `task_stage: 'refs'`.
+pub const STAGE_REFS: &str = "refs";
+/// `_type_and_send` `:2122` `task_stage.set_stage("prompt")`.
+pub const STAGE_PROMPT: &str = "prompt";
+/// `_after_submit` `:2539` `task_stage.set_stage("sending")`.
+pub const STAGE_SENDING: &str = "sending";
+
+/// P3 Task 4: callback tien trinh cua luong GUI (truoc khi co `conversation_id` — 16-20 s ma UI
+/// khong duoc im lang) + hoi huy (R4). Cung mau `PollHooks` (poll.rs); engine goi ca hai tren
+/// cung mot doi tuong.
+pub trait SubmitHooks: Send + Sync {
+    /// [`STAGE_PAGE`] | [`STAGE_MODE`] | [`STAGE_COMPOSER`] | [`STAGE_REFS`] (chi khi co anh) |
+    /// [`STAGE_PROMPT`] | [`STAGE_SENDING`] | `generating` (`poll::STAGE_GENERATING`, khi co conv id).
+    fn on_stage(&self, stage: &str) {
+        let _ = stage;
+    }
+    /// Nguoi dung da bam Dung? Hoi TRUOC `page` (chua cham trang) va TRUOC `prompt` (sau diem nay
+    /// Dola co the tru credit) -> [`DolaError::Cancelled`]. Mac dinh `false`.
+    fn should_cancel(&self) -> bool {
+        false
+    }
+}
+
+/// Khong lam gi (mac dinh cua [`SubmitCtx::new`]).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoopSubmitHooks;
+
+impl SubmitHooks for NoopSubmitHooks {}
+
 /// Yeu cau gui mot video. `Debug` tu viet: in `prompt_chars` thay cho `prompt`.
 #[derive(Clone)]
 pub struct SubmitRequest {
@@ -122,19 +159,30 @@ pub struct SubmitCtx<'a> {
     pub page: &'a Page,
     pub limits: &'a Limits,
     pub logs_dir: PathBuf,
+    /// P3 Task 4: stage + hoi huy; mac dinh [`NoopSubmitHooks`] (`&'static`).
+    pub hooks: &'a dyn SubmitHooks,
 }
 
 impl<'a> SubmitCtx<'a> {
     /// `logs_dir` mac dinh `logs` — TUONG DOI thu muc lam viec (nhu Python `Path("logs")`). Dich vu
     /// (Task 17) co the chay voi CWD khong phai thu muc du lieu: hay dung `SubmitCtx { .. }` truc tiep
     /// voi `logs_dir` TUYET DOI (review vong 2 M-4); `new` chi tien cho test/CLI chay tai thu muc du an.
+    /// `hooks` mac dinh no-op — [`SubmitCtx::with_hooks`] de thay.
     #[must_use]
     pub fn new(page: &'a Page, limits: &'a Limits) -> Self {
         Self {
             page,
             limits,
             logs_dir: default_logs_dir(),
+            hooks: &NoopSubmitHooks,
         }
+    }
+
+    /// Thay hooks (engine P3 Task 4 truyen adapter phat su kien + token huy).
+    #[must_use]
+    pub fn with_hooks(mut self, hooks: &'a dyn SubmitHooks) -> Self {
+        self.hooks = hooks;
+        self
     }
 }
 
@@ -293,6 +341,27 @@ fn with_account(e: DolaError, account: &str) -> DolaError {
     }
 }
 
+/// P3 Task 4 (R4): `ctx.hooks.should_cancel()` -> `info` + [`DolaError::Cancelled`] (`at` chi de log).
+fn cancel_check(ctx: &SubmitCtx<'_>, account: &str, at: &str) -> Result<(), DolaError> {
+    if ctx.hooks.should_cancel() {
+        tracing::info!(account, at, "nguoi dung huy -> khong gui");
+        return Err(DolaError::Cancelled);
+    }
+    Ok(())
+}
+
+/// P3 Task 4: ngay TRUOC `type_and_send` (`_type_and_send` `:2122` `set_stage("prompt")`) — diem kiem
+/// huy cuoi cung truoc khi Dola co the tru credit (R4 "truoc submit"); roi stage [`STAGE_PROMPT`].
+/// Dung chung cho 4 nhanh Nhanh/Pro/Pro Max/Agent (`submit_fast`, `skill::submit_*`).
+///
+/// # Errors
+/// [`DolaError::Cancelled`].
+pub(crate) fn before_prompt(ctx: &SubmitCtx<'_>, account: &str) -> Result<(), DolaError> {
+    cancel_check(ctx, account, "truoc prompt")?;
+    ctx.hooks.on_stage(STAGE_PROMPT);
+    Ok(())
+}
+
 /// `:2592` `Path("logs") / f"no_conv_{account}_{ts}.png"`.
 fn no_conv_shot_path(logs_dir: &Path, account: &str, ts: &str) -> PathBuf {
     logs_dir.join(format!("no_conv_{account}_{ts}.png"))
@@ -328,7 +397,8 @@ pub async fn submit(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<Conversa
 /// # Errors
 /// `DurationUnavailable` (buoc 1, 15/30 khong chon/hook duoc), `LoggedOut`, `ModeUnavailable`,
 /// `ModeSwitch` (khong phai Agent), `RatioUnavailable`, `RefUpload`, `RiskControl` (captcha),
-/// `NoConversation`, `Browser` (CDP/timeout).
+/// `NoConversation`, `Browser` (CDP/timeout), `Cancelled` (P3 R4: `hooks.should_cancel()` truoc
+/// `page` / truoc `prompt`).
 pub async fn submit_at(
     ctx: &SubmitCtx<'_>,
     req: &SubmitRequest,
@@ -357,6 +427,9 @@ async fn submit_inner(
         prompt_chars = req.prompt.chars().count(),
         "submit"
     );
+    // P3 R4 "truoc page": huy truoc khi cham trang -> khong mo/dieu huong gi.
+    cancel_check(ctx, account, "truoc page")?;
+    ctx.hooks.on_stage(STAGE_PAGE); // :2433
     open_new_chat(page, account, chat_url).await?;
     // :2472 — nho cac chat DANG CO truoc khi gui de sau khi gui khong nhan nham chat cu
     let known: HashSet<String> = session::recent_conv_ids(page).await?.into_iter().collect();
@@ -364,6 +437,7 @@ async fn submit_inner(
     // :2475-2485 — pro_max/agent dung chung nut プロ; chi Agent moi nuot loi (`except Exception`
     // :2480 — MOI loi, ke ca LoggedOut/Browser, nhu Python; loi that se lo lai o buoc gui/poll)
     let target = compose::target_mode(req.mode);
+    ctx.hooks.on_stage(STAGE_MODE); // :2476
     match compose::select_mode(page, target).await {
         Ok(label) => {
             tracing::info!(account, label = %label, mode = req.mode.as_str(), "Dola mode");
@@ -419,6 +493,7 @@ pub async fn open_new_chat(page: &Page, account: &str, chat_url: &str) -> Result
 pub async fn submit_fast(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(), DolaError> {
     let page = ctx.page;
     let account = req.account.as_str();
+    ctx.hooks.on_stage(STAGE_COMPOSER);
     compose::open_video_composer_fast(page).await?; // :2267
     clear_old_attachments(page, account).await?; // :2268
     attach_refs(ctx, req).await?; // :2269
@@ -428,6 +503,7 @@ pub async fn submit_fast(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(),
         compose::select_ratio(page, ratio).await?; // :2272-2273
     }
     let hooked = select_duration_or_hook(page, account, req.duration).await?; // :2274-2288
+    before_prompt(ctx, account)?; // P3 R4 + :2122
     compose::type_and_send(page, &req.prompt, false).await?; // :2289
     if hooked {
         // :2290-2300 — 20 x 250 ms cho `patched:N`
@@ -475,6 +551,7 @@ pub(crate) async fn attach_refs(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Res
     if req.reference_images.is_empty() {
         return Ok(());
     }
+    ctx.hooks.on_stage(STAGE_REFS); // :836-839 docstring `task_stage: 'refs'`
     let timeout = Duration::from_secs(u64::from(ctx.limits.reference_upload_timeout_s));
     let out = refs::attach_reference_images(ctx.page, &req.reference_images, timeout).await?;
     tracing::info!(
@@ -563,6 +640,7 @@ pub async fn after_submit(
     let page = ctx.page;
     let ticks = ctx.limits.no_conversation_timeout_s;
     let mut warned = String::new();
+    ctx.hooks.on_stage(STAGE_SENDING); // :2539
     for i in 0..ticks {
         tokio::time::sleep(CONV_TICK).await; // :2566
         // (a) R3/R6: captcha -> bao ngay, khong giai
@@ -581,6 +659,7 @@ pub async fn after_submit(
             ConvPick::New(id) => {
                 ensure_no_captcha(page, account, i).await?; // (c)
                 tracing::info!(account, conversation_id = %id, tick = i, "conversation_id");
+                ctx.hooks.on_stage(super::poll::STAGE_GENERATING); // :2603
                 return Ok(ConversationId(id));
             }
             ConvPick::Known(old) if is_recent_tick(i) => {
@@ -611,6 +690,7 @@ pub async fn after_submit(
                         );
                     }
                     ensure_no_captcha(page, account, i).await?; // (c) — captcha tren trang chat moi
+                    ctx.hooks.on_stage(super::poll::STAGE_GENERATING); // :2603
                     return Ok(ConversationId(fresh));
                 }
             }
@@ -914,5 +994,30 @@ mod tests {
         assert_eq!(id.to_string(), "123");
         assert_eq!(id, ConversationId("123".into()));
         assert_eq!(id.0, "123");
+    }
+
+    /// P3 Task 4: `SubmitHooks` mac dinh no-op (`on_stage` khong lam gi, `should_cancel` = false);
+    /// `NoopSubmitHooks` la `&'static` dung duoc lam mac dinh cua `SubmitCtx`.
+    #[test]
+    fn submit_hooks_mac_dinh_khong_huy() {
+        struct Mute;
+        impl SubmitHooks for Mute {}
+        Mute.on_stage(STAGE_PAGE);
+        assert!(!Mute.should_cancel());
+        let h: &'static dyn SubmitHooks = &NoopSubmitHooks;
+        h.on_stage(STAGE_PROMPT);
+        assert!(!h.should_cancel());
+        // hang stage khop Python `task_stage.STAGES` (task_stage.py:11-12)
+        assert_eq!(
+            [
+                STAGE_PAGE,
+                STAGE_MODE,
+                STAGE_COMPOSER,
+                STAGE_REFS,
+                STAGE_PROMPT,
+                STAGE_SENDING
+            ],
+            ["page", "mode", "composer", "refs", "prompt", "sending"]
+        );
     }
 }
