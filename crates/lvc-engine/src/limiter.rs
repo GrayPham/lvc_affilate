@@ -44,6 +44,10 @@ pub struct DynamicLimiter {
 /// Nua con lai cua [`DynamicLimiter::new`]: giu hai `watch::Sender` de doi cai dat luc dang chay.
 /// Tach khoi `DynamicLimiter` vi chi UI/config-loader duoc goi `set_threads`/`set_accounts`, con
 /// worker chi can `acquire`.
+///
+/// `Clone` (Task 17): `watch::Sender` clone duoc (tokio ≥ 1.37) — `Engine` giu mot ban de
+/// `refresh_account_count` goi `set_accounts`, ban con lai tra cho UI/config-loader.
+#[derive(Clone)]
 pub struct LimiterHandle {
     threads: watch::Sender<usize>,
     accounts: watch::Sender<usize>,
