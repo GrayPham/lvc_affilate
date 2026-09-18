@@ -60,16 +60,22 @@ export const PORT_TYPE_COLOR: Record<PortType, string> = {
   video: "#f97316", // orange-500 — Video
 };
 
-/** Nhan tieng Viet hien tren node (spec §4.2). */
+/**
+ * Nhan tieng Viet hien tren node — khop CHINH XAC `NodeKind::label_vi()`
+ * (crates/lvc-core/src/graph/node.rs), khong phai ban nhan cu cua brief Task 11 (xem Concerns
+ * trong task-11-report.md: hai nguon tung lech nhau 5/9 chuoi). Task 12 ruling: Rust la nguon
+ * su that vi `label_vi()` la ham cong khai duy nhat that su dinh nghia nhan node — pin boi
+ * `tests/labels.test.ts`.
+ */
 export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
-  prompt: "Kịch bản",
-  image_upload: "Tải ảnh",
-  image_from_url: "Ảnh từ URL",
+  prompt: "Prompt",
+  image_upload: "Tải ảnh lên",
+  image_from_url: "Lấy ảnh từ URL",
   image_gen: "Tạo ảnh",
   video: "Tạo video",
   remove_logo: "Xoá logo",
-  ensure_h264: "Ép H.264",
-  concat: "Nối cảnh",
+  ensure_h264: "Chuẩn H.264",
+  concat: "Ghép phân cảnh",
   save: "Lưu",
 };
 
@@ -80,5 +86,8 @@ export const SUPPORTED_IN_P3: ReadonlySet<NodeKindTag> = new Set<NodeKindTag>([
   "video",
   "save",
 ]);
+
+/** Kieu hep — 4 `NodeKindTag` co the tha vao canvas o P3 (Task 12: Palette/`store/graph.ts`). */
+export type AddableNodeKind = "prompt" | "image_upload" | "video" | "save";
 
 export { NODE_KIND_ORDER };

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { useUiStore, type TabId } from "./store/uiStore";
-import WorkflowPage from "./pages/WorkflowPage";
+import Workflow from "./pages/Workflow";
 import TasksPage from "./pages/TasksPage";
 import SettingsPage from "./pages/SettingsPage";
 import AccountsPage from "./pages/AccountsPage";
@@ -13,7 +13,7 @@ const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
 ];
 
 const PAGES: Record<TabId, () => JSX.Element> = {
-  workflow: WorkflowPage,
+  workflow: Workflow,
   tasks: TasksPage,
   settings: SettingsPage,
   accounts: AccountsPage,
