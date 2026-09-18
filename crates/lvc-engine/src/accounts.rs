@@ -259,7 +259,8 @@ pub struct VerifyReport {
 /// Ket qua `import_legacy` — cac truong dau nhu `lvc_store::legacy::ImportReport` (chep tay thay vi
 /// boc/flatten: giu `lvc-store` khong phai them `Serialize` chi cho mot lenh Tauri dung o `lvc-app`,
 /// xem "Concerns" trong bao cao Task 10), them `profiles_copied` (R12 — P0 chi nhap DB, T10 them
-/// buoc copy thu muc `accounts/<name>`).
+/// buoc copy thu muc `accounts/<name>`), them `scripts`/`scenes` (P3c Task 1 R5 — nhap bang
+/// `scripts`/`scenes` tu `tasks.db` Python neu co, xem `lvc_store::legacy::ImportReport`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LegacyImportReport {
@@ -276,6 +277,11 @@ pub struct LegacyImportReport {
     /// (vd dang bi Chrome cua ban Python cu giu file). Khac `skipped` (chi 2 file DB co dinh) —
     /// day la danh sach TEN TAI KHOAN, co the rong.
     pub profiles_skipped: Vec<String>,
+    /// P3c Task 1 (R5): so dong `scripts` da nhap tu `tasks.db` Python (0 neu ban do chua tung
+    /// mo tab Kich ban — khong phai loi).
+    pub scripts: usize,
+    /// P3c Task 1 (R5): so dong `scenes` da nhap — xem [`LegacyImportReport::scripts`].
+    pub scenes: usize,
 }
 
 /// Chep de qui (lap, khong dung async fn de qui de tranh phai `Box::pin`) mot cay thu muc — dung boi
@@ -809,6 +815,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             skipped: report.skipped,
             profiles_copied,
             profiles_skipped,
+            scripts: report.scripts,
+            scenes: report.scenes,
         })
     }
 

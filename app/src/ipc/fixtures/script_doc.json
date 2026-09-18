@@ -1,0 +1,47 @@
+{
+  "meta": {
+    "id": "script_1",
+    "name": "Demo",
+    "dir": "",
+    "createdAt": 1700000000.0,
+    "updatedAt": 1700000100.0,
+    "total": 5,
+    "done": 3,
+    "failed": 1,
+    "running": 1
+  },
+  "scenes": [
+    {
+      "id": "scene_1",
+      "idx": 1,
+      "prompt": "con meo di bo tren duong lang",
+      "ratio": "9:16",
+      "duration": 10,
+      "model": null,
+      "mode": null,
+      "logo": null,
+      "account": "",
+      "refs": [],
+      "taskId": "task_1",
+      "taskStatus": "completed",
+      "failureCode": null,
+      "localPath": "C:\\out\\run_1_video_1.mp4"
+    },
+    {
+      "id": "scene_2",
+      "idx": 2,
+      "prompt": "canh hai chua chay",
+      "ratio": null,
+      "duration": null,
+      "model": null,
+      "mode": null,
+      "logo": null,
+      "account": "",
+      "refs": [],
+      "taskId": null,
+      "taskStatus": null,
+      "failureCode": null,
+      "localPath": null
+    }
+  ]
+}

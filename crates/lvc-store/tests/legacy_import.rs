@@ -178,6 +178,128 @@ async fn schema_cu_thieu_cot_van_nhap_duoc_voi_mac_dinh() {
     assert_eq!(t.reference_images, Vec::<String>::new());
 }
 
+/// P3c Task 1 (R5, brief: "tao DB tam 2 kich ban/5 canh giong A:\ToolLVC\lvcseedance\tasks.db —
+/// KHONG doc file that trong test"): tasks.db Python co them bang `scripts`/`scenes` (nguoi dung
+/// da tung mo tab Kich ban) — `import_legacy` phai nhap CA HAI, giu nguyen `task_id`.
+#[tokio::test]
+async fn nhap_scripts_scenes_khi_ban_python_da_co_bang() {
+    let dir = tempfile::tempdir().unwrap();
+    let tasks_db = dir.path().join("tasks.db");
+    let opts = SqliteConnectOptions::new()
+        .filename(&tasks_db)
+        .create_if_missing(true);
+    let mut conn = opts.connect().await.unwrap();
+    conn.execute(
+        "CREATE TABLE tasks (id TEXT PRIMARY KEY, prompt TEXT, created_at REAL, updated_at REAL)",
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "INSERT INTO tasks (id, prompt, created_at, updated_at)
+         VALUES ('video_old1', 'canh cu', 1000.0, 1001.0)",
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "CREATE TABLE scripts (id TEXT PRIMARY KEY, name TEXT NOT NULL,
+            dir TEXT NOT NULL DEFAULT '', created_at REAL, updated_at REAL)",
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "CREATE TABLE scenes (id TEXT PRIMARY KEY, script_id TEXT NOT NULL, idx INTEGER NOT NULL,
+            prompt TEXT NOT NULL DEFAULT '', ratio TEXT, duration INTEGER, model TEXT, mode TEXT,
+            logo TEXT, account TEXT NOT NULL DEFAULT '', refs TEXT NOT NULL DEFAULT '[]',
+            task_id TEXT, updated_at REAL)",
+    )
+    .await
+    .unwrap();
+
+    sqlx::query("INSERT INTO scripts VALUES (?1,?2,?3,?4,?5)")
+        .bind("script_aaa111222333")
+        .bind("Kich ban 1")
+        .bind("")
+        .bind(1000.0)
+        .bind(1001.0)
+        .execute(&mut conn)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO scripts VALUES (?1,?2,?3,?4,?5)")
+        .bind("script_bbb111222333")
+        .bind("Kich ban 2")
+        .bind("D:/out")
+        .bind(1002.0)
+        .bind(1003.0)
+        .execute(&mut conn)
+        .await
+        .unwrap();
+
+    let scenes: [(&str, &str, i64, &str, Option<&str>); 5] = [
+        (
+            "scene_1",
+            "script_aaa111222333",
+            1,
+            "canh 1",
+            Some("video_old1"),
+        ),
+        ("scene_2", "script_aaa111222333", 2, "canh 2", None),
+        ("scene_3", "script_aaa111222333", 3, "canh 3", None),
+        ("scene_4", "script_bbb111222333", 1, "canh 4", None),
+        ("scene_5", "script_bbb111222333", 2, "canh 5", None),
+    ];
+    for (id, script_id, idx, prompt, task_id) in scenes {
+        sqlx::query(
+            "INSERT INTO scenes
+               (id,script_id,idx,prompt,ratio,duration,model,mode,logo,account,refs,task_id,updated_at)
+             VALUES (?1,?2,?3,?4,'9:16',10,'seedance-2.0','fast','off','','[]',?5,1000.0)",
+        )
+        .bind(id)
+        .bind(script_id)
+        .bind(idx)
+        .bind(prompt)
+        .bind(task_id)
+        .execute(&mut conn)
+        .await
+        .unwrap();
+    }
+
+    let db = Db::open_memory().await.unwrap();
+    let report = import_legacy(&db, dir.path()).await.unwrap();
+    assert_eq!(report.scripts, 2);
+    assert_eq!(report.scenes, 5);
+
+    let repo = lvc_store::ScriptRepo::new(&db);
+    let s1 = repo.get("script_aaa111222333").await.unwrap().unwrap();
+    assert_eq!(s1.name, "Kich ban 1");
+    let scenes1 = repo.list_scenes("script_aaa111222333").await.unwrap();
+    assert_eq!(scenes1.len(), 3);
+    assert_eq!(scenes1[0].prompt, "canh 1");
+    assert_eq!(scenes1[0].task_id, Some("video_old1".to_string()));
+    let scenes2 = repo.list_scenes("script_bbb111222333").await.unwrap();
+    assert_eq!(scenes2.len(), 2);
+
+    let second = import_legacy(&db, dir.path()).await.unwrap();
+    assert_eq!(second.scripts, 0, "lan hai bo qua het (id da co)");
+    assert_eq!(second.scenes, 0);
+}
+
+/// R5: tasks.db Python CHUA tung mo tab Kich ban (khong co bang `scripts`/`scenes`) — bo qua
+/// LANG LE, khong loi, khong them vao `skipped` (khac file thieu hoan toan).
+#[tokio::test]
+async fn khong_co_bang_scripts_thi_scripts_scenes_bang_0_khong_loi() {
+    let dir = tempfile::tempdir().unwrap();
+    make_legacy(dir.path()).await;
+    let db = Db::open_memory().await.unwrap();
+    let report = import_legacy(&db, dir.path()).await.unwrap();
+    assert_eq!(report.scripts, 0);
+    assert_eq!(report.scenes, 0);
+    assert_eq!(
+        report.skipped.len(),
+        0,
+        "tasks.db/pool_usage.db deu co, thieu bang scripts khong phai skipped"
+    );
+}
+
 #[tokio::test]
 async fn status_cu_la_gia_tri_la_thi_chuan_hoa_thanh_failed() {
     // Ban Python cu co the co status khong nam trong 4 gia tri hop le (du lieu

@@ -16,6 +16,12 @@ pub struct ImportReport {
     pub usage: usize,
     pub settings: usize,
     pub skipped: Vec<String>,
+    /// P3c Task 1 (R5): so dong `scripts` da nhap tu `tasks.db` cua ban Python cu — CHI khi
+    /// bang do ton tai (DB cu chua chay `scripts_api`/`ScriptStore` thi khong co bang nay,
+    /// khong phai loi). `''` la trong `skipped` VAN dung cho `tasks.db`/`pool_usage.db` thieu file.
+    pub scripts: usize,
+    /// P3c Task 1 (R5): so dong `scenes` da nhap — xem [`ImportReport::scripts`].
+    pub scenes: usize,
 }
 
 async fn open_readonly(path: &Path) -> Result<SqlitePool, StoreError> {
@@ -45,6 +51,16 @@ fn opt_i64(row: &sqlx::sqlite::SqliteRow, col: &str) -> Option<i64> {
 
 fn opt_f64(row: &sqlx::sqlite::SqliteRow, col: &str) -> Option<f64> {
     row.try_get::<Option<f64>, _>(col).ok().flatten()
+}
+
+/// P3c Task 1 (R5): DB Python cu co the chua tung mo tab Kich ban -> bang `scripts`/`scenes`
+/// khong ton tai. Tra `false` (khong loi) khi thieu, giong `opt_*` phong thu schema cu khac nhau.
+async fn table_exists(pool: &SqlitePool, name: &str) -> Result<bool, StoreError> {
+    let row = sqlx::query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1")
+        .bind(name)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.is_some())
 }
 
 /// Nhập `tasks.db` + `pool_usage.db` của bản Python vào DB mới.
@@ -112,6 +128,65 @@ pub async fn import_legacy(db: &Db, legacy_dir: &Path) -> Result<ImportReport, S
             .await?;
             report.tasks += usize::try_from(res.rows_affected()).unwrap_or(0);
         }
+
+        // R5 (P3c Task 1): scripts/scenes nam CUNG file tasks.db (ScriptStore Python dung chung
+        // connection voi TaskStore, scripts_store.py:21-25) — chi co khi ban Python da tung mo
+        // tab Kich ban (ScriptStore._init tao bang). Ban khong co bang nay thi bo qua LANG LE
+        // (khong phai loi, khong them vao `skipped` — do khac tasks.db/pool_usage.db la CA FILE
+        // co the thieu, con day chi la MOT bang tuy chon trong file da co).
+        let has_scripts = table_exists(&old, "scripts").await?;
+        if has_scripts {
+            let rows = sqlx::query("SELECT * FROM scripts").fetch_all(&old).await?;
+            for r in &rows {
+                let Some(id) = opt_str(r, "id") else { continue };
+                let res = sqlx::query(
+                    "INSERT OR IGNORE INTO scripts (id,name,dir,created_at,updated_at)
+                     VALUES (?1,?2,?3,?4,?5)",
+                )
+                .bind(&id)
+                .bind(opt_str(r, "name").unwrap_or_default())
+                .bind(opt_str(r, "dir").unwrap_or_default())
+                .bind(opt_f64(r, "created_at"))
+                .bind(opt_f64(r, "updated_at"))
+                .execute(db.pool())
+                .await?;
+                report.scripts += usize::try_from(res.rows_affected()).unwrap_or(0);
+            }
+        }
+        let has_scenes = table_exists(&old, "scenes").await?;
+        if has_scenes {
+            let rows = sqlx::query("SELECT * FROM scenes").fetch_all(&old).await?;
+            for r in &rows {
+                let Some(id) = opt_str(r, "id") else { continue };
+                let Some(script_id) = opt_str(r, "script_id") else {
+                    continue;
+                };
+                // task_id GIU NGUYEN (R5) — task da nhap o P0 dung CHINH id nay.
+                let res = sqlx::query(
+                    "INSERT OR IGNORE INTO scenes
+                       (id,script_id,idx,prompt,ratio,duration,model,mode,logo,account,refs,
+                        task_id,updated_at)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                )
+                .bind(&id)
+                .bind(&script_id)
+                .bind(opt_i64(r, "idx").unwrap_or(0))
+                .bind(opt_str(r, "prompt").unwrap_or_default())
+                .bind(opt_str(r, "ratio"))
+                .bind(opt_i64(r, "duration"))
+                .bind(opt_str(r, "model"))
+                .bind(opt_str(r, "mode"))
+                .bind(opt_str(r, "logo"))
+                .bind(opt_str(r, "account").unwrap_or_default())
+                .bind(opt_str(r, "refs").unwrap_or_else(|| "[]".into()))
+                .bind(opt_str(r, "task_id"))
+                .bind(opt_f64(r, "updated_at"))
+                .execute(db.pool())
+                .await?;
+                report.scenes += usize::try_from(res.rows_affected()).unwrap_or(0);
+            }
+        }
+
         old.close().await;
     } else {
         report.skipped.push("tasks.db".to_string());

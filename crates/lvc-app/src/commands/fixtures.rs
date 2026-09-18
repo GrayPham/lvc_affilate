@@ -14,10 +14,12 @@ use lvc_engine::events::EngineEvent;
 use lvc_engine::generate::{STAGE_DONE, STAGE_LAUNCHING};
 use lvc_engine::resume::RequeueReport;
 use lvc_engine::{AccountStatus, ImportCookiesReport, LegacyImportReport};
-use lvc_store::{RunRow, RunStatus, TaskRow, WorkflowMeta};
+use lvc_engine::{ScriptRunError, ScriptRunReport, ScriptRunTask};
+use lvc_store::{RunRow, RunStatus, ScriptMeta, TaskRow, WorkflowMeta};
 use serde_json::{Value, json};
 
 use super::IpcError;
+use super::scripts::{SceneDto, ScriptDoc};
 use super::tasks::TaskDto;
 use super::workflow::PlanSummary;
 
@@ -311,6 +313,9 @@ fn import_reports_fixture() -> Value {
             skipped: vec!["pool_usage.db".to_string()],
             profiles_copied: 2,
             profiles_skipped: vec!["acc_da_ton_tai".to_string()],
+            // P3c Task 1 (R5): scripts/scenes tu tasks.db Python neu co bang.
+            scripts: 2,
+            scenes: 5,
         })
         .unwrap(),
     })
@@ -326,6 +331,78 @@ fn stages_json() -> Vec<String> {
 
     let mut seen = HashSet::new();
     raw.into_iter().filter(|s| seen.insert(s.clone())).collect()
+}
+
+/// P3c Task 1: [`ScriptMeta`] mau — 3/5 xong, 1 loi, 1 dang chay (dem gop tu `queued`+`processing`,
+/// xem `lvc_store::scripts::ScriptRepo::list_with_counts`).
+fn script_meta_fixture() -> ScriptMeta {
+    ScriptMeta {
+        id: "script_1".to_string(),
+        name: "Demo".to_string(),
+        dir: String::new(),
+        created_at: 1_700_000_000.0,
+        updated_at: 1_700_000_100.0,
+        total: 5,
+        done: 3,
+        failed: 1,
+        running: 1,
+    }
+}
+
+/// P3c Task 1: [`ScriptDoc`] mau — 2 canh, mot canh KEM `taskStatus` (da chay xong).
+fn script_doc_fixture() -> ScriptDoc {
+    ScriptDoc {
+        meta: script_meta_fixture(),
+        scenes: vec![
+            SceneDto {
+                id: "scene_1".to_string(),
+                idx: 1,
+                prompt: "con meo di bo tren duong lang".to_string(),
+                ratio: Some("9:16".to_string()),
+                duration: Some(10),
+                model: None,
+                mode: None,
+                logo: None,
+                account: String::new(),
+                refs: vec![],
+                task_id: Some("task_1".to_string()),
+                task_status: Some("completed".to_string()),
+                failure_code: None,
+                local_path: Some(r"C:\out\run_1_video_1.mp4".to_string()),
+            },
+            SceneDto {
+                id: "scene_2".to_string(),
+                idx: 2,
+                prompt: "canh hai chua chay".to_string(),
+                ratio: None,
+                duration: None,
+                model: None,
+                mode: None,
+                logo: None,
+                account: String::new(),
+                refs: vec![],
+                task_id: None,
+                task_status: None,
+                failure_code: None,
+                local_path: None,
+            },
+        ],
+    }
+}
+
+/// P3c Task 1: [`ScriptRunReport`] mau — 1 canh chay duoc, 1 canh loi `SCENE_RUNNING`.
+fn script_run_report_fixture() -> ScriptRunReport {
+    ScriptRunReport {
+        run_id: Some("run_1".to_string()),
+        tasks: vec![ScriptRunTask {
+            scene_id: "scene_1".to_string(),
+            task_id: "task_1".to_string(),
+        }],
+        errors: vec![ScriptRunError {
+            scene_id: "scene_2".to_string(),
+            code: "SCENE_RUNNING".to_string(),
+        }],
+    }
 }
 
 #[test]
@@ -405,4 +482,16 @@ fn fixtures_khop_ban_da_commit() {
         &serde_json::to_value(account_status_fixture()).unwrap(),
     );
     check_or_write("import_reports.json", &import_reports_fixture());
+    check_or_write(
+        "script_meta.json",
+        &serde_json::to_value(script_meta_fixture()).unwrap(),
+    );
+    check_or_write(
+        "script_doc.json",
+        &serde_json::to_value(script_doc_fixture()).unwrap(),
+    );
+    check_or_write(
+        "script_run_report.json",
+        &serde_json::to_value(script_run_report_fixture()).unwrap(),
+    );
 }

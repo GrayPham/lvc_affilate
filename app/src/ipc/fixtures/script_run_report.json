@@ -1,0 +1,15 @@
+{
+  "runId": "run_1",
+  "tasks": [
+    {
+      "sceneId": "scene_1",
+      "taskId": "task_1"
+    }
+  ],
+  "errors": [
+    {
+      "sceneId": "scene_2",
+      "code": "SCENE_RUNNING"
+    }
+  ]
+}

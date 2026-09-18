@@ -19,6 +19,9 @@
 //! P3 Task 10: [`accounts`] — `Engine::{list_with_status, import_cookies, verify, set_scheduling,
 //! set_proxy, delete, import_legacy}` (tab Tai khoan UI: liet ke + trang thai, nhap cookie, kiem tra
 //! dang nhap, bat/tat lich, sua proxy, xoa, nhap du lieu ban Python cu).
+//! P3c Task 1: [`scripts`] — `Engine::{run_script, import_txt_to_script, delete_script}` (tab Kich
+//! ban UI: chay/chay lai cac canh da chon qua DAG co san, nhap TXT thay toan bo canh, xoa kich ban
+//! co bao ve canh dang chay).
 
 pub mod accounts;
 pub mod cancel;
@@ -30,6 +33,7 @@ pub mod generate;
 pub mod limiter;
 pub mod pool;
 pub mod resume;
+pub mod scripts;
 pub mod session_cache;
 pub mod settings;
 
@@ -44,4 +48,5 @@ pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};
 pub use limiter::{DynamicLimiter, LimiterHandle, Permit};
 pub use pool::{AccountPool, Lease};
 pub use resume::RequeueReport;
+pub use scripts::{ScriptError, ScriptRunError, ScriptRunReport, ScriptRunTask};
 pub use session_cache::SessionCache;

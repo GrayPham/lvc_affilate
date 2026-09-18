@@ -12,6 +12,9 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+# scripts.rs (P3c Task 1): id kich ban/canh (script_<12 hex>/scene_<12 hex>, giong Python
+# uuid.uuid4().hex[:12]) — da la dependency workspace (lvc-engine/lvc-app dung).
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "test-util"] }

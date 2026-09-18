@@ -25,6 +25,7 @@
 //! `invoke("settings_set", { s })`. Ten LENH (command) thi giu nguyen `snake_case`, khong doi.
 
 pub mod accounts;
+pub mod scripts;
 pub mod settings;
 pub mod tasks;
 pub mod workflow;
@@ -109,6 +110,39 @@ impl From<StoreError> for IpcError {
 impl From<AccountError> for IpcError {
     fn from(e: AccountError) -> Self {
         Self::new(e.code(), e.to_string())
+    }
+}
+
+/// P3c Task 1 (`lvc_engine::scripts`): `Engine::import_txt_to_script`/`Engine::delete_script`
+/// dung loi rieng nay (khong phai `EngineError`, xem doc `lvc_engine::scripts::ScriptError`) —
+/// `Store` di qua CUNG anh xa `STORE` voi moi `StoreError` khac trong file nay.
+impl From<lvc_engine::ScriptError> for IpcError {
+    fn from(e: lvc_engine::ScriptError) -> Self {
+        use lvc_engine::ScriptError as E;
+        match e {
+            E::Store(se) => Self::from(se),
+            E::SceneInvalid(msg) => Self::new("SCENE_INVALID", msg),
+            E::SceneRunning(ids) => Self::new(
+                "SCENE_RUNNING",
+                format!("canh dang chay: {}", ids.join(", ")),
+            ),
+        }
+    }
+}
+
+/// P3c Task 1 (`lvc_store::scripts`): `script_put_scenes` goi thang `ScriptRepo::replace_scenes`
+/// (khong qua `Engine`, giong `workflow_save`/`workflow_get`) nen can anh xa rieng — CUNG hai
+/// nhanh `STORE`/`SCENE_RUNNING` nhu `From<lvc_engine::ScriptError>` o tren.
+impl From<lvc_store::ReplaceScenesError> for IpcError {
+    fn from(e: lvc_store::ReplaceScenesError) -> Self {
+        use lvc_store::ReplaceScenesError as E;
+        match e {
+            E::Store(se) => Self::from(se),
+            E::SceneRunning(ids) => Self::new(
+                "SCENE_RUNNING",
+                format!("canh dang chay: {}", ids.join(", ")),
+            ),
+        }
     }
 }
 

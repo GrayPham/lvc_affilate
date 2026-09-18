@@ -91,6 +91,15 @@ pub fn run() {
             commands::accounts::account_set_proxy,
             commands::accounts::account_delete,
             commands::accounts::legacy_import,
+            commands::scripts::script_list,
+            commands::scripts::script_create,
+            commands::scripts::script_update,
+            commands::scripts::script_delete,
+            commands::scripts::script_get,
+            commands::scripts::script_put_scenes,
+            commands::scripts::script_run,
+            commands::scripts::script_reset_scenes,
+            commands::scripts::script_import_txt,
         ])
         .run(tauri::generate_context!())
         .expect("loi khi chay ung dung Tauri");

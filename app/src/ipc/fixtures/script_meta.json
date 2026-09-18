@@ -1,0 +1,11 @@
+{
+  "id": "script_1",
+  "name": "Demo",
+  "dir": "",
+  "createdAt": 1700000000.0,
+  "updatedAt": 1700000100.0,
+  "total": 5,
+  "done": 3,
+  "failed": 1,
+  "running": 1
+}
