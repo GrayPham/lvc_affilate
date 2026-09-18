@@ -101,6 +101,13 @@ pub struct EngineConfig {
     pub mode_fallback: bool,
     /// `LaunchOpts::logs_dir` (anh chan doan `no_conv_*.png`).
     pub logs_dir: PathBuf,
+    /// Task 5 review vong 1 (I1): thu muc goc Tauri dung de giai (resolve) `accounts_dir`/
+    /// `downloads_dir` trong [`crate::settings::EngineConfig::from_settings`] — `None` khi engine
+    /// duoc dung qua [`EngineConfig::new`] truc tiep (vd CLI `gen_one`, khong co khai niem
+    /// `app_data_dir`). `Engine::apply_settings` chi doi chieu lai thu muc khi `Some` (xem
+    /// `settings::settings_diff`) — khong co gia tri nay thi KHONG the biet duong dan moi tuong
+    /// duong voi duong dan cu hay khong nen bo qua, tranh canh bao gia.
+    pub app_data_dir: Option<PathBuf>,
 }
 
 impl EngineConfig {
@@ -115,6 +122,7 @@ impl EngineConfig {
             busy_wait_max: DEFAULT_BUSY_WAIT_MAX,
             mode_fallback: true,
             logs_dir: PathBuf::from("logs"),
+            app_data_dir: None,
         }
     }
 }

@@ -469,6 +469,20 @@ mod tests {
         assert_eq!(roundtripped, original);
     }
 
+    /// M1 (review vong 1, task-5-review.md Minor #3): ghim DUNG chuoi wire cua enum, khong chi
+    /// ten truong camelCase — mot doi Serialize cua Mode/Model/Ratio lam sai hop dong chuoi phia
+    /// UI se khong bi bat neu chi kiem field-name + roundtrip (Rust-side van bang nhau du chuoi
+    /// doi, mien Deserialize doi theo).
+    #[test]
+    fn serde_json_pin_wire_strings_mac_dinh() {
+        let v = serde_json::to_value(AppSettings::default()).unwrap();
+        assert_eq!(v["threads"], serde_json::json!(1));
+        assert_eq!(v["defaultMode"], serde_json::json!("fast"));
+        assert_eq!(v["defaultModel"], serde_json::json!("seedance-2.0"));
+        assert_eq!(v["defaultRatio"], serde_json::json!("9:16"));
+        assert_eq!(v["defaultDuration"], serde_json::json!(10));
+    }
+
     #[test]
     fn serde_json_camel_case_va_roundtrip() {
         let s = AppSettings {
