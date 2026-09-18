@@ -992,6 +992,11 @@ impl BrowserDriver for ChromiumDriver {
     async fn user_agent(&self, s: &ChromiumSession) -> Result<String, BrowserError> {
         ops::user_agent(s.page()).await
     }
+
+    /// Task 17: [`ChromiumSession::is_connected`] — handler CDP con chay (Chrome con song).
+    fn is_connected(&self, s: &ChromiumSession) -> bool {
+        s.is_connected()
+    }
 }
 
 /// `SessionProbe` khi khong doc duoc trang (timeout/loi evaluate): giu `has_sessionid` + URL,

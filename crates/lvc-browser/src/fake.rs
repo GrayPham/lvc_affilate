@@ -7,7 +7,7 @@
 //!
 //! Kich ban chi bao boc 3 loai loi goi co re nhanh Ok/Err ma engine can dieu khien tu test:
 //! `launch`/`submit`/`poll_and_download`. Cac ham con lai (`add_cookies`/`goto`/`probe_session`/
-//! `screenshot`/`user_agent`/`close`) KHONG tieu thu kich ban — chung la "hanh vi mac dinh vo hai"
+//! `screenshot`/`user_agent`/`close`/`is_connected`) KHONG tieu thu kich ban — chung la "hanh vi mac dinh vo hai"
 //! (Ok/no-op) vi engine khong can gia lap loi rieng cho tung ham (T15-17 xoay quanh
 //! launch/submit/poll). CHI 4 loi goi vong doi (`launch`/`submit`/`poll_and_download`/`close`)
 //! duoc ghi lai vao `calls` (theo THU TU) de test cua engine khang dinh duoc trinh tu goi;
@@ -77,6 +77,9 @@ pub struct FakeSession {
     /// phien vao ngu canh chia se voi trait).
     pub probe_state: SessionState,
     pub seq: u64,
+    /// Task 17: doc boi [`FakeDriver::is_connected`] — `true` sau `launch()`; test cua engine dat
+    /// `false` (truoc khi dua vao `SessionCache`) de gia lap Chrome da chet/bi dong ngoai y muon.
+    pub connected: bool,
 }
 
 /// Bo doi `BrowserDriver` dieu khien bang kich ban. Xem doc module.
@@ -143,6 +146,7 @@ impl BrowserDriver for FakeDriver {
                     account: account_from_profile_dir(&opts.profile_dir),
                     probe_state: SessionState::LoggedIn,
                     seq,
+                    connected: true,
                 }
             }),
             Some(other) => panic!(
@@ -241,6 +245,11 @@ impl BrowserDriver for FakeDriver {
     async fn user_agent(&self, s: &FakeSession) -> Result<String, BrowserError> {
         let _ = s;
         Ok(FAKE_USER_AGENT.to_string())
+    }
+
+    /// Task 17: truong `connected` cua phien gia (khong ghi vao `calls`).
+    fn is_connected(&self, s: &FakeSession) -> bool {
+        s.connected
     }
 }
 
@@ -431,6 +440,18 @@ mod tests {
         let p = driver.probe_session(&s).await.unwrap();
         assert_eq!(p.state, SessionState::LoggedOut);
         assert!(!p.has_sessionid);
+    }
+
+    /// Task 17: `is_connected` doc truong `connected` cua phien gia (mac dinh `true` sau
+    /// `launch()`); test cua engine (`SessionCache` reaper) dat `false` de gia lap Chrome da chet.
+    #[tokio::test]
+    async fn is_connected_theo_truong_connected() {
+        let driver = FakeDriver::new(vec![FakeStep::Launch(Ok(()))]);
+        let mut s = driver.launch(&opts("acc1")).await.unwrap();
+        assert!(s.connected);
+        assert!(driver.is_connected(&s));
+        s.connected = false;
+        assert!(!driver.is_connected(&s));
     }
 
     #[tokio::test]

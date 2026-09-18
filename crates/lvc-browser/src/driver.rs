@@ -162,6 +162,16 @@ pub trait BrowserDriver: Send + Sync {
     /// # Errors
     /// Loi CDP khi doc `navigator.userAgent`.
     async fn user_agent(&self, s: &Self::Session) -> Result<String, BrowserError>;
+
+    /// Task 17 (ruling): phien `s` con dung duoc khong — engine `SessionCache` (warm session theo
+    /// tai khoan, `video_worker_ui.py:145` `WarmBrowserManager`) bo phien `false` thay vi tai
+    /// dung (`acquire` `:197-201` `page.is_closed()`), va reaper dong no. Mac dinh `true` (driver
+    /// khong co cach biet thi coi nhu con song); `ChromiumDriver` tra `ChromiumSession::is_connected`
+    /// (handler CDP con chay), `FakeDriver` tra truong `connected` cua phien gia.
+    fn is_connected(&self, s: &Self::Session) -> bool {
+        let _ = s;
+        true
+    }
 }
 
 #[cfg(test)]
@@ -196,5 +206,58 @@ mod tests {
         assert!(dbg.contains("user1"), "{dbg}");
         assert!(dbg.contains("1.2.3.4"), "{dbg}");
         assert!(dbg.contains("Chromium"), "{dbg}");
+    }
+
+    /// Task 17: `is_connected` co than mac dinh `true` — driver khong biet phien con song hay
+    /// khong thi coi nhu con song (engine `SessionCache` chi bo phien khi driver noi ro `false`).
+    #[test]
+    fn is_connected_mac_dinh_true() {
+        struct Mute;
+        #[async_trait]
+        impl BrowserDriver for Mute {
+            type Session = ();
+            async fn launch(&self, _: &LaunchOpts) -> Result<(), BrowserError> {
+                Ok(())
+            }
+            async fn add_cookies(&self, (): &(), _: &[Cookie]) -> Result<(), BrowserError> {
+                Ok(())
+            }
+            async fn goto(&self, (): &(), _: &str) -> Result<(), BrowserError> {
+                Ok(())
+            }
+            async fn probe_session(&self, (): &()) -> Result<SessionProbe, BrowserError> {
+                unreachable!()
+            }
+            async fn screenshot(&self, (): &(), _: &Path) -> Result<(), BrowserError> {
+                Ok(())
+            }
+            async fn close(&self, (): ()) -> Result<(), BrowserError> {
+                Ok(())
+            }
+            async fn submit(
+                &self,
+                (): &(),
+                _: &SubmitRequest,
+                _: &Limits,
+            ) -> Result<ConversationId, DolaError> {
+                unreachable!()
+            }
+            async fn poll_and_download(
+                &self,
+                (): &(),
+                _: &str,
+                _: &ConversationId,
+                _: &Path,
+                _: &PollOpts,
+                _: &Limits,
+                _: &dyn PollHooks,
+            ) -> Result<VideoArtifact, DolaError> {
+                unreachable!()
+            }
+            async fn user_agent(&self, (): &()) -> Result<String, BrowserError> {
+                Ok(String::new())
+            }
+        }
+        assert!(Mute.is_connected(&()));
     }
 }
