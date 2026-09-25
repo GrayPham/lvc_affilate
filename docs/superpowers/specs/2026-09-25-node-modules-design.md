@@ -135,8 +135,8 @@ crates/
     lvc-dola/          client API app: session, signer, device register, upload, SSE, poll,
                        unwatermark, bảng model/ratio/duration, phân loại mã lỗi
   nodes/
-    node-text/         prompt (TXT nhiều dòng → nhiều TextItem)
-    node-image-input/  ảnh tải lên (+ nhãn "character", "cloths"…)
+    node-prompt/       prompt (TXT nhiều dòng → nhiều TextItem)
+    node-image-upload/ ảnh tải lên (+ nhãn "character", "cloths"…)
     node-save/         lưu file ra thư mục
     node-dola-image/   Seedream 5.0 Pro / 4.5
     node-dola-video/   Seedance 2.5 / 2.0 / 1.0
@@ -168,8 +168,8 @@ app/src/nodes/dola_video/
 
 | kind | Vào | Ra | Params chính | Tài khoản |
 |---|---|---|---|---|
-| `text` | — | `out: Text*` | text (TXT nhiều dòng, cú pháp `\|` như cũ) | — |
-| `image_input` | — | `out: Image*` | paths[], label | — |
+| `prompt` | — | `out: Text*` | text (TXT nhiều dòng, cú pháp `\|` như cũ) | — |
+| `image_upload` | — | `out: Image*` | paths[], label | — |
 | `dola_image` | `prompt: Text` (bắt buộc), `refs: Image*` | `out: Image*` | model (seedream_5.0_pro, seedream_4.5), ratio (8 giá trị), count | dola/Session |
 | `dola_video` | `prompt: Text*` (bắt buộc), `refs: Image*` | `out: Video*` | model (2.5/2.0/1.0), ratio, duration (5/10/15/30 theo model), resolution 1080p, mode (fast/agent), logo, count, backend (api/browser), cloak_refs | dola/Session |
 | `save` | `in: Image* | Video*` (cổng Any-media) | — | out_dir, pattern tên file | — |
@@ -239,7 +239,7 @@ CREATE TABLE credentials (
 | Command | Ghi chú |
 |---|---|
 | `node_catalog() -> Vec<NodeManifest>` | UI dựng palette/form/luật nối từ đây — bỏ bảng `ports.ts` chép tay |
-| `workflow_validate/save/get/run_*` | graph v2; v1 tự migrate khi đọc (`video`→`dola_video`, `prompt`→`text`, `image_upload`→`image_input`) |
+| `workflow_validate/save/get/run_*` | graph v2; v1 tự migrate khi đọc (chỉ `video`→`dola_video`; `prompt`/`image_upload`/`save` giữ tên — P4a) |
 | `template_list(scope, q)`, `template_get`, `template_save_private`, `template_delete_private` | |
 | `credential_list(provider?)`, `credential_add`, `credential_update`, `credential_verify`, `credential_delete` | bí mật chỉ đi vào, không đi ra |
 | `node_rerun(runId, nodeId)` | chạy lại 1 node với đầu vào cũ (dùng output đã lưu) |
@@ -251,7 +251,7 @@ Sự kiện: giữ `engine://event`; thêm `NodeOutput{run_id, node_id, port, va
 
 | Giai đoạn | Phạm vi | Nghiệm thu |
 |---|---|---|
-| **P4a** | `lvc-node-api`, graph v2 chung, engine theo registry, chuyển 4 node cũ thành module (text, image_input, dola_video[backend browser hiện có], save); UI registry + `node_catalog` | toàn bộ test cũ xanh; workflow v1 mở được; tab Kịch bản chạy như cũ (FakeDriver) |
+| **P4a** | `lvc-node-api`, graph v2 chung, engine theo registry, chuyển 4 node cũ thành module (prompt, image_upload, dola_video[backend browser hiện có], save); UI registry + `node_catalog` | toàn bộ test cũ xanh; workflow v1 mở được; tab Kịch bản chạy như cũ (FakeDriver) |
 | **P4b** | `lvc-dola` (API app) + `node-dola-image` + backend `api` của `node-dola-video` | wiremock đủ luồng; 1 ảnh + 1 video thật (hỏi trước vì tốn credit) |
 | **P4c** | `lvc-vault` + migration credentials + tab Tài khoản AI (Dola, Google, ChatGPT, API key) | di trú tài khoản Dola cũ; DPAPI round-trip; UI không bao giờ nhận bí mật |
 | **P4d** | Kho template + canvas/panel kiểu Lumina | 4 mẫu Public; lưu/xoá Private; "Dùng mẫu" chạy được |
