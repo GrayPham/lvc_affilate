@@ -5,18 +5,21 @@ import type { AddableNodeKind } from "../graph/ports";
 import { NODE_KIND_ORDER, NODE_LABEL_VI, ADDABLE_KINDS } from "../graph/ports";
 import type { NodeKindTag } from "../ipc/types";
 import { useGraphStore } from "../store/graph";
+import { useWorkflowUi } from "../store/workflowUi";
 
 /** Kieu MIME tuy dat dung de mang `NodeKindTag` qua HTML5 drag-and-drop. */
 export const DRAG_KIND_MIME = "application/lvc-node-kind";
 
+// P-lumina: Palette gio la mot POPUP toi noi ben canh thanh cong cu trai (khong con aside co dinh) —
+// bam "+" tren CanvasToolbar de mo. Keo-tha va nhap-de-them van hoat dong nhu cu.
 export default function Palette() {
   return (
-    <aside className="flex w-40 shrink-0 flex-col gap-2 overflow-y-auto border-r border-slate-200 bg-white p-2">
-      <h2 className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Node</h2>
+    <div className="flex w-44 flex-col gap-1.5 rounded-2xl border border-white/10 bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
+      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Thêm node</h2>
       {NODE_KIND_ORDER.map((kind) => (
         <PaletteItem key={kind} kind={kind} />
       ))}
-    </aside>
+    </div>
   );
 }
 
@@ -34,6 +37,12 @@ function PaletteItem({ kind }: { kind: NodeKindTag }) {
   const enabled = ADDABLE_KINDS.has(kind);
   const addNode = useGraphStore((s) => s.addNode);
   const nodeCount = useGraphStore((s) => s.nodes.length);
+  const closeAddMenu = useWorkflowUi((s) => s.closeAddMenu);
+
+  function add(): void {
+    addNode(kind as AddableNodeKind, nextClickPosition(nodeCount));
+    closeAddMenu();
+  }
 
   return (
     <div
@@ -42,13 +51,13 @@ function PaletteItem({ kind }: { kind: NodeKindTag }) {
       draggable={enabled}
       onClick={() => {
         if (enabled) {
-          addNode(kind as AddableNodeKind, nextClickPosition(nodeCount));
+          add();
         }
       }}
       onKeyDown={(e) => {
         if (enabled && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          addNode(kind as AddableNodeKind, nextClickPosition(nodeCount));
+          add();
         }
       }}
       onDragStart={(e) => {
@@ -58,14 +67,15 @@ function PaletteItem({ kind }: { kind: NodeKindTag }) {
         }
         e.dataTransfer.setData(DRAG_KIND_MIME, kind);
         e.dataTransfer.effectAllowed = "move";
+        closeAddMenu();
       }}
       title={enabled ? "Nhấp hoặc kéo vào canvas" : "Chưa hỗ trợ"}
       aria-disabled={!enabled}
       className={
-        "select-none rounded border px-2 py-1.5 text-xs transition-colors " +
+        "select-none rounded-lg border px-2 py-1.5 text-xs transition-colors " +
         (enabled
-          ? "cursor-grab border-slate-300 bg-white hover:bg-slate-50 active:cursor-grabbing"
-          : "cursor-not-allowed border-dashed border-slate-200 bg-slate-50 text-slate-400")
+          ? "cursor-grab border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 active:cursor-grabbing"
+          : "cursor-not-allowed border-dashed border-white/10 bg-white/[0.02] text-slate-500")
       }
     >
       {NODE_LABEL_VI[kind]}

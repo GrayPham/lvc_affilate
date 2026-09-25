@@ -17,6 +17,7 @@ import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import NodeShell from "./NodeShell";
+import NodeFloatingToolbar from "./NodeFloatingToolbar";
 
 type PromptKind = Extract<NodeKind, { kind: "prompt" }>;
 export type PromptRFNode = RFNodeBase<PromptKind, "prompt">;
@@ -44,14 +45,15 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptRFNod
 
   return (
     <>
+      <NodeFloatingToolbar nodeId={id} />
       <NodeShell label={NODE_LABEL_VI.prompt} selected={selected} errors={errors} runState={runState}>
         <textarea
-          className="nodrag h-24 w-full resize-none rounded border border-slate-300 p-1 text-xs"
+          className="nodrag h-24 w-full resize-none rounded-md border border-white/10 bg-white/5 p-1.5 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-sky-400/60"
           value={data.text}
           placeholder={"cảnh 1\ncảnh 2 | ratio=16:9 | dur=10\ncảnh 3"}
           onChange={(e) => updateNodeData(id, { ...data, text: e.target.value })}
         />
-        <p className="text-[10px] text-slate-500">{countScenes(data.text)} cảnh</p>
+        <p className="text-[10px] text-slate-400">{countScenes(data.text)} cảnh</p>
       </NodeShell>
       <Handle
         type="source"

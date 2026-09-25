@@ -13,6 +13,7 @@ import { useRunStore } from "../store/run";
 import { pickDirectory } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 import NodeShell from "./NodeShell";
+import NodeFloatingToolbar from "./NodeFloatingToolbar";
 
 type SaveKind = Extract<NodeKind, { kind: "save" }>;
 export type SaveRFNode = RFNodeBase<SaveKind, "save">;
@@ -38,6 +39,7 @@ export default function SaveNode({ id, data, selected }: NodeProps<SaveRFNode>) 
 
   return (
     <>
+      <NodeFloatingToolbar nodeId={id} />
       <Handle
         type="target"
         position={Position.Left}
@@ -53,15 +55,15 @@ export default function SaveNode({ id, data, selected }: NodeProps<SaveRFNode>) 
       <NodeShell label={NODE_LABEL_VI.save} selected={selected} errors={errors} runState={runState}>
         <button
           type="button"
-          className="nodrag rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+          className="nodrag rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
           onClick={() => void handlePick()}
         >
           Chọn thư mục…
         </button>
-        <p className="truncate text-[10px] text-slate-600" title={data.out_dir}>
+        <p className="truncate text-[10px] text-slate-400" title={data.out_dir}>
           {data.out_dir || "Chưa chọn thư mục"}
         </p>
-        {pickError ? <p className="text-[10px] text-red-600">{pickError}</p> : null}
+        {pickError ? <p className="text-[10px] text-red-400">{pickError}</p> : null}
       </NodeShell>
     </>
   );

@@ -11,7 +11,8 @@ import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import { pickFiles } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
-import NodeShell from "./NodeShell";
+import MediaCard from "./MediaCard";
+import NodeFloatingToolbar from "./NodeFloatingToolbar";
 
 type ImageUploadKind = Extract<NodeKind, { kind: "image_upload" }>;
 export type ImageUploadRFNode = RFNodeBase<ImageUploadKind, "image_upload">;
@@ -41,29 +42,49 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
     }
   }
 
+  const count = data.paths.length;
   return (
     <>
-      <NodeShell label={NODE_LABEL_VI.image_upload} selected={selected} errors={errors} runState={runState}>
+      <NodeFloatingToolbar nodeId={id} />
+      <MediaCard label={NODE_LABEL_VI.image_upload} selected={selected} errors={errors} runState={runState}>
+        {/* Than the = vung tha/chon anh. Bam vao ca vung de mo dialog chon anh. */}
         <button
           type="button"
-          className="nodrag rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+          className="nodrag flex aspect-square w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-b from-white/[0.03] to-transparent text-slate-400 hover:bg-white/[0.06]"
           onClick={() => void handlePick()}
+          title="Chọn ảnh…"
         >
-          Chọn ảnh…
+          {count === 0 ? (
+            <>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="9" cy="9" r="1.6" />
+                <path d="m21 15-4.5-4.5L7 20" />
+              </svg>
+              <span className="text-[11px]">Chọn ảnh…</span>
+            </>
+          ) : (
+            <>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="9" cy="9" r="1.6" />
+                <path d="m21 15-4.5-4.5L7 20" />
+              </svg>
+              <span className="text-[11px] text-slate-200">{count} ảnh đã chọn</span>
+            </>
+          )}
         </button>
-        {data.paths.length > 0 ? (
-          <ul className="max-h-20 overflow-auto text-[10px] text-slate-600">
+        {count > 0 ? (
+          <ul className="nodrag max-h-16 space-y-0.5 overflow-auto border-t border-white/10 bg-black/20 px-2 py-1 text-[10px] text-slate-400">
             {data.paths.map((p) => (
               <li key={p} className="truncate" title={p}>
                 {baseName(p)}
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="text-[10px] text-slate-400">Chưa chọn ảnh</p>
-        )}
-        {pickError ? <p className="text-[10px] text-red-600">{pickError}</p> : null}
-      </NodeShell>
+        ) : null}
+        {pickError ? <p className="px-2 py-1 text-[10px] text-red-400">{pickError}</p> : null}
+      </MediaCard>
       <Handle
         type="source"
         position={Position.Right}
