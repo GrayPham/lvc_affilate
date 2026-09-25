@@ -4,7 +4,14 @@
 //! sở hữu tài nguyên dùng chung (pool tài khoản, limiter, bảng `tasks`, trình duyệt) nên node KHÔNG
 //! tự làm những việc đó. P4b thêm client API app Android.
 
+// json! lon (body chat/completion ~60 khoa long nhau) can gioi han macro cao hon mac dinh 128.
+#![recursion_limit = "512"]
+
 pub mod device;
+pub mod error;
+pub mod payload;
+pub mod response;
+pub mod session;
 pub mod sign;
 
 use std::path::PathBuf;
