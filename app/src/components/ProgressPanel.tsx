@@ -31,10 +31,11 @@ function statusOf(dtoStatus: string | undefined, failureCode: string | null | un
   return "running";
 }
 
+// P-lumina: bang tien do nam trong aside nen toi -> dung nen mo theo trang thai (khac ban sang cu).
 const ROW_CLASS: Record<DisplayStatus, string> = {
-  running: "border-sky-200 bg-sky-50",
-  done: "border-emerald-200 bg-emerald-50",
-  failed: "border-red-200 bg-red-50",
+  running: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+  done: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+  failed: "border-red-500/30 bg-red-500/10 text-red-100",
 };
 
 export default function ProgressPanel() {

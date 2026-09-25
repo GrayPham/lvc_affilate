@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { DragEvent } from "react";
 import {
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   ReactFlow,
@@ -23,6 +24,8 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import Palette, { DRAG_KIND_MIME } from "../components/Palette";
+import CanvasToolbar from "../components/CanvasToolbar";
+import VideoParamsPanel from "../components/VideoParamsPanel";
 import RunBar from "../components/RunBar";
 import ProgressPanel from "../components/ProgressPanel";
 import PromptNode from "../nodes/PromptNode";
@@ -34,6 +37,7 @@ import { isValidConnection } from "../graph/rules";
 import { ADDABLE_KINDS, type AddableNodeKind } from "../graph/ports";
 import { loadPersistedGraph, useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
+import { useWorkflowUi } from "../store/workflowUi";
 import { runList, taskList } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 
@@ -65,6 +69,8 @@ function WorkflowCanvas() {
   const addNode = useGraphStore((s) => s.addNode);
   const setSelected = useGraphStore((s) => s.setSelected);
   const loadGraph = useGraphStore((s) => s.loadGraph);
+  const addMenuOpen = useWorkflowUi((s) => s.addMenuOpen);
+  const closeAddMenu = useWorkflowUi((s) => s.closeAddMenu);
 
   const reactFlow = useReactFlow<RFNode, RFEdge>();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -125,7 +131,7 @@ function WorkflowCanvas() {
   );
 
   return (
-    <div ref={wrapperRef} className="relative flex-1" onDragOver={onDragOver} onDrop={onDrop}>
+    <div ref={wrapperRef} className="relative flex-1 bg-[#0a0a0b]" onDragOver={onDragOver} onDrop={onDrop}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -133,30 +139,51 @@ function WorkflowCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={(_e, node) => setSelected(node.id)}
-        onPaneClick={() => setSelected(null)}
+        onPaneClick={() => {
+          setSelected(null);
+          closeAddMenu();
+        }}
         nodeTypes={nodeTypes}
         isValidConnection={handleIsValidConnection}
+        colorMode="dark"
+        defaultEdgeOptions={{ type: "default", style: { stroke: "#8b8b93", strokeWidth: 1.5 } }}
         fitView
       >
-        <Background />
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#2b2b32" bgColor="#0a0a0b" />
         <Controls />
-        <MiniMap pannable zoomable />
+        <MiniMap pannable zoomable maskColor="rgba(10,10,11,0.6)" style={{ background: "#17171a" }} />
       </ReactFlow>
+
+      {/* Thanh cong cu doc trai (P-lumina) noi tren canvas */}
+      <div className="absolute left-3 top-1/2 z-10 -translate-y-1/2">
+        <CanvasToolbar />
+      </div>
+
+      {/* Popup them node (Palette) — bam "+" tren CanvasToolbar de mo */}
+      {addMenuOpen ? (
+        <div className="absolute left-16 top-1/2 z-20 -translate-y-1/2">
+          <Palette />
+        </div>
+      ) : null}
+
+      {/* Bang tham so duoi — chi hien khi node dola_video duoc chon (component tu an) */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-4">
+        <VideoParamsPanel />
+      </div>
     </div>
   );
 }
 
 export default function Workflow() {
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-[#0a0a0b]">
       <RunBar />
       <div className="flex flex-1 overflow-hidden">
-        <Palette />
         <ReactFlowProvider>
           <WorkflowCanvas />
         </ReactFlowProvider>
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
-          <h2 className="border-b border-slate-100 p-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-white/10 bg-[#121216] text-slate-200">
+          <h2 className="border-b border-white/10 p-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Tiến độ
           </h2>
           <div className="flex-1 overflow-y-auto">
