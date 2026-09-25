@@ -1,8 +1,8 @@
-// Bang node keo tha (Task 12 brief): 4 node P3 keo duoc vao canvas, 5 node P4 hien mo (khong keo
-// duoc, `SUPPORTED_IN_P3` la nguon su that duy nhat cho viec nay — dung chung voi `DisabledNode`).
+// Bang node keo tha (Task 12 brief, P4a): cac node trong `ADDABLE_KINDS` keo duoc vao canvas (hien
+// tai ca 4 kind); kind nao khong thuoc tap nay se hien mo, khong keo duoc.
 // Workflow.tsx doc `DRAG_KIND_MIME` tren `onDrop` cua `<ReactFlow>` de biet loai node vua tha.
 import type { AddableNodeKind } from "../graph/ports";
-import { NODE_KIND_ORDER, NODE_LABEL_VI, SUPPORTED_IN_P3 } from "../graph/ports";
+import { NODE_KIND_ORDER, NODE_LABEL_VI, ADDABLE_KINDS } from "../graph/ports";
 import type { NodeKindTag } from "../ipc/types";
 import { useGraphStore } from "../store/graph";
 
@@ -31,7 +31,7 @@ function nextClickPosition(count: number): { x: number; y: number } {
 }
 
 function PaletteItem({ kind }: { kind: NodeKindTag }) {
-  const enabled = SUPPORTED_IN_P3.has(kind);
+  const enabled = ADDABLE_KINDS.has(kind);
   const addNode = useGraphStore((s) => s.addNode);
   const nodeCount = useGraphStore((s) => s.nodes.length);
 
@@ -59,7 +59,7 @@ function PaletteItem({ kind }: { kind: NodeKindTag }) {
         e.dataTransfer.setData(DRAG_KIND_MIME, kind);
         e.dataTransfer.effectAllowed = "move";
       }}
-      title={enabled ? "Nhấp hoặc kéo vào canvas" : "Chưa hỗ trợ ở P3"}
+      title={enabled ? "Nhấp hoặc kéo vào canvas" : "Chưa hỗ trợ"}
       aria-disabled={!enabled}
       className={
         "select-none rounded border px-2 py-1.5 text-xs transition-colors " +

@@ -1,0 +1,105 @@
+{
+  "kind": "dola_video",
+  "version": 1,
+  "category": "video",
+  "labelVi": "Tạo video Dola",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    },
+    {
+      "name": "refs",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "video",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "dola",
+    "kinds": [
+      "session"
+    ]
+  },
+  "defaultParams": {
+    "mode": "fast",
+    "model": "seedance-2.0",
+    "ratio": "9:16",
+    "duration": 10,
+    "logo": "off",
+    "account": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "title": "Chế độ",
+        "enum": [
+          "fast",
+          "pro",
+          "pro_max",
+          "agent"
+        ]
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "enum": [
+          "seedance-2.0",
+          "seedance-2.5",
+          "seedance-1.0"
+        ]
+      },
+      "ratio": {
+        "type": "string",
+        "title": "Tỉ lệ",
+        "enum": [
+          "9:16",
+          "16:9",
+          "1:1",
+          "4:3",
+          "3:4"
+        ]
+      },
+      "duration": {
+        "type": "integer",
+        "title": "Thời lượng (giây)"
+      },
+      "logo": {
+        "type": "string",
+        "title": "Logo",
+        "enum": [
+          "off",
+          "crop",
+          "delogo",
+          "auto"
+        ]
+      },
+      "account": {
+        "type": "string",
+        "title": "Tài khoản (rỗng = tự chọn)"
+      }
+    },
+    "required": [
+      "mode",
+      "model",
+      "ratio",
+      "duration",
+      "logo"
+    ]
+  }
+}

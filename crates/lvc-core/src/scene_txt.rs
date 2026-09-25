@@ -126,7 +126,7 @@ pub fn parse_txt(text: &str, limits: &Limits) -> Result<Vec<Scene>, SceneError> 
 ///
 /// # Errors
 /// `SceneError` kèm số dòng khi cú pháp `key=value` sai ở dòng đó.
-pub(crate) fn parse_lines_raw(text: &str) -> Result<Vec<(usize, RawScene)>, SceneError> {
+pub fn parse_lines_raw(text: &str) -> Result<Vec<(usize, RawScene)>, SceneError> {
     let mut out = Vec::new();
     for (no, raw_line) in text.lines().enumerate() {
         let no = no + 1;

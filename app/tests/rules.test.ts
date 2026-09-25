@@ -1,7 +1,8 @@
 // TDD Task 12 buoc 1: `allowedDurations` mirror `Mode::allowed_durations` (mode.rs) — bang tinh
 // khop dung 6 truong hop test Rust `thoi_luong_cho_phep_theo_model_adr_044`. `isValidConnection`
 // mirror hai buoc dau cua `validate()` (validate.rs): sai kieu cong bi tu choi, cong vao
-// `many=false` nhan canh thu 2 bi tu choi, canh hop le duoc chap nhan.
+// `many=false` nhan canh thu 2 bi tu choi (P4a: chua kind nao co cong nhu vay), canh hop le duoc
+// chap nhan.
 import { describe, expect, it } from "vitest";
 
 import { allowedDurations, isValidConnection } from "../src/graph/rules";
@@ -27,10 +28,8 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
   const DUMMY_DATA: Record<NodeKindTag, NodeKind> = {
     prompt: { kind: "prompt", text: "canh 1" },
     image_upload: { kind: "image_upload", paths: [] },
-    image_from_url: { kind: "image_from_url", url: "" },
-    image_gen: { kind: "image_gen", prompt: "", backend: "" },
-    video: {
-      kind: "video",
+    dola_video: {
+      kind: "dola_video",
       mode: "fast",
       model: "seedance-2.0",
       ratio: "9:16",
@@ -38,9 +37,6 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
       logo: "off",
       account: "",
     },
-    remove_logo: { kind: "remove_logo" },
-    ensure_h264: { kind: "ensure_h264" },
-    concat: { kind: "concat" },
     save: { kind: "save", out_dir: "downloads" },
   };
 
@@ -53,7 +49,7 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
   }
 
   it("canh hop le (kieu khop, cong con trong) duoc chap nhan", () => {
-    const nodes = [node("n1", "prompt"), node("n2", "video")];
+    const nodes = [node("n1", "prompt"), node("n2", "dola_video")];
     const ok = isValidConnection(
       { source: "n1", sourceHandle: "out", target: "n2", targetHandle: "prompt" },
       nodes,
@@ -63,7 +59,7 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
   });
 
   it("sai kieu cong (Image -> Text) bi tu choi", () => {
-    const nodes = [node("n1", "image_upload"), node("n2", "video")];
+    const nodes = [node("n1", "image_upload"), node("n2", "dola_video")];
     const ok = isValidConnection(
       { source: "n1", sourceHandle: "out", target: "n2", targetHandle: "prompt" },
       nodes,
@@ -72,30 +68,21 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
     expect(ok).toBe(false);
   });
 
-  it("cong vao many=false da co 1 canh -> canh thu 2 bi tu choi", () => {
-    // EnsureH264."in" many=false (VIDEO_POST_IN, node.rs) — hai node Video khac nhau cung noi vao.
-    const nodes = [node("v1", "video"), node("v2", "video"), node("n3", "ensure_h264")];
-    const existing = [edge("e1", "v1", "out", "n3", "in")];
+  it("cong vao many=true (vd Save.video) nhan nhieu canh tu nhieu node Tao video Dola", () => {
+    // P4a: khong con kind nao co cong vao many=false (EnsureH264/RemoveLogo da xoa) — kiem nguoc
+    // lai: cong many=true khong bi chan canh thu 2.
+    const nodes = [node("v1", "dola_video"), node("v2", "dola_video"), node("n3", "save")];
+    const existing = [edge("e1", "v1", "out", "n3", "video")];
     const ok = isValidConnection(
-      { source: "v2", sourceHandle: "out", target: "n3", targetHandle: "in" },
+      { source: "v2", sourceHandle: "out", target: "n3", targetHandle: "video" },
       nodes,
       existing,
-    );
-    expect(ok).toBe(false);
-  });
-
-  it("cong vao many=false CHUA co canh nao -> canh dau tien duoc chap nhan", () => {
-    const nodes = [node("v1", "video"), node("n3", "ensure_h264")];
-    const ok = isValidConnection(
-      { source: "v1", sourceHandle: "out", target: "n3", targetHandle: "in" },
-      nodes,
-      [],
     );
     expect(ok).toBe(true);
   });
 
   it("cong vao many=true nhan nhieu canh (vd Video.prompt) van duoc chap nhan", () => {
-    const nodes = [node("p1", "prompt"), node("p2", "prompt"), node("n3", "video")];
+    const nodes = [node("p1", "prompt"), node("p2", "prompt"), node("n3", "dola_video")];
     const existing = [edge("e1", "p1", "out", "n3", "prompt")];
     const ok = isValidConnection(
       { source: "p2", sourceHandle: "out", target: "n3", targetHandle: "prompt" },
@@ -106,7 +93,7 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
   });
 
   it("thieu sourceHandle/targetHandle bi tu choi", () => {
-    const nodes = [node("n1", "prompt"), node("n2", "video")];
+    const nodes = [node("n1", "prompt"), node("n2", "dola_video")];
     expect(
       isValidConnection({ source: "n1", sourceHandle: null, target: "n2", targetHandle: "prompt" }, nodes, []),
     ).toBe(false);
@@ -126,11 +113,11 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
   });
 
   it("review fix-round 1 I3: tu noi mot node vao chinh no (source === target) bi tu choi", () => {
-    // RemoveLogo/EnsureH264: mot cong vao "in" va mot cong ra "out" CUNG kieu Video (node.rs
-    // VIDEO_POST_IN/VIDEO_POST_OUT) — ve kieu cong thi hop le, nhung la mot canh 1-node.
-    const nodes = [node("n1", "ensure_h264")];
+    // Chua kind nao co cong vao/ra cung kieu — kiem thang nhanh source === target (chan truoc moi
+    // buoc khac) bang mot node Tao video Dola.
+    const nodes = [node("n1", "dola_video")];
     const ok = isValidConnection(
-      { source: "n1", sourceHandle: "out", target: "n1", targetHandle: "in" },
+      { source: "n1", sourceHandle: "out", target: "n1", targetHandle: "refs" },
       nodes,
       [],
     );

@@ -17,6 +17,8 @@ import {
   ImportReportsFixtureSchema,
   IpcErrorSchema,
   NODE_KIND_ORDER,
+  NodeCatalogSchema,
+  NodeKindTagSchema,
   PlanSummarySchema,
   PortsFixtureSchema,
   RequeueReportSchema,
@@ -29,7 +31,7 @@ import {
   TaskDtoSchema,
   WorkflowMetaSchema,
 } from "../src/ipc/types";
-import { PORTS } from "../src/graph/ports";
+import { NODE_LABEL_VI, PORTS } from "../src/graph/ports";
 
 const FIXTURES_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -68,11 +70,13 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["script_meta.json", ScriptMetaSchema],
   ["script_doc.json", ScriptDocSchema],
   ["script_run_report.json", ScriptRunReportSchema],
+  // P4a: manifest node (lenh `node_catalog`).
+  ["catalog.json", NodeCatalogSchema],
 ];
 
 describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban) parse dung voi schema zod (Task 11/14)", () => {
-  it("bao phu dung 17 file da commit — khong sot, khong thua", () => {
-    expect(FIXTURE_CASES).toHaveLength(17);
+  it("bao phu dung 18 file da commit — khong sot, khong thua", () => {
+    expect(FIXTURE_CASES).toHaveLength(18);
   });
 
   it.each(FIXTURE_CASES)("%s parse OK", (file, schema) => {
@@ -82,14 +86,30 @@ describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban) parse
 });
 
 describe("ports.json khop bang PORTS (src/graph/ports.ts)", () => {
-  it("cau truc giong het, theo dung thu tu NODE_KIND_ORDER", () => {
+  it("cau truc giong het (fixture xep theo ten kind, NODE_KIND_ORDER la thu tu Palette)", () => {
     const fixture = PortsFixtureSchema.parse(loadFixture("ports.json"));
-    const expected = NODE_KIND_ORDER.map((kind) => ({
+    const expected = [...NODE_KIND_ORDER].sort().map((kind) => ({
       kind,
       inputs: PORTS[kind].inputs,
       outputs: PORTS[kind].outputs,
     }));
     expect(fixture).toEqual(expected);
+  });
+});
+
+describe("catalog.json (P4a, manifest node) khop NODE_LABEL_VI + PORTS", () => {
+  const catalog = NodeCatalogSchema.parse(loadFixture("catalog.json"));
+
+  it("bao phu dung cac kind cua NODE_KIND_ORDER — khong sot, khong thua", () => {
+    expect(catalog.map((m) => m.kind).sort()).toEqual([...NODE_KIND_ORDER].sort());
+  });
+
+  it.each(catalog.map((m) => [m.kind, m] as const))("%s: labelVi + cong vao/ra", (_kind, m) => {
+    const kind = NodeKindTagSchema.parse(m.kind);
+    expect(NODE_LABEL_VI[kind]).toBe(m.labelVi);
+    const strip = (ports: typeof m.inputs) => ports.map((p) => ({ name: p.name, type: p.type }));
+    expect(PORTS[kind].inputs).toEqual(strip(m.inputs));
+    expect(PORTS[kind].outputs).toEqual(strip(m.outputs));
   });
 });
 

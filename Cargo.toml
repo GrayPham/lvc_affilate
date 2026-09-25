@@ -1,6 +1,18 @@
 [workspace]
 resolver = "3"
-members = ["crates/lvc-core", "crates/lvc-store", "crates/lvc-browser", "crates/lvc-engine", "crates/lvc-app"]
+members = [
+    "crates/lvc-core",
+    "crates/lvc-store",
+    "crates/lvc-browser",
+    "crates/lvc-engine",
+    "crates/lvc-app",
+    "crates/lvc-node-api",
+    "crates/providers/lvc-dola",
+    "crates/nodes/node-prompt",
+    "crates/nodes/node-image-upload",
+    "crates/nodes/node-save",
+    "crates/nodes/node-dola-video",
+]
 
 [workspace.package]
 edition = "2024"
@@ -25,6 +37,14 @@ async-trait = "0.1"
 futures = "0.3"
 tracing = "0.1"
 lvc-browser = { path = "crates/lvc-browser" }
+# P4a (ADR-R014): hop dong node + provider + node module.
+lvc-node-api = { path = "crates/lvc-node-api" }
+lvc-dola = { path = "crates/providers/lvc-dola" }
+node-prompt = { path = "crates/nodes/node-prompt" }
+node-image-upload = { path = "crates/nodes/node-image-upload" }
+node-save = { path = "crates/nodes/node-save" }
+node-dola-video = { path = "crates/nodes/node-dola-video" }
+tokio-util = { version = "0.7", features = ["rt"] }
 # Task 10 (dola::http): poll /im/chain/single + tai mp4. rustls (khong OpenSSL), json/stream,
 # socks (proxy socks5://), gzip/brotli (aiohttp tu giai nen — reqwest chi giai nen khi bat feature).
 # CHI lvc-browser duoc dung (lvc-core phai thuan — scripts/check.ps1 kiem `cargo tree`).

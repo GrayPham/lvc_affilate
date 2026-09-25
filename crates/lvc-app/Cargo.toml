@@ -19,6 +19,12 @@ lvc-core.workspace = true
 lvc-store.workspace = true
 lvc-browser.workspace = true
 lvc-engine.workspace = true
+# P4a (ADR-R014): registry node — MOI node module 1 dong o day + 1 dong o src/registry.rs.
+lvc-node-api.workspace = true
+node-prompt.workspace = true
+node-image-upload.workspace = true
+node-save.workspace = true
+node-dola-video.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
@@ -27,7 +33,7 @@ tracing-appender = "0.2.5"
 # commands/mod.rs: Ctx.runs (run_id -> CancellationToken huy nhanh, fix-round 1 I1).
 dashmap = "6"
 # commands/mod.rs (fix-round 1, I1): CancellationToken luu trong Ctx.runs.
-tokio-util = "0.7"
+tokio-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

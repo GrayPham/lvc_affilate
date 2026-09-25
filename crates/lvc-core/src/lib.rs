@@ -40,8 +40,8 @@ pub use dola_text::{
 pub use error::{CoreError, SceneError};
 pub use failure::FailureCode;
 pub use graph::{
-    Edge, Graph, GraphError, Node, NodeKind, PortSpec, PortType, RunPlan, SaveJob, Step, VideoJob,
-    plan, topo_order, validate,
+    Catalog, Category, CredentialReq, Edge, Graph, GraphError, Node, NodeData, NodeManifest,
+    PortSpec, PortType, topo_order, validate,
 };
 pub use limits::Limits;
 pub use mode::{Mode, route_30s, video_timeout};

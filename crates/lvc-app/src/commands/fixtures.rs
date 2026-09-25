@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use lvc_browser::driver::{POLL_STAGES, SUBMIT_STAGES};
-use lvc_core::graph::{Edge, Graph, GraphError, Node, NodeKind, PortType};
+use lvc_core::graph::{Edge, Graph, GraphError, Node, NodeData, PortType};
 use lvc_core::{AppSettings, LogoMode, Mode, Model, Ratio};
 use lvc_engine::events::EngineEvent;
 use lvc_engine::generate::{STAGE_DONE, STAGE_LAUNCHING};
@@ -61,27 +61,24 @@ fn check_or_write(name: &str, value: &Value) {
 
 // ---- gia tri tat dinh dung chung ----
 
-fn video_kind() -> NodeKind {
-    NodeKind::Video {
-        mode: Mode::Fast,
-        model: Model::Seedance20,
-        ratio: Ratio::R9x16,
-        duration: 10,
-        logo: LogoMode::Off,
-        account: String::new(),
-    }
+fn video_kind() -> NodeData {
+    NodeData::new(
+        "dola_video",
+        serde_json::json!({ "mode": Mode::Fast, "model": Model::Seedance20, "ratio": Ratio::R9x16, "duration": 10, "logo": LogoMode::Off, "account": String::new() }),
+    )
 }
 
 /// Do thi Prompt(3 canh) -> Tao video -> Luu — dung o nhieu noi trong report Task 9 lam vi du.
 fn three_scene_graph() -> Graph {
     Graph {
-        version: 1,
+        version: 2,
         nodes: vec![
             Node {
                 id: "n1".to_string(),
-                kind: NodeKind::Prompt {
-                    text: "canh 1\ncanh 2\ncanh 3".to_string(),
-                },
+                kind: NodeData::new(
+                    "prompt",
+                    serde_json::json!({ "text": "canh 1\ncanh 2\ncanh 3".to_string() }),
+                ),
                 x: 0.0,
                 y: 0.0,
             },
@@ -93,9 +90,10 @@ fn three_scene_graph() -> Graph {
             },
             Node {
                 id: "n3".to_string(),
-                kind: NodeKind::Save {
-                    out_dir: "downloads".to_string(),
-                },
+                kind: NodeData::new(
+                    "save",
+                    serde_json::json!({ "out_dir": "downloads".to_string() }),
+                ),
                 x: 600.0,
                 y: 0.0,
             },
@@ -205,53 +203,24 @@ fn port_type_json(ty: PortType) -> Value {
     serde_json::to_value(ty).expect("PortType Serialize")
 }
 
-/// `{kind, inputs:[{name,type}], outputs:[…]}` cho MOI `NodeKind` — Task 11 dung de ve cong tren
-/// React Flow. `kind` lay tu chinh JSON `NodeKind` da serialize (tag `"kind"`, xem
-/// `lvc_core::graph::node`) thay vi doan lai chuoi, tranh 2 nguon su that lech nhau.
+/// `{kind, inputs:[{name,type}], outputs:[…]}` cho MOI node trong registry (P4a: sinh tu manifest
+/// that cua node module, sap theo `kind`) — UI ve cong React Flow tu day.
 fn ports_json() -> Value {
-    let variants = [
-        NodeKind::Prompt {
-            text: String::new(),
-        },
-        NodeKind::ImageUpload { paths: vec![] },
-        NodeKind::ImageFromUrl { url: String::new() },
-        NodeKind::ImageGen {
-            prompt: String::new(),
-            backend: String::new(),
-        },
-        video_kind(),
-        NodeKind::RemoveLogo,
-        NodeKind::EnsureH264,
-        NodeKind::Concat,
-        NodeKind::Save {
-            out_dir: String::new(),
-        },
-    ];
-
-    let entries: Vec<Value> = variants
-        .iter()
-        .map(|kind| {
-            let serialized = serde_json::to_value(kind).expect("NodeKind Serialize");
-            let tag = serialized
-                .get("kind")
-                .cloned()
-                .expect("NodeKind JSON phai co truong 'kind'");
-            let ports = |specs: &[lvc_core::graph::PortSpec]| -> Value {
-                Value::Array(
-                    specs
-                        .iter()
-                        .map(|p| json!({"name": p.name, "type": port_type_json(p.ty)}))
-                        .collect(),
-                )
-            };
-            json!({
-                "kind": tag,
-                "inputs": ports(kind.inputs()),
-                "outputs": ports(kind.outputs()),
+    let port =
+        |p: &lvc_core::graph::PortSpec| json!({"name": p.name, "type": port_type_json(p.ty)});
+    Value::Array(
+        crate::registry::build_registry()
+            .manifests()
+            .iter()
+            .map(|m| {
+                json!({
+                    "kind": m.kind,
+                    "inputs": m.inputs.iter().map(port).collect::<Vec<_>>(),
+                    "outputs": m.outputs.iter().map(port).collect::<Vec<_>>(),
+                })
             })
-        })
-        .collect();
-    Value::Array(entries)
+            .collect(),
+    )
 }
 
 /// Task 10: mot [`AccountStatus`] du moi truong, gia tri tinh toan (`cooling`/`rate_limited`/
@@ -476,6 +445,10 @@ fn fixtures_khop_ban_da_commit() {
         .unwrap(),
     );
     check_or_write("ports.json", &ports_json());
+    check_or_write(
+        "catalog.json",
+        &serde_json::to_value(crate::registry::build_registry().manifests()).unwrap(),
+    );
     check_or_write("stages.json", &serde_json::to_value(stages_json()).unwrap());
     check_or_write(
         "account_status.json",

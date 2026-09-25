@@ -1,0 +1,27 @@
+[package]
+name = "node-dola-video"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Node "dola_video" — xem CLAUDE.md cung thu muc. Chi duoc phu thuoc lvc-node-api, lvc-core,
+# lvc-dola (provider). KHONG phu thuoc node khac / lvc-engine / lvc-store / tauri.
+[dependencies]
+lvc-core.workspace = true
+lvc-node-api.workspace = true
+lvc-dola.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# CHI test: do thi day du (prompt/image_upload/save + node nay) qua Registry::prepare.
+node-prompt.workspace = true
+node-image-upload.workspace = true
+node-save.workspace = true
+tokio = { workspace = true }
+tokio-util.workspace = true
+
+[lints]
+workspace = true

@@ -1,3 +1,7 @@
+//! Bo thuc thi do thi. P4a (ADR-R014): engine GENERIC — duyet topo, goi `NodeExecutor::run` qua
+//! `lvc_node_api::Registry`, KHONG `match` theo kind; node `dola_video` goi lai engine qua dich vu
+//! `lvc_dola::DolaVideoHost` (= `run_video_jobs`, logic P3 duoi day giu nguyen). Lich su P3:
+//!
 //! Bo thuc thi do thi (P3 Task 7): chay MOT lan workflow — validate+lap ke hoach (`lvc_core::graph::
 //! plan`, da gom `validate`) -> tao dong `runs` -> phat `NodeState` "queued" cho MOI node -> chay
 //! tung buoc THEO DUNG THU TU TOPO ma `RunPlan::steps` da co san (Prompt -> `ImageUpload` -> Video ->
@@ -93,13 +97,15 @@
 //! **id run/task**: `uuid` v4 (da la dependency workspace — xem `Cargo.toml`).
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use lvc_browser::BrowserDriver;
-use lvc_browser::dola::{NoopHooks, PollHooks, VideoArtifact};
-use lvc_core::graph::{Graph, RunPlan, SaveJob, Step, VideoJob, plan};
+use lvc_browser::dola::{NoopHooks, PollHooks};
+use lvc_core::graph::{Graph, migrate};
 use lvc_core::{FailureCode, Scene, TaskStatus};
+use lvc_dola::{DolaVideoHost, JobsReport, SceneJob, VideoDone};
+use lvc_node_api::{NodeCtx, Outputs, Prepared, Registry, Services, gather_inputs};
 use lvc_store::{BatchRef, RunStatus};
 use tokio::sync::watch;
 use tokio::task::{JoinHandle, JoinSet};
@@ -123,8 +129,7 @@ pub const NODE_CANCELLED: &str = "cancelled";
 /// Hooks cho MOT job video, tao theo `task_id` — Task 9 truyen factory rieng cho UI (theo doi tien
 /// do tung canh); mac dinh [`noop_hooks_factory`]. `Fn` (khong phai `FnOnce`) vi goi lai cho MOI
 /// canh trong cung mot lan chay. Fix-round 1 (M1): `Box<dyn PollHooks>` KHONG can ghi them
-/// `+ Send + Sync` — `PollHooks: Send + Sync` da la supertrait (`lvc_browser::dola::poll::
-/// PollHooks`), nen moi kieu cu the impl no da Send+Sync san.
+/// `+ Send + Sync` — `PollHooks: Send + Sync` da la supertrait.
 pub type HooksFactory = Arc<dyn Fn(&str) -> Box<dyn PollHooks> + Send + Sync>;
 
 /// Factory mac dinh: hooks khong lam gi (dung cho test/CLI khong can theo doi tien do tung job).
@@ -133,29 +138,15 @@ pub fn noop_hooks_factory() -> HooksFactory {
     Arc::new(|_task_id: &str| Box::new(NoopHooks) as Box<dyn PollHooks>)
 }
 
-/// Dau ra da gom cua tung node trong MOT lan chay (bo nho tam thoi, khong luu DB — dong `tasks`
-/// da co rieng cho video; day chi de node SAU doc dau ra node TRUOC trong cung mot lan chay).
-#[derive(Debug, Default)]
-pub struct NodeOutputs {
-    pub texts: HashMap<String, Vec<Scene>>,
-    pub images: HashMap<String, Vec<PathBuf>>,
-    /// `(scene_index, VideoArtifact)` — da sap theo `scene_index` (xem `run_video_step`).
-    pub videos: HashMap<String, Vec<(u32, VideoArtifact)>>,
-}
-
 /// Tay cam mot lan chay (`Engine::run_graph` tra ve NGAY, khong doi chay xong). `join` de test/
 /// Task 9 doi run ket thuc; `token` de tu huy KHONG qua `Engine::cancel_run` (vd. dong app — huy
 /// moi run dang co).
 ///
-/// `tasks_ready` (fix-round 1, P3c Task 1, I1): kenh `watch` bao "dong `TaskRow` cua (cac) buoc
-/// Video da tao xong" — gia tri la `Vec<TaskRef>` TICH LUY qua nhieu buoc Video trong CUNG mot lan
-/// chay (do thi thuong chi co 1, nhung khong gia dinh dieu do), RONG luc dau. Nguoi doi
-/// (`lvc_engine::scripts::run_script`) chi can `changed()` MOT LAN (khong con poll `TaskRepo` moi
-/// 10ms) — xem doc [`Engine::run_steps`]/[`Engine::run_video_step`] ve DUNG thoi diem gui: NGAY SAU
-/// khi dong DB da tao xong cho MOT buoc Video, TRUOC KHI spawn job tao video that (khong doi video
-/// tao xong); VA mot lan "chot" khong dieu kien o cuoi `run_steps` (du khong co buoc Video nao ca,
-/// vd do thi `hard_stop` truoc do) de nguoi doi khong bao gio cho vo thoi han neu run KHONG BAO GIO
-/// tao dong nao.
+/// `tasks_ready` (fix-round 1, P3c Task 1, I1): kenh `watch` bao "dong `TaskRow` cua (cac) node
+/// video Dola da tao xong" — gia tri la `Vec<TaskRef>` TICH LUY qua nhieu node video trong CUNG
+/// mot lan chay, RONG luc dau. Gui NGAY SAU khi dong DB da tao xong cho MOT node video, TRUOC KHI
+/// spawn job tao video that; VA mot lan "chot" khong dieu kien o cuoi `run_steps` de nguoi doi
+/// (`scripts::run_script`) khong bao gio cho vo thoi han neu run KHONG BAO GIO tao dong nao.
 #[derive(Debug)]
 pub struct RunHandle {
     pub run_id: String,
@@ -164,9 +155,8 @@ pub struct RunHandle {
     pub tasks_ready: watch::Receiver<Vec<TaskRef>>,
 }
 
-/// Mot dong `TaskRow` da duoc tao (VA gan `run_id`/`node_id`) cho MOT canh trong mot buoc Video —
-/// xem [`RunHandle::tasks_ready`]. Khong can `camelCase`/`Serialize`: chi dung NOI BO trong
-/// `lvc-engine` (giua `dag.rs` va `scripts.rs`), khong bao gio di qua IPC.
+/// Mot dong `TaskRow` da duoc tao (VA gan `run_id`/`node_id`) cho MOT canh — xem
+/// [`RunHandle::tasks_ready`]. Chi dung NOI BO `lvc-engine`, khong di qua IPC.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskRef {
     pub node_id: String,
@@ -174,17 +164,15 @@ pub struct TaskRef {
     pub task_id: String,
 }
 
-/// Ket qua MOT job video da chay xong (`JoinSet` gom lai). `task_id` (fix-round 1, M3/I1): can lai
-/// de ghi `finished_at` cho canh bi huy va de thong diep loi (I1) neu can trong tuong lai.
+/// Ket qua MOT job video da chay xong (`JoinSet` gom lai).
 struct VideoJobResult {
     task_id: String,
     scene_index: u32,
     result: Result<GenerateOutcome, EngineError>,
 }
 
-/// Fix-round 2 (I3-NEW): mot canh da qua GIAI DOAN 1 cua `run_video_step` (hooks + token con da
-/// san sang, KHONG panic) — cho GIAI DOAN 2 (tao dong `TaskRow` + spawn) doc tiep. Khong `Clone`:
-/// `hooks` la `Box<dyn PollHooks>` di chuyen mot lan vao than vong spawn.
+/// Fix-round 2 (I3-NEW): mot canh da qua GIAI DOAN 1 cua `run_video_jobs` (hooks + token con da
+/// san sang, KHONG panic) — cho GIAI DOAN 2 (tao dong `TaskRow` + spawn) doc tiep.
 struct PreparedJob {
     scene_index: u32,
     scene: Scene,
@@ -192,71 +180,62 @@ struct PreparedJob {
     hooks: Box<dyn PollHooks>,
 }
 
+/// Moi thu mot lan chay can (gom lai tranh ham qua nhieu tham so).
+struct RunJob {
+    run_id: String,
+    workflow_id: String,
+    graph: Graph,
+    prepared: Prepared,
+    registry: Arc<Registry>,
+    token: CancellationToken,
+    hooks_factory: HooksFactory,
+    tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
+}
+
+/// P4a (ADR-R014): dich vu `DolaVideoHost` cho MOT lan chay — node `dola_video` goi qua
+/// `NodeCtx::services`; ben trong la NGUYEN `run_video_jobs` (logic P3 da qua 2 vong review).
+struct RunDolaHost<D: BrowserDriver + 'static> {
+    engine: Arc<Engine<D>>,
+    hooks_factory: HooksFactory,
+    tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
+}
+
+#[async_trait]
+impl<D: BrowserDriver + 'static> DolaVideoHost for RunDolaHost<D> {
+    async fn run_jobs(
+        &self,
+        run_id: &str,
+        node_id: &str,
+        jobs: Vec<SceneJob>,
+        cancel: &CancellationToken,
+    ) -> JobsReport {
+        self.engine
+            .run_video_jobs(
+                run_id,
+                node_id,
+                jobs,
+                cancel,
+                &self.hooks_factory,
+                &self.tasks_ready_tx,
+            )
+            .await
+    }
+}
+
 fn new_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4())
 }
 
-/// Fix-round 1 (M4): tong so "con" (don vi hoan tat) cua tung node theo `RunPlan` — dung de dien
-/// `total` cho `NodeState` "queued" phat luc bat dau run (truoc day luon la `0`). Prompt/
-/// `ImageUpload`/Save = 1 (mot buoc la xong, ke ca Save gom nhieu canh nguon — xem
-/// `run_save_group`); Video = so canh (`jobs.len()`). Node khong xuat hien trong buoc nao (khong
-/// nen xay ra sau khi `plan()` da hop le — xem doc `plan::plan`) khong co trong map; goi noi dung
-/// `unwrap_or(1)`.
-fn node_totals(run_plan: &RunPlan) -> HashMap<String, u32> {
-    let mut totals = HashMap::new();
-    for step in &run_plan.steps {
-        match step {
-            Step::Prompt { node_id, .. } | Step::ImageUpload { node_id, .. } => {
-                totals.insert(node_id.clone(), 1);
-            }
-            Step::Video { node_id, jobs } => {
-                totals.insert(
-                    node_id.clone(),
-                    u32::try_from(jobs.len()).unwrap_or(u32::MAX),
-                );
-            }
-            Step::Save(job) => {
-                totals.entry(job.node_id.clone()).or_insert(1);
-            }
-        }
-    }
-    totals
-}
-
-/// Gom MOI `Step::Save` LIEN TIEP tu vi tri `i` cung `node_id` (`lvc_core::graph::plan` sinh chung
-/// mot cho khi tham MOT node Luu — xem doc `plan::plan`) thanh MOT nhom; tra `(node_id, jobs, i moi
-/// — vi tri NGAY SAU nhom, de vong lap ngoai tiep tuc tu do)`. `run_plan.steps[i]` PHAI la
-/// `Step::Save` (goi tu nhanh `match` da khop bien the nay).
-fn collect_save_group(run_plan: &RunPlan, mut i: usize) -> (String, Vec<SaveJob>, usize) {
-    let Step::Save(first) = &run_plan.steps[i] else {
-        unreachable!("collect_save_group: steps[i] phai la Step::Save")
-    };
-    let node_id = first.node_id.clone();
-    let mut jobs: Vec<SaveJob> = Vec::new();
-    while i < run_plan.steps.len() {
-        let Step::Save(job) = &run_plan.steps[i] else {
-            break;
-        };
-        if job.node_id != node_id {
-            break;
-        }
-        jobs.push(job.clone());
-        i += 1;
-    }
-    (node_id, jobs, i)
-}
-
 impl<D: BrowserDriver + 'static> Engine<D> {
-    /// Chay MOT lan workflow (brief Task 7). Loi lap ke hoach (`lvc_core::graph::plan`, gom ca
-    /// `validate`) tra `Err` NGAY — KHONG tao dong `runs` (ruling). Tra [`RunHandle`] ngay lap tuc;
-    /// chay nen qua `tokio::spawn` — `RunHandle::join` de test/Task 9 doi run ket thuc.
+    /// Chay MOT lan workflow. Do thi duoc migrate ve dinh dang hien tai, roi `Registry::prepare`
+    /// (validate + preview tung node) — loi tra `Err` NGAY, KHONG tao dong `runs`. Tra
+    /// [`RunHandle`] ngay lap tuc; chay nen qua `tokio::spawn`.
     ///
     /// # Errors
-    /// `EngineError::Graph` khi do thi khong hop le / loi lap ke hoach.
+    /// `EngineError::Graph` khi do thi khong hop le / loi tham so node.
     #[allow(
         clippy::unused_async,
-        reason = "giu async de khop chu ky cong khai cua brief Task 7 - Task 9 se goi ham nay tu \
-                  mot Tauri command async, va than than vong chay nen (run_graph_task) can await"
+        reason = "giu async de khop chu ky cong khai (Tauri command async goi ham nay)"
     )]
     pub async fn run_graph(
         self: &Arc<Self>,
@@ -264,31 +243,26 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         graph: &Graph,
         hooks_factory: HooksFactory,
     ) -> Result<RunHandle, EngineError> {
-        let run_plan = plan(graph, &self.limits)?;
+        let graph = migrate(graph.clone());
+        let registry = self.registry();
+        let prepared = registry.prepare(&graph, &self.limits)?;
         let run_id = new_id("run");
         let token = CancellationToken::new();
         self.run_tokens.insert(run_id.clone(), token.clone());
-        // I1 (fix-round 1): kenh bao "dong TaskRow da tao xong" — xem doc `RunHandle::tasks_ready`.
         let (tasks_ready_tx, tasks_ready_rx) = watch::channel(Vec::<TaskRef>::new());
 
-        let node_ids: Vec<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
+        let job = RunJob {
+            run_id: run_id.clone(),
+            workflow_id: workflow_id.to_string(),
+            graph,
+            prepared,
+            registry,
+            token: token.clone(),
+            hooks_factory,
+            tasks_ready_tx,
+        };
         let engine = Arc::clone(self);
-        let workflow_id = workflow_id.to_string();
-        let run_id_bg = run_id.clone();
-        let token_bg = token.clone();
-        let join = tokio::spawn(async move {
-            engine
-                .run_graph_task(
-                    run_id_bg,
-                    workflow_id,
-                    node_ids,
-                    run_plan,
-                    token_bg,
-                    hooks_factory,
-                    tasks_ready_tx,
-                )
-                .await;
-        });
+        let join = tokio::spawn(async move { engine.run_graph_task(job).await });
 
         Ok(RunHandle {
             run_id,
@@ -298,11 +272,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         })
     }
 
-    /// Huy MOT lan chay dang co (dong bo — xem doc module ve ly do). Tra `false` khi khong biet
-    /// `run_id` (chua chay/da xong — `run_tokens` chi giu run DANG chay, xem `run_graph_task`).
-    /// Fix-round 1 (C1): huy DUY NHAT token cua run la du — token cua tung canh la CON cua token
-    /// nay (`run_video_step` goi `register_child` truoc khi spawn), nen `tokio-util` tu lan truyen
-    /// xuong het, ke ca cac `tokio::select!` cho slot/lease (xem doc module).
+    /// Huy MOT lan chay dang co. Tra `false` khi khong biet `run_id` (chua chay/da xong). Token cua
+    /// tung canh la CON cua token run (`register_child`) nen huy lan truyen xuong het.
     #[must_use = "false = khong biet run_id nay (chua chay/da xong)"]
     pub fn cancel_run(&self, run_id: &str) -> bool {
         match self.run_tokens.get(run_id) {
@@ -314,9 +285,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         }
     }
 
-    /// `counts = (done, total, ok, failed)` — gop lai de tranh `clippy::too_many_arguments` (7 la
-    /// tran mac dinh, ham nay von co 4 con so cung don vi `u32` de rieng rat de nham thu tu khi
-    /// doc call site).
+    /// `counts = (done, total, ok, failed)`.
     fn emit_node_state(
         &self,
         run_id: &str,
@@ -336,58 +305,29 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         });
     }
 
-    /// Than vong chay nen cua [`Engine::run_graph`] — KHONG tra `Result` (da tach nhanh loi lap ke
-    /// hoach ra ngoai, truoc khi spawn); moi loi o day chi lam RUN NAY that bai, khong panic. Fix
-    /// round 1 (I3): than vong BUOC (co goi `hooks_factory` cua caller — co the panic) chay trong
-    /// MOT `tokio::spawn` con rieng — `Err(JoinError)` (panic) duoc bat va coi la run that bai voi
-    /// thong diep loi, thay vi lam `run_graph_task` panic theo (dong `runs` ket "running" mai mai,
-    /// `run_tokens` ri rac, khong `RunDone` — xem doc module).
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "8 tham so mo ta MOT lan chay (id/workflow/node/plan/token/hooks/kenh bao) - than \
-                  vong nen chay MOT LAN cho `run_graph`, tach nho se roi tham so qua nhieu ham con \
-                  hon la lam ro hon"
-    )]
-    async fn run_graph_task(
-        self: Arc<Self>,
-        run_id: String,
-        workflow_id: String,
-        node_ids: Vec<String>,
-        run_plan: RunPlan,
-        token: CancellationToken,
-        hooks_factory: HooksFactory,
-        tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
-    ) {
+    /// Than vong chay nen cua [`Engine::run_graph`]. Fix round 1 (I3): than vong NODE chay trong
+    /// MOT `tokio::spawn` con rieng — panic (vd `hooks_factory` cua caller, hay mot node module)
+    /// bi bat va coi la run that bai, khong de dong `runs` ket "running" mai mai.
+    async fn run_graph_task(self: Arc<Self>, job: RunJob) {
+        let run_id = job.run_id.clone();
+        let token = job.token.clone();
         let started = now_unix();
         if let Err(e) = self
             .run_repo
-            .create(&run_id, &workflow_id, RunStatus::Running, started)
+            .create(&run_id, &job.workflow_id, RunStatus::Running, started)
             .await
         {
             warn!(run_id, error = %e, "khong tao duoc dong runs - dung run nay");
             self.run_tokens.remove(&run_id);
-            // M2 (fix-round 1, parked theo ruling controller): chua co dong `runs` de cap nhat nen
-            // KHONG phat `RunDone` o day — chap nhan hien trang, xem bao cao Task 7.
-            // I1 (fix-round 1): `tasks_ready_tx` bi drop NGAY DAY (khong gui gi) — nguoi doi
-            // (`RunHandle::tasks_ready::changed()`) nhan `Err` ngay (moi sender da mat), khong can
-            // cho het han an toan (xem `run_script`).
+            // `tasks_ready_tx` bi drop o day (khong gui gi) — nguoi doi nhan `Err` ngay.
             return;
         }
 
-        let run_id_steps = run_id.clone();
-        let token_steps = token.clone();
-        let steps_fut = Arc::clone(&self).run_steps(
-            run_id_steps,
-            node_ids,
-            run_plan,
-            token_steps,
-            hooks_factory,
-            tasks_ready_tx,
-        );
+        let steps_fut = Arc::clone(&self).run_steps(job);
         let (error, failed) = match tokio::spawn(steps_fut).await {
             Ok(r) => r,
             Err(join_err) => {
-                warn!(run_id, error = %join_err, "than vong chay buoc panic - ket thuc run la failed");
+                warn!(run_id, error = %join_err, "than vong chay node panic - ket thuc run la failed");
                 (
                     Some(format!("loi he thong: than vong chay panic ({join_err})")),
                     true,
@@ -398,139 +338,123 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         self.finish_run(run_id, &token, error, failed).await;
     }
 
-    /// Duyet `RunPlan::steps` theo dung thu tu topo, tra `(thong diep loi de ghi vao runs.error,
-    /// co that bai hay khong)` — KHONG tu ghi DB/phat `RunDone`, `run_graph_task` lam viec do sau
-    /// khi than vong nay (co the panic — xem doc do) tra ve/bi bat.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "7 tham so mo ta MOT lan chay (id/node/plan/token/hooks/kenh bao) - xem ly do o \
-                  run_graph_task"
-    )]
-    async fn run_steps(
-        self: Arc<Self>,
-        run_id: String,
-        node_ids: Vec<String>,
-        run_plan: RunPlan,
-        token: CancellationToken,
-        hooks_factory: HooksFactory,
-        tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
-    ) -> (Option<String>, bool) {
-        let totals = node_totals(&run_plan);
-        for node_id in &node_ids {
-            let total = totals.get(node_id).copied().unwrap_or(1);
-            self.emit_node_state(&run_id, node_id, NODE_QUEUED, (0, total, 0, 0));
+    /// Chay tung node theo thu tu topo (`Prepared::order`) qua registry — engine KHONG biet kind
+    /// nao. Tra `(thong diep loi cho runs.error, co that bai hay khong)`.
+    ///
+    /// - Huy/`hard_stop` (loi `NodeError::fatal`) -> dung TRUOC node ke tiep; node chua kip chay
+    ///   duoc phat MOT `NodeState` cuoi (`cancelled`/`failed`) thay vi bo mac "queued" (I2).
+    /// - Node that bai mot phan (vd 1/3 canh) -> van co dau ra phan OK, node sau (Luu) van chay.
+    /// - Node loi khong nghiem trong -> KHONG co dau ra; node sau nhan `EdgeInput.values = None`.
+    async fn run_steps(self: Arc<Self>, job: RunJob) -> (Option<String>, bool) {
+        let RunJob {
+            run_id,
+            workflow_id,
+            graph,
+            prepared,
+            registry,
+            token,
+            hooks_factory,
+            tasks_ready_tx,
+        } = job;
+        let total_of = |id: &str| prepared.jobs.get(id).copied().unwrap_or(1);
+        for n in &graph.nodes {
+            self.emit_node_state(&run_id, &n.id, NODE_QUEUED, (0, total_of(&n.id), 0, 0));
         }
 
-        let mut outputs = NodeOutputs::default();
+        let mut services = Services::new();
+        services.insert::<Arc<dyn DolaVideoHost>>(Arc::new(RunDolaHost {
+            engine: Arc::clone(&self),
+            hooks_factory,
+            tasks_ready_tx: tasks_ready_tx.clone(),
+        }));
+        let limits = Arc::new(self.limits.clone());
+
+        let mut outputs: HashMap<String, Outputs> = HashMap::new();
         let mut touched: HashSet<String> = HashSet::new();
         let mut failures: Vec<String> = Vec::new();
         let mut hard_stop: Option<String> = None;
 
-        let mut i = 0usize;
-        while i < run_plan.steps.len() {
-            // I2 (fix-round 1): huy giua chung -> dung NGAY, KHONG buoc/canh nao moi duoc tao nua.
-            // Fix-round 2 (doc minor, review-r1): kiem tra nay dung TRUOC MOI buoc, ke ca mot buoc
-            // Save nam NGAY SAU buoc Video vua bi huy — nen buoc Save do CUNG bi bo qua, du buoc
-            // Video co the da co vai canh `Completed` truoc khi huy. Day la CO Y (ruling round-2),
-            // KHONG phai loi: cac canh da `Completed` do VAN con file that trong `downloads_dir` va
-            // duong dan van nam tren dong `task` cua chung — chi la KHONG duoc Save copy sang
-            // `out_dir` cua node Luu trong lan chay nay.
+        for node_id in &prepared.order {
+            // I2: huy giua chung -> dung NGAY truoc node ke tiep (ke ca node Luu ngay sau node video
+            // vua bi huy — CO Y: file cac canh da xong van con trong downloads_dir).
             if hard_stop.is_some() || token.is_cancelled() {
                 break;
             }
-            match &run_plan.steps[i] {
-                Step::Prompt { node_id, scenes } => {
-                    touched.insert(node_id.clone());
-                    self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, 1, 0, 0));
-                    outputs.texts.insert(node_id.clone(), scenes.clone());
-                    self.emit_node_state(&run_id, node_id, NODE_DONE, (1, 1, 1, 0));
-                    i += 1;
-                }
-                Step::ImageUpload { node_id, paths } => {
-                    touched.insert(node_id.clone());
-                    self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, 1, 0, 0));
-                    match missing_paths(paths).await {
-                        None => {
-                            outputs
-                                .images
-                                .insert(node_id.clone(), paths.iter().map(PathBuf::from).collect());
-                            self.emit_node_state(&run_id, node_id, NODE_DONE, (1, 1, 1, 0));
-                        }
-                        Some(missing) => {
-                            self.emit_node_state(&run_id, node_id, NODE_FAILED, (1, 1, 0, 1));
-                            hard_stop = Some(format!("node {node_id}: thieu file anh: {missing}"));
-                        }
+            let Some(node) = graph.nodes.iter().find(|n| &n.id == node_id) else {
+                continue;
+            };
+            touched.insert(node_id.clone());
+            let total = total_of(node_id);
+            let Some(exec) = registry.get(&node.kind.kind) else {
+                // prepare() da chan kind la — chi phong thu.
+                self.emit_node_state(&run_id, node_id, NODE_FAILED, (total, total, 0, total));
+                failures.push(format!("node {node_id}: kind {} chua cai", node.kind.kind));
+                continue;
+            };
+            self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
+            let ctx = NodeCtx {
+                run_id: run_id.clone(),
+                workflow_id: workflow_id.clone(),
+                node_id: node_id.clone(),
+                cancel: token.clone(),
+                limits: Arc::clone(&limits),
+                services: services.clone(),
+            };
+            let inputs = gather_inputs(&graph, node_id, &outputs);
+            match exec.run(&ctx, &node.kind.params, inputs).await {
+                Ok(res) => {
+                    let c = res.counts;
+                    let state = if res.is_failed() {
+                        NODE_FAILED
+                    } else {
+                        NODE_DONE
+                    };
+                    self.emit_node_state(
+                        &run_id,
+                        node_id,
+                        state,
+                        (c.done, c.total, c.ok, c.failed),
+                    );
+                    if let Some(f) = res.failure {
+                        failures.push(f);
                     }
-                    i += 1;
+                    outputs.insert(node_id.clone(), res.outputs);
                 }
-                Step::Video { node_id, jobs } => {
-                    let node_id = node_id.clone();
-                    touched.insert(node_id.clone());
-                    if let Some(msg) = self
-                        .run_video_step(
-                            &run_id,
-                            &node_id,
-                            jobs,
-                            &token,
-                            &hooks_factory,
-                            &mut outputs,
-                            &tasks_ready_tx,
-                        )
-                        .await
-                    {
-                        failures.push(msg);
-                    }
-                    i += 1;
-                }
-                Step::Save(first) => {
-                    let node_id = first.node_id.clone();
-                    let (_, jobs, next_i) = collect_save_group(&run_plan, i);
-                    i = next_i;
-                    touched.insert(node_id.clone());
-                    if let Some(msg) = self
-                        .run_save_group(&run_id, &node_id, &jobs, &outputs)
-                        .await
-                    {
-                        failures.push(msg);
+                Err(e) => {
+                    self.emit_node_state(&run_id, node_id, NODE_FAILED, (total, total, 0, total));
+                    if e.fatal {
+                        hard_stop = Some(e.message);
+                    } else {
+                        failures.push(e.message);
                     }
                 }
             }
         }
 
-        // I2: node CHUA KIP CHAY toi (vong lap dung som vi huy/hard_stop) khong duoc bo mac "queued"
-        // mai mai — phat MOT NodeState cuoi cho tung node do.
         if hard_stop.is_some() || token.is_cancelled() {
             let pending_state = if token.is_cancelled() {
                 NODE_CANCELLED
             } else {
                 NODE_FAILED
             };
-            for node_id in &node_ids {
-                if !touched.contains(node_id) {
-                    let total = totals.get(node_id).copied().unwrap_or(1);
-                    self.emit_node_state(&run_id, node_id, pending_state, (0, total, 0, total));
+            for n in &graph.nodes {
+                if !touched.contains(&n.id) {
+                    let total = total_of(&n.id);
+                    self.emit_node_state(&run_id, &n.id, pending_state, (0, total, 0, total));
                 }
             }
         }
 
-        // I1 (fix-round 1, P3c Task 1): "chot" tasks_ready KHONG DIEU KIEN, du KHONG co buoc Video
-        // nao trong lan chay nay (vd hard_stop/huy TRUOC khi toi buoc Video, hoac do thi khong co
-        // node Video). `send_modify` LUON danh dau "changed" ke ca closure khong doi gi — nguoi doi
-        // (`run_script`) nho vay khong bao gio cho vo thoi han (toi da het han an toan cua no) chi
-        // vi run nay khong tung tao dong `TaskRow` nao. Neu `run_video_step` da gui truoc do (co
-        // buoc Video), day chi la MOT lan "changed" thua — vo hai (nguoi doi chi doi `changed()`
-        // MOT LAN, lay gia tri o lan dau tien no thuc day).
+        // I1: "chot" tasks_ready KHONG DIEU KIEN (xem doc `RunHandle::tasks_ready`).
         tasks_ready_tx.send_modify(|_| {});
 
-        // I1: uu tien thong diep hard_stop (ImageUpload thieu file — chi 1 nguyen nhan ro rang);
-        // khong thi gop danh sach canh/Save that bai tu cac node (co the nhieu node cung loi).
         let error = hard_stop.or_else(|| (!failures.is_empty()).then(|| failures.join("; ")));
         let failed = error.is_some();
         (error, failed)
     }
 
-    /// Duoc quyet dinh trang thai cuoi (huy > loi cung/canh > hoan tat), ghi `RunRepo::set_status`,
-    /// go token khoi `run_tokens`, roi phat `RunDone` (SAU khi DB da ghi — ruling brief).
+    /// Chot trang thai cuoi (huy > loi > hoan tat), ghi `RunRepo::set_status`, go token, roi phat
+    /// `RunDone` (SAU khi DB da ghi).
     async fn finish_run(
         &self,
         run_id: String,
@@ -560,10 +484,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         });
     }
 
-    /// Fix-round 2 (M5, escalated): danh dau MOT `TaskRow` da ton tai la `Failed` + `finished_at`
-    /// NGAY, khong spawn job cho no — dung khi mot buoc DB sau khi tao dong (hien tai: chi
-    /// `TaskRepo::set_run`) that bai, de dong khong ket lai "queued" mai mai (vo hinh voi
-    /// `TaskRepo::list_by_run`). `reason` la thong diep ngan, KHONG chua prompt/cookie/URL ky.
+    /// Fix-round 2 (M5): danh dau MOT `TaskRow` da ton tai la `Failed` + `finished_at` NGAY, khong
+    /// spawn job cho no. `reason` KHONG chua prompt/cookie/URL ky.
     async fn mark_row_failed(&self, task_id: &str, reason: &str) {
         if let Err(e) = self
             .tasks
@@ -577,76 +499,48 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         }
     }
 
-    /// Buoc `Video`: tao MOT `TaskRow` cho MOI canh TRUOC KHI spawn (de UI liet ke duoc ngay), roi
-    /// `JoinSet` chay dong thoi (limiter/`AccountPool` lo song song — xem `generate.rs`); mot canh
-    /// loi KHONG dung cac canh khac (ruling). Ghi `NodeOutputs.videos[node_id]` = cac canh THANH
-    /// CONG (sap theo `scene_index`) — canh loi khong co mat, Save (buoc sau) tu dong chi luu canh
-    /// OK. Tra `Some(thong diep)` (I1: `"node {node_id}: canh {idx,..} that bai"`) khi CO IT NHAT
-    /// 1 canh loi, `None` khi tat ca OK.
+    /// Dich vu `DolaVideoHost` (P4a): tao MOT `TaskRow` cho MOI canh TRUOC KHI spawn (UI liet ke
+    /// duoc ngay), roi `JoinSet` chay dong thoi (limiter/`AccountPool` lo song song); mot canh loi
+    /// KHONG dung canh khac. Trang thai node do executor phat — ham nay chi tra `JobsReport`.
     ///
-    /// Fix-round 2 (I3-NEW): chia HAI GIAI DOAN — giai doan 1 goi `hooks_factory(&task_id)` (ma
-    /// Task 9, CO THE panic) + `register_child` cho TAT CA canh, KHONG dung `TaskRepo`; giai doan 2
-    /// (chi chay neu giai doan 1 xong het, khong panic) moi `TaskRepo::create`/`set_run`/spawn. Neu
-    /// `hooks_factory` panic o giai doan 1: CHUA co dong `TaskRow` nao cho buoc nay ton tai (khong
-    /// orphan `queued`), va panic van nam tren than vong dong bo cua `run_steps` (chua spawn job
-    /// nao vao `JoinSet` — khong co job anh em nao bi huy giua chung) nen lan thang toi cai bay
-    /// panic cua I3 o tang tren (`run_graph_task`).
-    ///
-    /// Fix-round 1 (P3c Task 1, I1): giai doan 2 tach THEM lam BA (2a/2b/2c) — 2a tao dong CHO TAT
-    /// CA canh TRUOC (khong spawn gi ca); 2b phat toan bo `TaskRef` vua tao qua `tasks_ready_tx`
-    /// (`send_modify`, xem doc [`RunHandle::tasks_ready`]) — nguoi doi biet DAY DU danh sach ngay
-    /// khi hang DB da xong, KHONG phai luc mot phan con dang duoc tao (tranh dung sai "moi tao mot
-    /// nua"); 2c moi spawn `JoinSet`. Truoc ban sua nay, tao dong + spawn xen ke tung canh mot vong
-    /// duy nhat — khong co diem nao "toan bo hang da san sang" de bao ra ngoai.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "8 tham so mo ta MOT buoc Video (id run/node/canh/token/hooks/dau ra/kenh bao) - \
-                  xem ly do o run_graph_task"
-    )]
+    /// Fix-round 2 (I3-NEW) + P3c I1: giai doan 1 goi `hooks_factory` (CO THE panic) +
+    /// `register_child` cho TAT CA canh, chua dung DB; 2a tao dong cho tat ca; 2b phat `tasks_ready`;
+    /// 2c spawn. Panic o giai doan 1 -> chua co dong nao (khong orphan), lan len bay panic cua run.
     #[allow(
         clippy::too_many_lines,
-        reason = "fix-round 1 (I1) them giai doan 2b (phat tasks_ready) giua 2a/2c da co san - than \
-                  ham van la MOT buoc tuan tu (chuan bi hooks -> tao dong -> bao -> spawn -> gom \
-                  ket qua), tach nho se roi PreparedJob/CreatedJob qua nhieu ham con"
+        reason = "mot buoc tuan tu (chuan bi hooks -> tao dong -> bao -> spawn -> gom ket qua)"
     )]
-    async fn run_video_step(
+    async fn run_video_jobs(
         self: &Arc<Self>,
         run_id: &str,
         node_id: &str,
-        jobs: &[VideoJob],
+        jobs: Vec<SceneJob>,
         run_token: &CancellationToken,
         hooks_factory: &HooksFactory,
-        outputs: &mut NodeOutputs,
         tasks_ready_tx: &watch::Sender<Vec<TaskRef>>,
-    ) -> Option<String> {
-        let total = u32::try_from(jobs.len()).unwrap_or(u32::MAX);
-        self.emit_node_state(run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
-
+    ) -> JobsReport {
         let mut failed_indices: Vec<String> = Vec::new();
 
-        // Giai doan 1 (I3-NEW): chuan bi hooks + token con cho TAT CA canh TRUOC — hooks_factory co
-        // the panic (ma Task 9), o day CHUA dong `TaskRow` nao ca nen khong the orphan.
+        // Giai doan 1 (I3-NEW).
         let mut prepared: Vec<PreparedJob> = Vec::with_capacity(jobs.len());
         for job in jobs {
-            // I2: huy TRUOC khi kip chuan bi canh nay -> khong can hooks/token cho no nua.
             if run_token.is_cancelled() {
                 failed_indices.push(job.scene_index.to_string());
                 continue;
             }
             let task_id = new_id("task");
             let hooks = hooks_factory(&task_id);
-            // C1 (fix-round 1): dang ky token cua CANH NAY la CON cua token cua RUN, TRUOC KHI
-            // spawn — xem doc module + `cancel::CancelRegistry::register_child`.
+            // C1: token cua CANH la CON cua token RUN, dang ky TRUOC KHI spawn.
             let _ = self.cancels().register_child(&task_id, run_token);
             prepared.push(PreparedJob {
                 scene_index: job.scene_index,
-                scene: job.scene.clone(),
+                scene: job.scene,
                 task_id,
                 hooks,
             });
         }
 
-        // Giai doan 2a (I1): tao dong CHO TAT CA canh TRUOC, CHUA spawn gi ca.
+        // Giai doan 2a: tao dong CHO TAT CA canh, chua spawn.
         let mut created: Vec<PreparedJob> = Vec::with_capacity(prepared.len());
         for pj in prepared {
             let batch = BatchRef {
@@ -665,9 +559,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             }
             if let Err(e) = self.tasks.set_run(&pj.task_id, run_id, node_id).await {
                 warn!(run_id, node_id, task_id = pj.task_id, error = %e, "khong gan duoc run_id/node_id");
-                // M5 (fix-round 2, escalated tu Minor thanh Important — review-r1): dong da tao
-                // nhung THIEU run_id/node_id se vo hinh voi `TaskRepo::list_by_run` MAI MAI neu
-                // chay tiep — danh dau Failed NGAY, KHONG spawn, tinh la 1 canh that bai.
+                // M5: dong thieu run_id/node_id se vo hinh voi `list_by_run` -> Failed NGAY.
                 self.mark_row_failed(&pj.task_id, &format!("store: set_run: {e}"))
                     .await;
                 failed_indices.push(pj.scene_index.to_string());
@@ -676,8 +568,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             created.push(pj);
         }
 
-        // Giai doan 2b (I1): phat toan bo TaskRef vua tao — TRUOC khi spawn (chua doi video tao
-        // xong, chi doi hang DB) — xem doc `RunHandle::tasks_ready`.
+        // Giai doan 2b: bao TaskRef TRUOC khi spawn.
         tasks_ready_tx.send_modify(|v| {
             v.extend(created.iter().map(|c| TaskRef {
                 node_id: node_id.to_string(),
@@ -686,7 +577,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             }));
         });
 
-        // Giai doan 2c: spawn — chi toi day moi bat dau tao video that.
+        // Giai doan 2c: spawn.
         let mut set: JoinSet<VideoJobResult> = JoinSet::new();
         for pj in created {
             let PreparedJob {
@@ -709,28 +600,28 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             });
         }
 
-        let mut ok = 0u32;
-        let mut artifacts: Vec<(u32, VideoArtifact)> = Vec::new();
+        // KHONG bao gio bo JoinSet giua chung — luon join toi het (dong task khong ket processing).
+        let mut done: Vec<VideoDone> = Vec::new();
         while let Some(joined) = set.join_next().await {
             match joined {
                 Ok(VideoJobResult {
                     scene_index,
                     result: Ok(out),
                     ..
-                }) => {
-                    ok += 1;
-                    artifacts.push((scene_index, out.artifact));
-                }
+                }) => done.push(VideoDone {
+                    scene_index,
+                    local_path: out.artifact.local_path,
+                    account: out.account,
+                    conversation_id: out.artifact.conversation_id.0,
+                    watermarked: out.artifact.watermarked,
+                }),
                 Ok(VideoJobResult {
                     task_id,
                     scene_index,
                     result: Err(e),
                 }) => {
                     failed_indices.push(scene_index.to_string());
-                    // M3 (fix-round 1, pham vi da gioi han theo ruling controller): canh bi huy MA
-                    // CHUA BAO GIO thuc su chay (bat o cho slot/lease/doi tai khoan ban) van can
-                    // `finished_at` — `generate_video` khong tu ghi cot nay o bat ky duong nao
-                    // (khoang trong co san, xem review M3); o day chi sua rieng nhom canh do.
+                    // M3: canh bi huy MA CHUA BAO GIO chay van can `finished_at`.
                     if e.failure_code() == Some(FailureCode::Cancelled) {
                         if let Err(se) = self.tasks.set_finished(&task_id, now_unix()).await {
                             warn!(run_id, node_id, task_id, error = %se, "khong ghi duoc finished_at");
@@ -743,84 +634,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 }
             }
         }
-        artifacts.sort_by_key(|(idx, _)| *idx);
-        outputs.videos.insert(node_id.to_string(), artifacts);
-
-        let failed = u32::try_from(failed_indices.len()).unwrap_or(u32::MAX);
-        let state = if failed > 0 { NODE_FAILED } else { NODE_DONE };
-        self.emit_node_state(run_id, node_id, state, (ok + failed, total, ok, failed));
-
-        (!failed_indices.is_empty())
-            .then(|| format!("node {node_id}: canh {} that bai", failed_indices.join(",")))
-    }
-
-    /// Buoc `Save`: gom MOI `Step::Save` LIEN TIEP cung `node_id` (do `lvc_core::graph::plan` sinh
-    /// chung mot cho khi tham node Luu do — xem doc `plan::plan`) thanh MOT `NodeState`. Nguon la
-    /// video -> copy (KHONG di chuyen) tung file vao `out_dir`; nguon la anh -> no-op (P4, xem doc
-    /// module); nguon khong co dau ra (buoc truoc bi bo qua/loi ha tang) -> coi la loi. Tra
-    /// `Some("{node_id}: luu loi")` (I1) khi CO IT NHAT 1 job loi, `None` khi tat ca OK.
-    async fn run_save_group(
-        &self,
-        run_id: &str,
-        node_id: &str,
-        jobs: &[SaveJob],
-        outputs: &NodeOutputs,
-    ) -> Option<String> {
-        self.emit_node_state(run_id, node_id, NODE_RUNNING, (0, 1, 0, 0));
-        let mut ok = true;
-        for job in jobs {
-            if let Some(artifacts) = outputs.videos.get(&job.from_node) {
-                if let Err(e) =
-                    save_videos(run_id, &job.from_node, artifacts, Path::new(&job.out_dir)).await
-                {
-                    warn!(run_id, node_id, from = %job.from_node, error = %e, "khong luu duoc video");
-                    ok = false;
-                }
-            } else if outputs.images.contains_key(&job.from_node) {
-                // P4: chua copy anh — chi la duong dan (xem doc module).
-            } else {
-                warn!(run_id, node_id, from = %job.from_node, "khong co dau ra de luu");
-                ok = false;
-            }
+        done.sort_by_key(|d| d.scene_index);
+        JobsReport {
+            done,
+            failed: failed_indices,
         }
-        let (state, o, f) = if ok {
-            (NODE_DONE, 1, 0)
-        } else {
-            (NODE_FAILED, 0, 1)
-        };
-        self.emit_node_state(run_id, node_id, state, (1, 1, o, f));
-        (!ok).then(|| format!("{node_id}: luu loi"))
-    }
-}
-
-/// Copy (khong di chuyen) tung `VideoArtifact.local_path` vao
-/// `out_dir/<run_id>_<from_node>_<scene_index>.mp4` (tao `out_dir` neu chua co).
-async fn save_videos(
-    run_id: &str,
-    from_node: &str,
-    artifacts: &[(u32, VideoArtifact)],
-    out_dir: &Path,
-) -> std::io::Result<()> {
-    tokio::fs::create_dir_all(out_dir).await?;
-    for (scene_index, artifact) in artifacts {
-        let dest = out_dir.join(format!("{run_id}_{from_node}_{scene_index}.mp4"));
-        tokio::fs::copy(&artifact.local_path, &dest).await?;
-    }
-    Ok(())
-}
-
-/// `None` khi MOI duong dan ton tai; `Some(danh sach, cach nhau ", ")` khi co duong dan thieu.
-async fn missing_paths(paths: &[String]) -> Option<String> {
-    let mut missing = Vec::new();
-    for p in paths {
-        if tokio::fs::metadata(p).await.is_err() {
-            missing.push(p.clone());
-        }
-    }
-    if missing.is_empty() {
-        None
-    } else {
-        Some(missing.join(", "))
     }
 }
 
@@ -829,10 +647,10 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use lvc_browser::dola::{ConversationId, poll::NOTE_RAW};
+    use lvc_browser::dola::{ConversationId, VideoArtifact, poll::NOTE_RAW};
     use lvc_browser::{DolaError, FakeCall, FakeDriver, FakeStep};
     use lvc_core::{
-        Edge, FailureCode, Limits, LogoMode, Mode, Model, Node, NodeKind, Ratio, RawScene,
+        Edge, FailureCode, Limits, LogoMode, Mode, Model, Node, NodeData, Ratio, RawScene,
         TaskStatus,
     };
     use lvc_store::{AccountRepo, Db, TaskRepo};
@@ -900,10 +718,12 @@ mod tests {
         )
         .await
         .unwrap();
-        (dir, Arc::new(engine), db, driver)
+        let engine = Arc::new(engine);
+        assert!(engine.set_registry(Arc::new(crate::test_support::test_registry())));
+        (dir, engine, db, driver)
     }
 
-    fn node(id: &str, kind: NodeKind) -> Node {
+    fn node(id: &str, kind: NodeData) -> Node {
         Node {
             id: id.to_string(),
             kind,
@@ -922,41 +742,46 @@ mod tests {
         }
     }
 
-    fn video_kind() -> NodeKind {
+    fn video_kind() -> NodeData {
         video_kind_for("")
     }
 
     /// Nhu [`video_kind`] nhung chi dinh `account` (fix-round 1, C1 test 2: node "chi dinh" mot
     /// tai khoan cu the -> `Scene::account` -> `prefer` -> `run_mode` vao nhanh `lease_wait`).
-    fn video_kind_for(account: &str) -> NodeKind {
-        NodeKind::Video {
-            mode: Mode::Fast,
-            model: Model::Seedance20,
-            ratio: Ratio::R9x16,
-            duration: 10,
-            logo: LogoMode::Off,
-            account: account.to_string(),
-        }
+    fn video_kind_for(account: &str) -> NodeData {
+        NodeData::new(
+            "dola_video",
+            serde_json::json!({
+                "mode": Mode::Fast,
+                "model": Model::Seedance20,
+                "ratio": Ratio::R9x16,
+                "duration": 10,
+                "logo": LogoMode::Off,
+                "account": account,
+            }),
+        )
+    }
+
+    fn prompt_kind(text: impl Into<String>) -> NodeData {
+        NodeData::new("prompt", serde_json::json!({ "text": text.into() }))
+    }
+
+    fn save_kind(out_dir: impl Into<String>) -> NodeData {
+        NodeData::new("save", serde_json::json!({ "out_dir": out_dir.into() }))
+    }
+
+    fn upload_kind(paths: &[String]) -> NodeData {
+        NodeData::new("image_upload", serde_json::json!({ "paths": paths }))
     }
 
     /// Do thi Prompt("pr") -> Tao video("vid") -> Luu("sv"), dung o hau het test.
     fn linear_graph(prompt_text: &str, out_dir: &std::path::Path) -> Graph {
         Graph {
-            version: 1,
+            version: 2,
             nodes: vec![
-                node(
-                    "pr",
-                    NodeKind::Prompt {
-                        text: prompt_text.to_string(),
-                    },
-                ),
+                node("pr", prompt_kind(prompt_text.to_string())),
                 node("vid", video_kind()),
-                node(
-                    "sv",
-                    NodeKind::Save {
-                        out_dir: out_dir.display().to_string(),
-                    },
-                ),
+                node("sv", save_kind(out_dir.display().to_string())),
             ],
             edges: vec![
                 edge("e1", "pr", "out", "vid", "prompt"),
@@ -1103,21 +928,11 @@ mod tests {
 
         let out_dir = dir.path().join("out");
         let graph = Graph {
-            version: 1,
+            version: 2,
             nodes: vec![
-                node(
-                    "pr",
-                    NodeKind::Prompt {
-                        text: "canh 1".to_string(),
-                    },
-                ),
+                node("pr", prompt_kind("canh 1".to_string())),
                 node("vid", video_kind_for("acc1")),
-                node(
-                    "sv",
-                    NodeKind::Save {
-                        out_dir: out_dir.display().to_string(),
-                    },
-                ),
+                node("sv", save_kind(out_dir.display().to_string())),
             ],
             edges: vec![
                 edge("e1", "pr", "out", "vid", "prompt"),
@@ -1438,34 +1253,14 @@ mod tests {
         let (dir, engine, db, driver) = build_engine(&["acc1", "acc2", "acc3"], 1, steps).await;
         let out_dir = dir.path().join("out");
         let graph = Graph {
-            version: 1,
+            version: 2,
             nodes: vec![
-                node(
-                    "prA",
-                    NodeKind::Prompt {
-                        text: "canh A".to_string(),
-                    },
-                ),
+                node("prA", prompt_kind("canh A".to_string())),
                 node("vidA", video_kind()),
-                node(
-                    "svA",
-                    NodeKind::Save {
-                        out_dir: out_dir.join("a").display().to_string(),
-                    },
-                ),
-                node(
-                    "prB",
-                    NodeKind::Prompt {
-                        text: "canh B".to_string(),
-                    },
-                ),
+                node("svA", save_kind(out_dir.join("a").display().to_string())),
+                node("prB", prompt_kind("canh B".to_string())),
                 node("vidB", video_kind()),
-                node(
-                    "svB",
-                    NodeKind::Save {
-                        out_dir: out_dir.join("b").display().to_string(),
-                    },
-                ),
+                node("svB", save_kind(out_dir.join("b").display().to_string())),
             ],
             edges: vec![
                 edge("e1", "prA", "out", "vidA", "prompt"),
@@ -1525,7 +1320,7 @@ mod tests {
     async fn do_thi_khong_hop_le_tra_err_khong_tao_run() {
         let (_dir, engine, _db, _driver) = build_engine(&[], 1, vec![]).await;
         let empty_graph = Graph {
-            version: 1,
+            version: 2,
             nodes: vec![],
             edges: vec![],
         };
@@ -1547,27 +1342,12 @@ mod tests {
         let out_dir = dir.path().join("out");
         let missing = dir.path().join("khong_ton_tai.jpg");
         let graph = Graph {
-            version: 1,
+            version: 2,
             nodes: vec![
-                node(
-                    "pr",
-                    NodeKind::Prompt {
-                        text: "canh 1".to_string(),
-                    },
-                ),
-                node(
-                    "im",
-                    NodeKind::ImageUpload {
-                        paths: vec![missing.display().to_string()],
-                    },
-                ),
+                node("pr", prompt_kind("canh 1".to_string())),
+                node("im", upload_kind(&[missing.display().to_string()])),
                 node("vid", video_kind()),
-                node(
-                    "sv",
-                    NodeKind::Save {
-                        out_dir: out_dir.display().to_string(),
-                    },
-                ),
+                node("sv", save_kind(out_dir.display().to_string())),
             ],
             edges: vec![
                 edge("e1", "pr", "out", "vid", "prompt"),

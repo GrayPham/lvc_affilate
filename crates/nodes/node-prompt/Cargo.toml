@@ -1,0 +1,21 @@
+[package]
+name = "node-prompt"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Node "prompt" — xem CLAUDE.md cung thu muc. Chi duoc phu thuoc lvc-node-api + lvc-core.
+[dependencies]
+lvc-core.workspace = true
+lvc-node-api.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+tokio-util.workspace = true
+
+[lints]
+workspace = true

@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use lvc_browser::BrowserDriver;
 use lvc_core::Limits;
-use lvc_core::graph::{Graph, plan};
+use lvc_core::graph::{Graph, NodeManifest, migrate};
 use lvc_engine::{EngineError, RunHandle, noop_hooks_factory};
+use lvc_node_api::Registry;
 use lvc_store::{RunRepo, RunRow, WorkflowMeta, WorkflowRepo};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -51,10 +52,14 @@ pub struct WorkflowDoc {
 /// `IpcError` ma `GRAPH_INVALID`, `details` = `Vec<GraphError>` da serialize (dung LAI cung mot
 /// anh xa voi moi loi `EngineError::Graph` khac trong crate — `IpcError::from`, fix-round 1 M8),
 /// khi do thi khong hop le hoac loi lap ke hoach (vd cu phap TXT trong node Prompt).
-pub fn workflow_validate_impl(graph: &Graph, limits: &Limits) -> Result<PlanSummary, IpcError> {
-    match plan(graph, limits) {
-        Ok(run_plan) => Ok(PlanSummary {
-            video_total: run_plan.video_total,
+pub fn workflow_validate_impl(
+    graph: &Graph,
+    registry: &Registry,
+    limits: &Limits,
+) -> Result<PlanSummary, IpcError> {
+    match registry.prepare(&migrate(graph.clone()), limits) {
+        Ok(prepared) => Ok(PlanSummary {
+            video_total: prepared.video_total,
             warnings: Vec::new(),
         }),
         Err(errs) => Err(IpcError::from(EngineError::Graph(errs))),
@@ -70,7 +75,19 @@ pub async fn workflow_validate(
     state: tauri::State<'_, AppState>,
     graph: Graph,
 ) -> Result<PlanSummary, IpcError> {
-    workflow_validate_impl(&graph, state.engine.limits())
+    workflow_validate_impl(&graph, &state.engine.registry(), state.engine.limits())
+}
+
+/// P4a: manifest MOI node da cai (sap theo `kind`) — UI dung dung palette/cong/form tu day.
+#[allow(
+    clippy::unused_async,
+    reason = "giu async dong bo voi moi lenh IPC khac (quy uoc brief Task 9)"
+)]
+#[tauri::command]
+pub async fn node_catalog(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<NodeManifest>, IpcError> {
+    Ok(state.engine.registry().manifests())
 }
 
 /// Than logic `workflow_save` — `id = None` sinh `uuid v4` moi (workflow moi tao trong UI).
@@ -86,7 +103,7 @@ pub async fn workflow_save_impl<D: BrowserDriver + 'static>(
     let id = id.unwrap_or_else(|| Uuid::new_v4().to_string());
     // serde_json::to_string tren Graph (kieu dong bo, khong chua so NaN/vo cuc) khong the that bai
     // trong thuc te — van map loi thay vi unwrap de khong panic neu gia dinh nay sai trong tuong lai.
-    let json = serde_json::to_string(graph)
+    let json = serde_json::to_string(&migrate(graph.clone()))
         .map_err(|e| IpcError::new("GRAPH_ENCODE", format!("khong ma hoa duoc do thi: {e}")))?;
     let updated_at = lvc_engine::now_unix();
     WorkflowRepo::new(&ctx.db)
@@ -143,6 +160,8 @@ pub async fn workflow_get_impl<D: BrowserDriver + 'static>(
     })?;
     let graph: Graph = serde_json::from_str(&row.json)
         .map_err(|e| IpcError::new("WORKFLOW_CORRUPT", format!("do thi da luu bi hong: {e}")))?;
+    // P4a: workflow luu tu P3 (v1, kind `video`) -> dinh dang hien tai.
+    let graph = migrate(graph);
     Ok(WorkflowDoc {
         meta: WorkflowMeta {
             id: row.id,
@@ -279,14 +298,14 @@ mod tests {
     use lvc_browser::FakeStep;
     use lvc_browser::dola::ConversationId;
     use lvc_browser::dola::poll::{NOTE_RAW, VideoArtifact};
-    use lvc_core::graph::{Edge, GraphError, Node, NodeKind};
+    use lvc_core::graph::{Edge, GraphError, Node, NodeData};
     use lvc_core::{LogoMode, Mode, Model, Ratio};
     use lvc_store::RunStatus;
 
     use super::*;
     use crate::commands::test_support::ctx_with;
 
-    fn node(id: &str, kind: NodeKind) -> Node {
+    fn node(id: &str, kind: NodeData) -> Node {
         Node {
             id: id.to_string(),
             kind,
@@ -305,34 +324,32 @@ mod tests {
         }
     }
 
-    fn video_kind() -> NodeKind {
-        NodeKind::Video {
-            mode: Mode::Fast,
-            model: Model::Seedance20,
-            ratio: Ratio::R9x16,
-            duration: 10,
-            logo: LogoMode::Off,
-            account: String::new(),
-        }
+    fn video_kind() -> NodeData {
+        NodeData::new(
+            "dola_video",
+            serde_json::json!({ "mode": Mode::Fast, "model": Model::Seedance20, "ratio": Ratio::R9x16, "duration": 10, "logo": LogoMode::Off, "account": String::new() }),
+        )
     }
 
     /// Do thi 3 canh Prompt -> Tao video -> Luu (dung o nhieu test: `validate`/`run_start`).
     fn three_scene_graph(out_dir: &std::path::Path) -> Graph {
         Graph {
-            version: 1,
+            version: 2,
             nodes: vec![
                 node(
                     "pr",
-                    NodeKind::Prompt {
-                        text: "canh 1\ncanh 2\ncanh 3".to_string(),
-                    },
+                    NodeData::new(
+                        "prompt",
+                        serde_json::json!({ "text": "canh 1\ncanh 2\ncanh 3".to_string() }),
+                    ),
                 ),
                 node("vid", video_kind()),
                 node(
                     "sv",
-                    NodeKind::Save {
-                        out_dir: out_dir.display().to_string(),
-                    },
+                    NodeData::new(
+                        "save",
+                        serde_json::json!({ "out_dir": out_dir.display().to_string() }),
+                    ),
                 ),
             ],
             edges: vec![
@@ -367,16 +384,19 @@ mod tests {
     #[test]
     fn workflow_validate_do_thi_canh_treo_bao_loi_co_cau_truc() {
         let g = Graph {
-            version: 1,
+            version: 2,
             nodes: vec![node(
                 "pr",
-                NodeKind::Prompt {
-                    text: "canh 1".to_string(),
-                },
+                NodeData::new(
+                    "prompt",
+                    serde_json::json!({ "text": "canh 1".to_string() }),
+                ),
             )],
             edges: vec![edge("e1", "pr", "out", "khong-ton-tai", "prompt")],
         };
-        let err = workflow_validate_impl(&g, &Limits::default()).unwrap_err();
+        let err =
+            workflow_validate_impl(&g, &crate::registry::build_registry(), &Limits::default())
+                .unwrap_err();
         assert_eq!(err.code, "GRAPH_INVALID");
         let details = err.details.expect("phai co details");
         let errs: Vec<GraphError> = serde_json::from_value(details).unwrap();
@@ -392,7 +412,9 @@ mod tests {
     fn workflow_validate_do_thi_3_canh_video_total_3() {
         let dir = tempfile::tempdir().unwrap();
         let g = three_scene_graph(&dir.path().join("out"));
-        let summary = workflow_validate_impl(&g, &Limits::default()).unwrap();
+        let summary =
+            workflow_validate_impl(&g, &crate::registry::build_registry(), &Limits::default())
+                .unwrap();
         assert_eq!(summary.video_total, 3);
         assert!(summary.warnings.is_empty());
     }
@@ -497,7 +519,7 @@ mod tests {
     async fn run_start_do_thi_khong_hop_le_tra_graph_invalid() {
         let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
         let g = Graph {
-            version: 1,
+            version: 2,
             nodes: vec![],
             edges: vec![],
         };

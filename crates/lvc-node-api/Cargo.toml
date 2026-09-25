@@ -1,0 +1,19 @@
+[package]
+name = "lvc-node-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Hop dong node (ADR-R014). LUAT: chi phu thuoc lvc-core (thuan) + thu vien nho — KHONG lvc-store,
+# lvc-engine, lvc-browser, tauri, reqwest. Moi crate trong crates/nodes/* phu thuoc crate nay.
+[dependencies]
+lvc-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tokio-util.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

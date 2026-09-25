@@ -30,45 +30,32 @@ export type Ratio = z.infer<typeof RatioSchema>;
 export const LogoModeSchema = z.enum(["off", "crop", "delogo", "auto"]);
 export type LogoMode = z.infer<typeof LogoModeSchema>;
 
-export const PortTypeSchema = z.enum(["text", "image", "video"]);
+export const PortTypeSchema = z.enum(["text", "image", "video", "audio"]);
 export type PortType = z.infer<typeof PortTypeSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Graph — crates/lvc-core/src/graph/{node.rs,edge.rs,mod.rs}. Dinh dang file workflow JSON.
 // ---------------------------------------------------------------------------------------------
 
-export const NodeKindTagSchema = z.enum([
-  "prompt",
-  "image_upload",
-  "image_from_url",
-  "image_gen",
-  "video",
-  "remove_logo",
-  "ensure_h264",
-  "concat",
-  "save",
-]);
+// P4a: node thanh module doc lap — CHI con 4 kind (5 kind P4 cu `image_from_url`/`image_gen`/
+// `remove_logo`/`ensure_h264`/`concat` da bi xoa khoi backend; `video` doi ten `dola_video`, do thi
+// cu duoc migrate o `src/graph/adapter.ts::migrateGraphJson`).
+export const NodeKindTagSchema = z.enum(["prompt", "image_upload", "dola_video", "save"]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
-/** Danh sach `NodeKindTag` theo dung thu tu ghim trong `fixtures/ports.json`. */
+/** Danh sach `NodeKindTag` theo thu tu hien tren Palette (`fixtures/ports.json` xep theo ten kind,
+ * KHONG theo thu tu nay — test so sanh sau khi sap xep). */
 export const NODE_KIND_ORDER: readonly NodeKindTag[] = NodeKindTagSchema.options;
 
 const PromptKindSchema = z.object({ kind: z.literal("prompt"), text: z.string() });
 const ImageUploadKindSchema = z.object({
   kind: z.literal("image_upload"),
   paths: z.array(z.string()),
+  // P4a: nhan tuy chon (paramsSchema cua catalog.json) — UI chua dung.
+  label: z.string().optional(),
 });
-const ImageFromUrlKindSchema = z.object({
-  kind: z.literal("image_from_url"),
-  url: z.string(),
-});
-const ImageGenKindSchema = z.object({
-  kind: z.literal("image_gen"),
-  prompt: z.string(),
-  backend: z.string(),
-});
-const VideoKindSchema = z.object({
-  kind: z.literal("video"),
+const DolaVideoKindSchema = z.object({
+  kind: z.literal("dola_video"),
   mode: ModeSchema,
   model: ModelSchema,
   ratio: RatioSchema,
@@ -76,20 +63,12 @@ const VideoKindSchema = z.object({
   logo: LogoModeSchema,
   account: z.string(),
 });
-const RemoveLogoKindSchema = z.object({ kind: z.literal("remove_logo") });
-const EnsureH264KindSchema = z.object({ kind: z.literal("ensure_h264") });
-const ConcatKindSchema = z.object({ kind: z.literal("concat") });
 const SaveKindSchema = z.object({ kind: z.literal("save"), out_dir: z.string() });
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
   ImageUploadKindSchema,
-  ImageFromUrlKindSchema,
-  ImageGenKindSchema,
-  VideoKindSchema,
-  RemoveLogoKindSchema,
-  EnsureH264KindSchema,
-  ConcatKindSchema,
+  DolaVideoKindSchema,
   SaveKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
@@ -351,6 +330,44 @@ export const PortsFixtureEntrySchema = z.object({
 export type PortsFixtureEntry = z.infer<typeof PortsFixtureEntrySchema>;
 
 export const PortsFixtureSchema = z.array(PortsFixtureEntrySchema);
+
+// ---------------------------------------------------------------------------------------------
+// NodeManifest — `fixtures/catalog.json` / lenh `node_catalog` (P4a, crates/lvc-node-api): mo ta
+// day du mot loai node (cong kem `many`/`required`/`collect`, nhom `requireAny`, credential, tham
+// so mac dinh + JSON Schema cua tham so). Truong camelCase.
+// ---------------------------------------------------------------------------------------------
+
+export const ManifestPortSchema = z.object({
+  name: z.string(),
+  type: PortTypeSchema,
+  many: z.boolean(),
+  required: z.boolean(),
+  collect: z.boolean(),
+});
+export type ManifestPort = z.infer<typeof ManifestPortSchema>;
+
+export const CredentialSpecSchema = z.object({
+  provider: z.string(),
+  kinds: z.array(z.string()),
+});
+export type CredentialSpec = z.infer<typeof CredentialSpecSchema>;
+
+export const NodeManifestSchema = z.object({
+  kind: z.string(),
+  version: z.number(),
+  category: z.string(),
+  labelVi: z.string(),
+  inputs: z.array(ManifestPortSchema),
+  outputs: z.array(ManifestPortSchema),
+  requireAny: z.array(z.array(z.string())).optional(),
+  credential: CredentialSpecSchema.optional(),
+  defaultParams: z.record(z.string(), z.unknown()),
+  paramsSchema: z.record(z.string(), z.unknown()),
+});
+export type NodeManifest = z.infer<typeof NodeManifestSchema>;
+
+export const NodeCatalogSchema = z.array(NodeManifestSchema);
+export type NodeCatalog = z.infer<typeof NodeCatalogSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Stage — crates/lvc-engine (task_stage.set_stage) qua `fixtures/stages.json`: danh sach buoc

@@ -1,0 +1,29 @@
+{
+  "kind": "prompt",
+  "version": 1,
+  "category": "text",
+  "labelVi": "Prompt",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "text",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "defaultParams": {
+    "text": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "title": "Nội dung (mỗi dòng 1 cảnh)",
+        "format": "textarea"
+      }
+    }
+  }
+}

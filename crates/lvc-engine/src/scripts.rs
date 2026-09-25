@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lvc_browser::BrowserDriver;
-use lvc_core::graph::{Edge, Graph, Node, NodeKind};
+use lvc_core::graph::{Edge, GRAPH_VERSION, Graph, Node, NodeData};
 use lvc_core::{AppSettings, LogoMode, RawScene, Scene, format_txt, parse_txt};
 use lvc_store::{ReplaceScenesError, SceneIn, SceneRow, ScriptRepo};
 use serde::{Deserialize, Serialize};
@@ -302,33 +302,38 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .map_or_else(|| script_id.to_string(), |s| s.name.clone());
         let out_dir = effective_out_dir(&dir, &name, script_id, &self.cfg.downloads_dir);
 
+        // P4a: kind la chuoi (node module), khong con enum — chi can DUNG ten kind + tham so.
         let graph = Graph {
-            version: 1,
+            version: GRAPH_VERSION,
             nodes: vec![
                 Node {
                     id: "prompt".to_string(),
-                    kind: NodeKind::Prompt { text },
+                    kind: NodeData::new("prompt", serde_json::json!({ "text": text })),
                     x: 80.0,
                     y: 80.0,
                 },
                 Node {
                     id: "video".to_string(),
-                    kind: NodeKind::Video {
-                        mode: defaults.default_mode,
-                        model: defaults.default_model,
-                        ratio: defaults.default_ratio,
-                        duration: defaults.default_duration,
-                        logo: LogoMode::default(),
-                        account: String::new(),
-                    },
+                    kind: NodeData::new(
+                        "dola_video",
+                        serde_json::json!({
+                            "mode": defaults.default_mode,
+                            "model": defaults.default_model,
+                            "ratio": defaults.default_ratio,
+                            "duration": defaults.default_duration,
+                            "logo": LogoMode::default(),
+                            "account": "",
+                        }),
+                    ),
                     x: 380.0,
                     y: 80.0,
                 },
                 Node {
                     id: "save".to_string(),
-                    kind: NodeKind::Save {
-                        out_dir: out_dir.display().to_string(),
-                    },
+                    kind: NodeData::new(
+                        "save",
+                        serde_json::json!({ "out_dir": out_dir.display().to_string() }),
+                    ),
                     x: 680.0,
                     y: 80.0,
                 },
@@ -511,7 +516,9 @@ mod tests {
         let (engine, _handle) = Engine::new(driver, db.clone(), Limits::default(), cfg, 1)
             .await
             .unwrap();
-        (dir, Arc::new(engine), db)
+        let engine = Arc::new(engine);
+        assert!(engine.set_registry(Arc::new(crate::test_support::test_registry())));
+        (dir, engine, db)
     }
 
     fn artifact(src: &std::path::Path) -> lvc_browser::dola::VideoArtifact {

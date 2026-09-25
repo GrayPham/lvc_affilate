@@ -31,7 +31,7 @@
 //! `download_reference_images` (`:628` — `Scene.reference_images` duoc coi la duong dan cuc bo).
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use dashmap::DashMap;
@@ -43,6 +43,7 @@ use lvc_core::{
     BrowserKind, FailureCode, Limits, Mode, Scene, TaskStatus, fit_duration_to_mode,
     mode_fallback_chain, video_timeout,
 };
+use lvc_node_api::Registry;
 use lvc_store::{AccountRow, Db, RunRepo, TaskRepo};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -176,6 +177,9 @@ pub struct Engine<D: BrowserDriver + 'static> {
     // bang `tasks`/`accounts_meta`/`usage`/`settings` cua ban Python cu, dung y `import_legacy` da
     // nhan).
     pub(crate) db: Db,
+    /// P4a (ADR-R014): moi loai node da cai — `lvc-app` dat MOT LAN qua [`Engine::set_registry`]
+    /// (composition root). Chua dat = registry rong (moi do thi bao `Unsupported`).
+    registry: OnceLock<Arc<Registry>>,
 }
 
 /// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
@@ -351,9 +355,24 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             run_repo: RunRepo::new(&db),
             run_tokens: DashMap::new(),
             db,
+            registry: OnceLock::new(),
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))
+    }
+
+    /// P4a: dat registry node (MOT LAN; lan sau bi bo qua, tra `false`).
+    pub fn set_registry(&self, registry: Arc<Registry>) -> bool {
+        self.registry.set(registry).is_ok()
+    }
+
+    /// Registry node hien tai (rong neu chua `set_registry`).
+    #[must_use]
+    pub fn registry(&self) -> Arc<Registry> {
+        self.registry
+            .get()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(Registry::new()))
     }
 
     /// P3 Task 4 (R5): kenh su kien — Tauri bridge `subscribe()`.

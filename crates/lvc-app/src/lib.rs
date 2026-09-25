@@ -20,6 +20,7 @@ mod commands;
 mod events;
 mod log;
 mod paths;
+pub mod registry;
 mod state;
 
 use tauri::Manager;
@@ -68,6 +69,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::workflow::node_catalog,
             commands::workflow::workflow_validate,
             commands::workflow::workflow_save,
             commands::workflow::workflow_list,

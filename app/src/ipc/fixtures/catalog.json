@@ -1,0 +1,214 @@
+[
+  {
+    "kind": "dola_video",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Tạo video Dola",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      },
+      {
+        "name": "refs",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "dola",
+      "kinds": [
+        "session"
+      ]
+    },
+    "defaultParams": {
+      "mode": "fast",
+      "model": "seedance-2.0",
+      "ratio": "9:16",
+      "duration": 10,
+      "logo": "off",
+      "account": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Chế độ",
+          "enum": [
+            "fast",
+            "pro",
+            "pro_max",
+            "agent"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "title": "Model",
+          "enum": [
+            "seedance-2.0",
+            "seedance-2.5",
+            "seedance-1.0"
+          ]
+        },
+        "ratio": {
+          "type": "string",
+          "title": "Tỉ lệ",
+          "enum": [
+            "9:16",
+            "16:9",
+            "1:1",
+            "4:3",
+            "3:4"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "title": "Thời lượng (giây)"
+        },
+        "logo": {
+          "type": "string",
+          "title": "Logo",
+          "enum": [
+            "off",
+            "crop",
+            "delogo",
+            "auto"
+          ]
+        },
+        "account": {
+          "type": "string",
+          "title": "Tài khoản (rỗng = tự chọn)"
+        }
+      },
+      "required": [
+        "mode",
+        "model",
+        "ratio",
+        "duration",
+        "logo"
+      ]
+    }
+  },
+  {
+    "kind": "image_upload",
+    "version": 1,
+    "category": "input",
+    "labelVi": "Tải ảnh lên",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {
+      "paths": []
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ảnh",
+          "format": "image-files"
+        },
+        "label": {
+          "type": "string",
+          "title": "Nhãn"
+        }
+      }
+    }
+  },
+  {
+    "kind": "prompt",
+    "version": 1,
+    "category": "text",
+    "labelVi": "Prompt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "text",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {
+      "text": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "title": "Nội dung (mỗi dòng 1 cảnh)",
+          "format": "textarea"
+        }
+      }
+    }
+  },
+  {
+    "kind": "save",
+    "version": 1,
+    "category": "output",
+    "labelVi": "Lưu",
+    "inputs": [
+      {
+        "name": "video",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      },
+      {
+        "name": "image",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [],
+    "requireAny": [
+      [
+        "video",
+        "image"
+      ]
+    ],
+    "defaultParams": {
+      "out_dir": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "out_dir": {
+          "type": "string",
+          "title": "Thư mục lưu",
+          "format": "directory"
+        }
+      }
+    }
+  }
+]

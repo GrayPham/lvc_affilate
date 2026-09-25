@@ -99,6 +99,8 @@ pub async fn build_engine<D: BrowserDriver + 'static>(
     let (engine, handle) =
         Engine::new(driver, db.clone(), Limits::default(), cfg, settings.threads).await?;
     let engine = Arc::new(engine);
+    // P4a (ADR-R014): composition root — dang ky moi node module.
+    engine.set_registry(Arc::new(crate::registry::build_registry()));
 
     let requeue = engine.requeue_on_start(now_unix()).await?;
 

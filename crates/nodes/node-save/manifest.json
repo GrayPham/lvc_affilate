@@ -1,0 +1,42 @@
+{
+  "kind": "save",
+  "version": 1,
+  "category": "output",
+  "labelVi": "Lưu",
+  "inputs": [
+    {
+      "name": "video",
+      "type": "video",
+      "many": true,
+      "required": false,
+      "collect": false
+    },
+    {
+      "name": "image",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "outputs": [],
+  "requireAny": [
+    [
+      "video",
+      "image"
+    ]
+  ],
+  "defaultParams": {
+    "out_dir": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "out_dir": {
+        "type": "string",
+        "title": "Thư mục lưu",
+        "format": "directory"
+      }
+    }
+  }
+}

@@ -25,9 +25,8 @@ export function allowedDurations(mode: Mode, model: Model): readonly number[] {
 }
 
 /**
- * `many` cua tung cong VAO theo `NodeKind` — mirror cac hang so `..._IN` trong
- * `crates/lvc-core/src/graph/node.rs` (`IMAGE_FROM_URL_IN`, `IMAGE_GEN_IN`, `VIDEO_IN`,
- * `VIDEO_POST_IN`, `CONCAT_IN`, `SAVE_IN`). KHONG lay tu `PORTS` (`src/graph/ports.ts`): bang do
+ * `many` cua tung cong VAO theo `NodeKind` — mirror truong `many` cua `inputs` trong manifest
+ * node (P4a, `fixtures/catalog.json`). KHONG lay tu `PORTS` (`src/graph/ports.ts`): bang do
  * co chu dich chi mang `{name,type}` khop `fixtures/ports.json`, khong mang co `many`/`required`/
  * `collect` cua Rust (xem concern task-11-report.md muc cuoi). Chi can cong VAO vi
  * `check_multiple_inputs` (validate.rs) chi xet `node.kind.inputs()`, khong xet cong ra.
@@ -35,12 +34,7 @@ export function allowedDurations(mode: Mode, model: Model): readonly number[] {
 const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   prompt: {},
   image_upload: {},
-  image_from_url: { url: false },
-  image_gen: { prompt: false, ref: false },
-  video: { prompt: true, refs: true },
-  remove_logo: { in: false },
-  ensure_h264: { in: false },
-  concat: { in: true },
+  dola_video: { prompt: true, refs: true },
   save: { video: true, image: true },
 };
 
@@ -73,12 +67,10 @@ export function isValidConnection(
   if (!sourceHandle || !targetHandle) {
     return false;
   }
-  // Fix-round 1 (review I3): tu noi mot node vao chinh no (vd RemoveLogo/EnsureH264 — ca hai deu
-  // Video "in"->"out", cung kieu) tao mot canh 1-node — Rust van bat duoc (nhu mot Cycle 1 node
-  // qua topo_order, xem validate.rs) nhung chi tren vong tron `workflow_validate`, khong o lop
-  // phan hoi tuc thi nay (muc dich cua mirror nay). Khong the xay ra qua Palette o P3 hom nay
-  // (SUPPORTED_IN_P3 khong co node nao vua co in vua co out cung PortType) nhung DisabledNode co
-  // the render lai mot workflow JSON P4 trong tuong lai — chan luon o day cho dung.
+  // Fix-round 1 (review I3): tu noi mot node vao chinh no (node co cong vao va cong ra cung kieu)
+  // tao mot canh 1-node — Rust van bat duoc (nhu mot Cycle 1 node qua topo_order, xem
+  // validate.rs) nhung chi tren vong tron `workflow_validate`, khong o lop phan hoi tuc thi nay.
+  // Hom nay chua node nao nhu vay, nhung node module sau nay co the co — chan luon o day.
   if (source === target) {
     return false;
   }

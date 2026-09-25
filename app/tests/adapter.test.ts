@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { fromGraph, toGraph, type RFEdge } from "../src/graph/adapter";
+import { fromGraph, migrateGraphJson, toGraph, type RFEdge } from "../src/graph/adapter";
 import { GraphSchema, type Graph } from "../src/ipc/types";
 import { PORTS } from "../src/graph/ports";
 
@@ -72,5 +72,69 @@ describe("adapter: Graph (Rust) <-> React Flow", () => {
       nodes: [{ id: "bogus", kind: { kind: "khong_ton_tai" }, x: 0, y: 0 }, ...original.nodes],
     };
     expect(GraphSchema.safeParse(bogus).success).toBe(false);
+  });
+});
+
+describe("migrateGraphJson (P4a): do thi cu -> dinh dang hien tai TRUOC zod", () => {
+  const VIDEO_PARAMS = {
+    mode: "fast",
+    model: "seedance-2.0",
+    ratio: "9:16",
+    duration: 10,
+    logo: "off",
+    account: "",
+  };
+
+  it("v1: doi kind `video` -> `dola_video`, bo node kind P4 da xoa kem canh cham vao", () => {
+    const v1 = {
+      version: 1,
+      nodes: [
+        { id: "n1", kind: { kind: "prompt", text: "canh 1" }, x: 0, y: 0 },
+        { id: "n2", kind: { kind: "video", ...VIDEO_PARAMS }, x: 300, y: 0 },
+        { id: "n3", kind: { kind: "ensure_h264" }, x: 600, y: 0 },
+        { id: "n4", kind: { kind: "image_from_url", url: "http://x" }, x: 0, y: 200 },
+        { id: "n5", kind: { kind: "save", out_dir: "downloads" }, x: 900, y: 0 },
+      ],
+      edges: [
+        { id: "e1", from: "n1", from_port: "out", to: "n2", to_port: "prompt" },
+        { id: "e2", from: "n2", from_port: "out", to: "n3", to_port: "in" },
+        { id: "e3", from: "n3", from_port: "out", to: "n5", to_port: "video" },
+        { id: "e4", from: "n4", from_port: "out", to: "n2", to_port: "refs" },
+        { id: "e5", from: "n2", from_port: "out", to: "n5", to_port: "video" },
+      ],
+    };
+    const g = GraphSchema.parse(migrateGraphJson(v1));
+    expect(g.version).toBe(2);
+    expect(g.nodes.map((n) => [n.id, n.kind.kind])).toEqual([
+      ["n1", "prompt"],
+      ["n2", "dola_video"],
+      ["n5", "save"],
+    ]);
+    expect(g.nodes[1]!.kind).toEqual({ kind: "dola_video", ...VIDEO_PARAMS });
+    expect(g.edges.map((e) => e.id)).toEqual(["e1", "e5"]);
+
+    const { nodes } = fromGraph(g);
+    expect(nodes.map((n) => n.type)).toEqual(["prompt", "dola_video", "save"]);
+  });
+
+  it("v1 JSON khong migrate thi zod tu choi (kind `video` khong con hop le)", () => {
+    const v1 = {
+      version: 1,
+      nodes: [{ id: "n2", kind: { kind: "video", ...VIDEO_PARAMS }, x: 0, y: 0 }],
+      edges: [],
+    };
+    expect(GraphSchema.safeParse(v1).success).toBe(false);
+    expect(GraphSchema.safeParse(migrateGraphJson(v1)).success).toBe(true);
+  });
+
+  it("graph.json (v2) di qua migrate khong doi gi", () => {
+    const original = loadGraphFixture();
+    expect(migrateGraphJson(original)).toEqual(original);
+  });
+
+  it("dau vao khong dung hinh Graph -> tra nguyen", () => {
+    expect(migrateGraphJson(null)).toBeNull();
+    expect(migrateGraphJson("abc")).toBe("abc");
+    expect(migrateGraphJson({ foo: 1 })).toEqual({ foo: 1 });
   });
 });

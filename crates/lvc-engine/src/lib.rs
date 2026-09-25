@@ -36,12 +36,14 @@ pub mod resume;
 pub mod scripts;
 pub mod session_cache;
 pub mod settings;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub use accounts::{
     AccountError, AccountStatus, ImportCookiesReport, LegacyImportReport, VerifyReport,
 };
 pub use cancel::{CancelGuard, CancelRegistry};
-pub use dag::{HooksFactory, NodeOutputs, RunHandle, TaskRef, noop_hooks_factory};
+pub use dag::{HooksFactory, RunHandle, TaskRef, noop_hooks_factory};
 pub use error::EngineError;
 pub use events::{EVENT_CAPACITY, EngineEvent, EngineEvents, next_event};
 pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};

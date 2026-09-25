@@ -29,10 +29,9 @@ import PromptNode from "../nodes/PromptNode";
 import ImageUploadNode from "../nodes/ImageUploadNode";
 import VideoNode from "../nodes/VideoNode";
 import SaveNode from "../nodes/SaveNode";
-import DisabledNode from "../nodes/DisabledNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import { isValidConnection } from "../graph/rules";
-import type { AddableNodeKind } from "../graph/ports";
+import { ADDABLE_KINDS, type AddableNodeKind } from "../graph/ports";
 import { loadPersistedGraph, useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import { runList, taskList } from "../ipc/commands";
@@ -49,24 +48,12 @@ import { errorText } from "../ipc/error_text";
 const nodeTypes: NodeTypes = {
   prompt: PromptNode,
   image_upload: ImageUploadNode,
-  video: VideoNode,
+  dola_video: VideoNode,
   save: SaveNode,
-  image_from_url: DisabledNode,
-  image_gen: DisabledNode,
-  remove_logo: DisabledNode,
-  ensure_h264: DisabledNode,
-  concat: DisabledNode,
 } as unknown as NodeTypes;
 
-const ADDABLE_KINDS: ReadonlySet<string> = new Set<AddableNodeKind>([
-  "prompt",
-  "image_upload",
-  "video",
-  "save",
-]);
-
 function isAddableKind(value: string): value is AddableNodeKind {
-  return ADDABLE_KINDS.has(value);
+  return (ADDABLE_KINDS as ReadonlySet<string>).has(value);
 }
 
 function WorkflowCanvas() {

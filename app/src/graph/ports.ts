@@ -14,34 +14,11 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [],
     outputs: [{ name: "out", type: "image" }],
   },
-  image_from_url: {
-    inputs: [{ name: "url", type: "text" }],
-    outputs: [{ name: "out", type: "image" }],
-  },
-  image_gen: {
-    inputs: [
-      { name: "prompt", type: "text" },
-      { name: "ref", type: "image" },
-    ],
-    outputs: [{ name: "out", type: "image" }],
-  },
-  video: {
+  dola_video: {
     inputs: [
       { name: "prompt", type: "text" },
       { name: "refs", type: "image" },
     ],
-    outputs: [{ name: "out", type: "video" }],
-  },
-  remove_logo: {
-    inputs: [{ name: "in", type: "video" }],
-    outputs: [{ name: "out", type: "video" }],
-  },
-  ensure_h264: {
-    inputs: [{ name: "in", type: "video" }],
-    outputs: [{ name: "out", type: "video" }],
-  },
-  concat: {
-    inputs: [{ name: "in", type: "video" }],
     outputs: [{ name: "out", type: "video" }],
   },
   save: {
@@ -53,41 +30,30 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
   },
 };
 
-/** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho ca 3 kieu du lieu. */
+/** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho moi kieu du lieu. */
 export const PORT_TYPE_COLOR: Record<PortType, string> = {
   text: "#0ea5e9", // sky-500 — Text
   image: "#a855f7", // purple-500 — Image
   video: "#f97316", // orange-500 — Video
+  audio: "#22c55e", // green-500 — Audio (P4a, chua node nao dung)
 };
 
 /**
- * Nhan tieng Viet hien tren node — khop CHINH XAC `NodeKind::label_vi()`
- * (crates/lvc-core/src/graph/node.rs), khong phai ban nhan cu cua brief Task 11 (xem Concerns
- * trong task-11-report.md: hai nguon tung lech nhau 5/9 chuoi). Task 12 ruling: Rust la nguon
- * su that vi `label_vi()` la ham cong khai duy nhat that su dinh nghia nhan node — pin boi
- * `tests/labels.test.ts`.
+ * Nhan tieng Viet hien tren node — khop CHINH XAC `labelVi` cua manifest node (P4a,
+ * `fixtures/catalog.json` / lenh `node_catalog`). Rust la nguon su that — pin boi
+ * `tests/labels.test.ts` + `tests/ipc_fixtures.test.ts`.
  */
 export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   prompt: "Prompt",
   image_upload: "Tải ảnh lên",
-  image_from_url: "Lấy ảnh từ URL",
-  image_gen: "Tạo ảnh",
-  video: "Tạo video",
-  remove_logo: "Xoá logo",
-  ensure_h264: "Chuẩn H.264",
-  concat: "Ghép phân cảnh",
+  dola_video: "Tạo video Dola",
   save: "Lưu",
 };
 
-/** `NodeKind` duoc P3 dung tren canvas (spec §4.2: 4 loai; phan con lai doi sang P4). */
-export const SUPPORTED_IN_P3: ReadonlySet<NodeKindTag> = new Set<NodeKindTag>([
-  "prompt",
-  "image_upload",
-  "video",
-  "save",
-]);
+/** `NodeKind` co the them vao canvas tu Palette — P4a: ca 4 kind con lai deu them duoc. */
+export const ADDABLE_KINDS: ReadonlySet<NodeKindTag> = new Set<NodeKindTag>(NODE_KIND_ORDER);
 
-/** Kieu hep — 4 `NodeKindTag` co the tha vao canvas o P3 (Task 12: Palette/`store/graph.ts`). */
-export type AddableNodeKind = "prompt" | "image_upload" | "video" | "save";
+/** Kieu hep — cac `NodeKindTag` co the tha vao canvas (Palette/`store/graph.ts`). */
+export type AddableNodeKind = NodeKindTag;
 
 export { NODE_KIND_ORDER };

@@ -1,4 +1,4 @@
-// Mot ham boc typed cho MOI lenh Tauri cua `crates/lvc-app` (23 lenh, xem
+// Mot ham boc typed cho MOI lenh Tauri cua `crates/lvc-app` (24 lenh, xem
 // `commands::mod.rs`/`lib.rs::invoke_handler!`) — ten lenh dung HET SUC dung chuoi Rust
 // (snake_case), tham so JS dung camelCase (Tauri v2 tu doi snake_case -> camelCase cho tham so
 // lenh, xac nhan trong task-9-report.md). Ket qua luon di qua `.parse()` zod (khong `safeParse`)
@@ -9,6 +9,7 @@ import {
   AppSettingsSchema,
   ImportCookiesReportSchema,
   LegacyImportReportSchema,
+  NodeCatalogSchema,
   PlanSummarySchema,
   RunInfoSchema,
   RunRowSchema,
@@ -30,6 +31,7 @@ import {
   type ImportCookiesReport,
   type IpcError,
   type LegacyImportReport,
+  type NodeCatalog,
   type PlanSummary,
   type RunInfo,
   type RunRow,
@@ -47,6 +49,7 @@ import {
   type WorkflowMeta,
 } from "./types";
 import { z } from "zod";
+import { migrateGraphJson } from "../graph/adapter";
 
 /** Type guard cho loi tra ve tu bat ky lenh IPC nao (`invoke()` reject voi gia tri nay). */
 export function isIpcError(e: unknown): e is IpcError {
@@ -76,6 +79,11 @@ export async function workflowList(): Promise<WorkflowMeta[]> {
 
 export async function workflowGet(id: string): Promise<WorkflowDoc> {
   const res = await invoke<unknown>("workflow_get", { id });
+  // P4a: migrate do thi cu (kind `video` -> `dola_video`, bo kind P4 da xoa) TRUOC zod — phong
+  // khi backend tra ve do thi v1 chua migrate.
+  if (res !== null && typeof res === "object" && "graph" in res) {
+    return WorkflowDocSchema.parse({ ...res, graph: migrateGraphJson(res.graph) });
+  }
   return WorkflowDocSchema.parse(res);
 }
 
@@ -119,6 +127,14 @@ export async function taskResume(id: string): Promise<TaskResumeInfo> {
 export async function taskOpenFile(id: string): Promise<null> {
   const res = await invoke<unknown>("task_open_file", { id });
   return z.null().parse(res);
+}
+
+// ---- nodes (P4a) -------------------------------------------------------------------------
+
+/** Danh muc day du cac loai node (manifest) — lenh `node_catalog`, xem `fixtures/catalog.json`. */
+export async function nodeCatalog(): Promise<NodeCatalog> {
+  const res = await invoke<unknown>("node_catalog");
+  return NodeCatalogSchema.parse(res);
 }
 
 // ---- settings.rs --------------------------------------------------------------------------

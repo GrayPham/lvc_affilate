@@ -1,4 +1,4 @@
-// Node "Tạo video" (NodeKind::Video) — chon mode/model/ti le/thoi luong/logo + tai khoan.
+// Node "Tạo video Dola" (kind `dola_video`, truoc P4a la `video`) — chon mode/model/ti le/thoi luong/logo + tai khoan.
 // Thoi luong loc theo `allowedDurations(mode, model)` (mirror `Mode::allowed_durations`,
 // crates/lvc-core/src/mode.rs:53). Tai khoan: `account_list` CHUA co (Task 10 dang lam) —
 // dung o nhap van ban, rong = tu chon (khop hanh vi server: `Node.account` rong -> engine tu
@@ -23,8 +23,8 @@ import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import NodeShell from "./NodeShell";
 
-type VideoKind = Extract<NodeKind, { kind: "video" }>;
-export type VideoRFNode = RFNodeBase<VideoKind, "video">;
+type VideoKind = Extract<NodeKind, { kind: "dola_video" }>;
+export type VideoRFNode = RFNodeBase<VideoKind, "dola_video">;
 
 const MODE_LABEL_VI: Record<Mode, string> = {
   fast: "Nhanh",
@@ -80,7 +80,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
         id="refs"
         style={{ top: "70%", background: PORT_TYPE_COLOR.image }}
       />
-      <NodeShell label={NODE_LABEL_VI.video} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.dola_video} selected={selected} errors={errors} runState={runState}>
         <label className="text-[10px] text-slate-500">
           Chế độ
           <select

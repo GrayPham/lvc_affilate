@@ -1,60 +1,6 @@
 [
   {
-    "kind": "prompt",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "out",
-        "type": "text"
-      }
-    ]
-  },
-  {
-    "kind": "image_upload",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "out",
-        "type": "image"
-      }
-    ]
-  },
-  {
-    "kind": "image_from_url",
-    "inputs": [
-      {
-        "name": "url",
-        "type": "text"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "out",
-        "type": "image"
-      }
-    ]
-  },
-  {
-    "kind": "image_gen",
-    "inputs": [
-      {
-        "name": "prompt",
-        "type": "text"
-      },
-      {
-        "name": "ref",
-        "type": "image"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "out",
-        "type": "image"
-      }
-    ]
-  },
-  {
-    "kind": "video",
+    "kind": "dola_video",
     "inputs": [
       {
         "name": "prompt",
@@ -73,47 +19,22 @@
     ]
   },
   {
-    "kind": "remove_logo",
-    "inputs": [
-      {
-        "name": "in",
-        "type": "video"
-      }
-    ],
+    "kind": "image_upload",
+    "inputs": [],
     "outputs": [
       {
         "name": "out",
-        "type": "video"
+        "type": "image"
       }
     ]
   },
   {
-    "kind": "ensure_h264",
-    "inputs": [
-      {
-        "name": "in",
-        "type": "video"
-      }
-    ],
+    "kind": "prompt",
+    "inputs": [],
     "outputs": [
       {
         "name": "out",
-        "type": "video"
-      }
-    ]
-  },
-  {
-    "kind": "concat",
-    "inputs": [
-      {
-        "name": "in",
-        "type": "video"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "out",
-        "type": "video"
+        "type": "text"
       }
     ]
   },

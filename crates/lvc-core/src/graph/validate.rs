@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::{Graph, Node, NodeKind, PortType};
+use super::{Catalog, Graph, Node, NodeManifest, PortType};
 
 /// (id node, tên cổng vào) → số cạnh trỏ tới cổng đó (bước 3: bắt `many=false` bị nối 2 lần).
 type InCount<'g> = HashMap<(&'g str, &'g str), usize>;
@@ -22,7 +22,7 @@ type ConnectedInputs<'g> = HashSet<(&'g str, &'g str)>;
 /// kiểu này `DuplicateNodeId(String)`/`UnknownNode(String)`/`Cycle(Vec<String>)` không
 /// serialize được; `to_string()` trả `Err`). Variant đơn vị (`Empty`) thì không sao, vì
 /// không có dữ liệu bên trong cần gộp. `rename_all = "snake_case"` áp cho GIÁ TRỊ TAG
-/// (`"type"`) — khớp quy ước `NodeKind` (`"kind"`) đã dùng trong codebase.
+/// (`"type"`) — khớp quy ước `NodeData` (`"kind"`) đã dùng trong codebase.
 /// `rename_all_fields = "camelCase"` áp RIÊNG cho tên trường bên trong từng struct-variant
 /// (ví dụ `scene_index` → `sceneIndex`) — ruling: camelCase ngay tại nguồn để Task 9 (Tauri
 /// IPC) không cần thêm lớp DTO chỉ để đổi cách viết hoa.
@@ -49,7 +49,8 @@ pub enum GraphError {
     MissingRequiredInput { node: String, port: String },
     #[error("chu trinh: {nodes:?}")]
     Cycle { nodes: Vec<String> },
-    #[error("node {node} (kind={kind}) chua ho tro o P3")]
+    /// Loại node không có trong registry (chưa cài module / kind cũ đã gỡ).
+    #[error("node {node} (kind={kind}) chua ho tro")]
     Unsupported { node: String, kind: String },
     #[error("do thi rong")]
     Empty,
@@ -74,6 +75,13 @@ pub enum GraphError {
         count: usize,
         max: usize,
     },
+    /// Tham số node sai (node module tự kiểm trong `validate_params`/`preview`).
+    #[error("node {node}: tham so {field}: {message}")]
+    Param {
+        node: String,
+        field: String,
+        message: String,
+    },
 }
 
 /// Kiểm hợp lệ toàn bộ đồ thị: id node không trùng, cạnh trỏ tới node/cổng tồn tại,
@@ -84,7 +92,7 @@ pub enum GraphError {
 ///
 /// # Errors
 /// `Vec<GraphError>` không rỗng khi đồ thị vi phạm ít nhất một ràng buộc trên.
-pub fn validate(g: &Graph) -> Result<(), Vec<GraphError>> {
+pub fn validate(g: &Graph, catalog: &dyn Catalog) -> Result<(), Vec<GraphError>> {
     if g.nodes.is_empty() {
         // Đồ thị rỗng không còn gì khác để kiểm — trả đúng 1 lỗi, không lẫn lỗi khác.
         return Err(vec![GraphError::Empty]);
@@ -92,17 +100,21 @@ pub fn validate(g: &Graph) -> Result<(), Vec<GraphError>> {
 
     let mut errors = Vec::new();
 
-    check_nodes(g, &mut errors);
+    check_nodes(g, catalog, &mut errors);
 
     // Tra node theo id (id trùng đã báo lỗi riêng ở trên; bản ghi đầu tiên đủ để tra cứu).
-    let mut by_id: HashMap<&str, &Node> = HashMap::new();
+    // Node có kind lạ (đã báo `Unsupported`) mang manifest `None` — cạnh tới nó không báo thêm
+    // `UnknownPort` (nguyên nhân gốc là kind, không phải cổng).
+    let mut by_id: HashMap<&str, (&Node, Option<&NodeManifest>)> = HashMap::new();
     for node in &g.nodes {
-        by_id.entry(node.id.as_str()).or_insert(node);
+        by_id
+            .entry(node.id.as_str())
+            .or_insert((node, catalog.manifest(&node.kind.kind)));
     }
 
     let (in_count, connected_inputs) = check_edges(g, &by_id, &mut errors);
-    check_multiple_inputs(g, &in_count, &mut errors);
-    check_missing_required(g, &connected_inputs, &mut errors);
+    check_multiple_inputs(g, catalog, &in_count, &mut errors);
+    check_missing_required(g, catalog, &connected_inputs, &mut errors);
 
     if let Err(GraphError::Cycle { nodes }) = topo_order(g) {
         errors.push(GraphError::Cycle { nodes });
@@ -115,8 +127,8 @@ pub fn validate(g: &Graph) -> Result<(), Vec<GraphError>> {
     }
 }
 
-/// Bước 1 — id trùng + loại chưa hỗ trợ ở P3 (theo thứ tự node).
-fn check_nodes(g: &Graph, errors: &mut Vec<GraphError>) {
+/// Bước 1 — id trùng + loại không có trong registry (theo thứ tự node).
+fn check_nodes(g: &Graph, catalog: &dyn Catalog, errors: &mut Vec<GraphError>) {
     let mut seen_ids: HashSet<&str> = HashSet::new();
     for node in &g.nodes {
         if !seen_ids.insert(node.id.as_str()) {
@@ -124,10 +136,10 @@ fn check_nodes(g: &Graph, errors: &mut Vec<GraphError>) {
                 id: node.id.clone(),
             });
         }
-        if !node.kind.supported_in_p3() {
+        if catalog.manifest(&node.kind.kind).is_none() {
             errors.push(GraphError::Unsupported {
                 node: node.id.clone(),
-                kind: node.kind.tag().to_string(),
+                kind: node.kind.kind.clone(),
             });
         }
     }
@@ -145,7 +157,7 @@ fn check_nodes(g: &Graph, errors: &mut Vec<GraphError>) {
 /// thêm cạnh khác".
 fn check_edges<'g>(
     g: &'g Graph,
-    by_id: &HashMap<&'g str, &'g Node>,
+    by_id: &HashMap<&'g str, (&'g Node, Option<&'g NodeManifest>)>,
     errors: &mut Vec<GraphError>,
 ) -> (InCount<'g>, ConnectedInputs<'g>) {
     let mut in_count: InCount<'g> = HashMap::new();
@@ -166,17 +178,16 @@ fn check_edges<'g>(
             });
         }
 
-        let from_port =
-            from_node.and_then(|n| n.kind.outputs().iter().find(|p| p.name == edge.from_port));
-        if from_node.is_some() && from_port.is_none() {
+        let from_port = from_node.and_then(|(_, m)| m.and_then(|m| m.output(&edge.from_port)));
+        if from_node.is_some_and(|(_, m)| m.is_some()) && from_port.is_none() {
             errors.push(GraphError::UnknownPort {
                 node: edge.from.clone(),
                 port: edge.from_port.clone(),
             });
         }
 
-        let to_port = to_node.and_then(|n| n.kind.inputs().iter().find(|p| p.name == edge.to_port));
-        if to_node.is_some() && to_port.is_none() {
+        let to_port = to_node.and_then(|(_, m)| m.and_then(|m| m.input(&edge.to_port)));
+        if to_node.is_some_and(|(_, m)| m.is_some()) && to_port.is_none() {
             errors.push(GraphError::UnknownPort {
                 node: edge.to.clone(),
                 port: edge.to_port.clone(),
@@ -204,18 +215,26 @@ fn check_edges<'g>(
 }
 
 /// Bước 3 — cổng `many=false` nhận quá 1 cạnh (theo thứ tự node rồi thứ tự cổng khai báo).
-fn check_multiple_inputs(g: &Graph, in_count: &InCount<'_>, errors: &mut Vec<GraphError>) {
+fn check_multiple_inputs(
+    g: &Graph,
+    catalog: &dyn Catalog,
+    in_count: &InCount<'_>,
+    errors: &mut Vec<GraphError>,
+) {
     for node in &g.nodes {
-        for spec in node.kind.inputs() {
+        let Some(m) = catalog.manifest(&node.kind.kind) else {
+            continue;
+        };
+        for spec in &m.inputs {
             if !spec.many {
                 let count = in_count
-                    .get(&(node.id.as_str(), spec.name))
+                    .get(&(node.id.as_str(), spec.name.as_str()))
                     .copied()
                     .unwrap_or(0);
                 if count > 1 {
                     errors.push(GraphError::MultipleInputsOnSinglePort {
                         node: node.id.clone(),
-                        port: spec.name.to_string(),
+                        port: spec.name.clone(),
                     });
                 }
             }
@@ -223,32 +242,34 @@ fn check_multiple_inputs(g: &Graph, in_count: &InCount<'_>, errors: &mut Vec<Gra
     }
 }
 
-/// Bước 4 — thiếu đầu vào bắt buộc (theo thứ tự node rồi thứ tự cổng khai báo). `Save`
-/// nhận `Video[]` hoặc `Image[]` qua 2 cổng riêng — chỉ cần ≥1 trong 2 (không dùng cờ
-/// `required` của từng `PortSpec` vì đây là ràng buộc "một trong hai", không phải "cả hai").
+/// Bước 4 — thiếu đầu vào bắt buộc (theo thứ tự node rồi thứ tự cổng khai báo): cổng
+/// `required` phải có cạnh; mỗi nhóm `require_any` của manifest phải có ≥1 cổng được nối (vd Save
+/// nhận `video` HOẶC `image` — báo một lỗi gộp `port: "video|image"`).
 fn check_missing_required(
     g: &Graph,
+    catalog: &dyn Catalog,
     connected_inputs: &ConnectedInputs<'_>,
     errors: &mut Vec<GraphError>,
 ) {
     for node in &g.nodes {
-        if let NodeKind::Save { .. } = node.kind {
-            let has_video = connected_inputs.contains(&(node.id.as_str(), "video"));
-            let has_image = connected_inputs.contains(&(node.id.as_str(), "image"));
-            if !has_video && !has_image {
+        let Some(m) = catalog.manifest(&node.kind.kind) else {
+            continue;
+        };
+        let connected = |port: &str| connected_inputs.contains(&(node.id.as_str(), port));
+        for spec in &m.inputs {
+            if spec.required && !connected(&spec.name) {
                 errors.push(GraphError::MissingRequiredInput {
                     node: node.id.clone(),
-                    port: "video|image".to_string(),
+                    port: spec.name.clone(),
                 });
             }
-        } else {
-            for spec in node.kind.inputs() {
-                if spec.required && !connected_inputs.contains(&(node.id.as_str(), spec.name)) {
-                    errors.push(GraphError::MissingRequiredInput {
-                        node: node.id.clone(),
-                        port: spec.name.to_string(),
-                    });
-                }
+        }
+        for group in &m.require_any {
+            if !group.iter().any(|p| connected(p)) {
+                errors.push(GraphError::MissingRequiredInput {
+                    node: node.id.clone(),
+                    port: group.join("|"),
+                });
             }
         }
     }
@@ -366,54 +387,27 @@ fn dfs_find_cycle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, Node};
-    use crate::{LogoMode, Mode, Model, Ratio};
+    use crate::graph::Edge;
+    use crate::graph::test_catalog::{TestCatalog, node};
+
+    fn validate(g: &Graph) -> Result<(), Vec<GraphError>> {
+        super::validate(g, &TestCatalog::new())
+    }
 
     fn prompt(id: &str) -> Node {
-        Node {
-            id: id.to_string(),
-            kind: NodeKind::Prompt {
-                text: "canh 1".to_string(),
-            },
-            x: 0.0,
-            y: 0.0,
-        }
+        node(id, "prompt")
     }
 
     fn video(id: &str) -> Node {
-        Node {
-            id: id.to_string(),
-            kind: NodeKind::Video {
-                mode: Mode::Fast,
-                model: Model::Seedance20,
-                ratio: Ratio::R9x16,
-                duration: 10,
-                logo: LogoMode::Off,
-                account: String::new(),
-            },
-            x: 0.0,
-            y: 0.0,
-        }
+        node(id, "dola_video")
     }
 
     fn save(id: &str) -> Node {
-        Node {
-            id: id.to_string(),
-            kind: NodeKind::Save {
-                out_dir: "downloads".to_string(),
-            },
-            x: 0.0,
-            y: 0.0,
-        }
+        node(id, "save")
     }
 
     fn image_upload(id: &str) -> Node {
-        Node {
-            id: id.to_string(),
-            kind: NodeKind::ImageUpload { paths: vec![] },
-            x: 0.0,
-            y: 0.0,
-        }
+        node(id, "image_upload")
     }
 
     fn edge(id: &str, from: &str, from_port: &str, to: &str, to_port: &str) -> Edge {
@@ -568,19 +562,10 @@ mod tests {
     }
 
     #[test]
-    fn concat_khong_ho_tro_o_p3_bao_loi_unsupported() {
+    fn kind_khong_co_trong_catalog_bao_loi_unsupported() {
         let g = Graph {
             version: 1,
-            nodes: vec![
-                video("n1"),
-                video("n2"),
-                Node {
-                    id: "n3".to_string(),
-                    kind: NodeKind::Concat,
-                    x: 0.0,
-                    y: 0.0,
-                },
-            ],
+            nodes: vec![video("n1"), video("n2"), node("n3", "concat")],
             edges: vec![
                 edge("e1", "n1", "out", "n3", "in"),
                 edge("e2", "n2", "out", "n3", "in"),
@@ -595,19 +580,10 @@ mod tests {
 
     #[test]
     fn hai_canh_vao_cong_many_false_bao_loi() {
-        // EnsureH264."in" la many=false — 2 canh Video vao cung cong phai bi bat.
+        // "post"."in" la many=false — 2 canh Video vao cung cong phai bi bat.
         let g = Graph {
             version: 1,
-            nodes: vec![
-                video("n1"),
-                video("n2"),
-                Node {
-                    id: "n3".to_string(),
-                    kind: NodeKind::EnsureH264,
-                    x: 0.0,
-                    y: 0.0,
-                },
-            ],
+            nodes: vec![video("n1"), video("n2"), node("n3", "post")],
             edges: vec![
                 edge("e1", "n1", "out", "n3", "in"),
                 edge("e2", "n2", "out", "n3", "in"),
@@ -666,7 +642,7 @@ mod tests {
         // Fix round 1 (review Critical #1): trước đây 3 variant newtype
         // (DuplicateNodeId/UnknownNode/Cycle) serialize LỖI dưới #[serde(tag = "type")] —
         // xem test cũ (đã xoá) từng ghim đúng lỗi này làm RED. Giờ MỌI variant đều là
-        // struct-variant nên serialize/deserialize object được; test này duyệt hết cả 11
+        // struct-variant nên serialize/deserialize object được; test này duyệt hết cả 12
         // variant, ghim đúng chuỗi tag "type" của từng cái, và round-trip lại đúng giá trị.
         let cases: Vec<(GraphError, &str)> = vec![
             (
@@ -716,6 +692,14 @@ mod tests {
                 },
                 "unsupported",
             ),
+            (
+                GraphError::Param {
+                    node: "n1".to_string(),
+                    field: "duration".to_string(),
+                    message: "sai".to_string(),
+                },
+                "param",
+            ),
             (GraphError::Empty, "empty"),
             (
                 GraphError::MultipleInputsOnSinglePort {
@@ -760,7 +744,7 @@ mod tests {
     #[test]
     fn too_many_refs_scene_index_ra_camelcase_trong_json() {
         // C1: rename_all_fields = "camelCase" — chi field ben trong struct-variant doi,
-        // tag "type" van snake_case (khop NodeKind."kind").
+        // tag "type" van snake_case (khop NodeData."kind").
         let err = GraphError::TooManyRefs {
             node: "n1".to_string(),
             scene_index: 7,

@@ -7,7 +7,7 @@ import { addEdge, applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Connection, EdgeChange, NodeChange } from "@xyflow/react";
 
 import type { RFEdge, RFNode } from "../graph/adapter";
-import { fromGraph, toGraph } from "../graph/adapter";
+import { fromGraph, migrateGraphJson, toGraph } from "../graph/adapter";
 import { isValidConnection as checkValidConnection } from "../graph/rules";
 import type { AddableNodeKind } from "../graph/ports";
 import { GraphSchema, type Graph, type GraphError, type NodeKind } from "../ipc/types";
@@ -19,8 +19,8 @@ const STORAGE_KEY = "lvc.workflow.canvas.v1";
 const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
   prompt: () => ({ kind: "prompt", text: "" }),
   image_upload: () => ({ kind: "image_upload", paths: [] }),
-  video: () => ({
-    kind: "video",
+  dola_video: () => ({
+    kind: "dola_video",
     mode: "fast",
     model: "seedance-2.0",
     ratio: "9:16",
@@ -232,7 +232,8 @@ export function loadPersistedGraph(): Graph | null {
     if (!raw) {
       return null;
     }
-    return GraphSchema.parse(JSON.parse(raw));
+    // P4a: canvas luu tu ban cu co the con kind `video`/kind P4 da xoa — migrate TRUOC zod.
+    return GraphSchema.parse(migrateGraphJson(JSON.parse(raw)));
   } catch {
     return null;
   }

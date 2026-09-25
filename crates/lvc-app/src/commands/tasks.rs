@@ -381,34 +381,32 @@ mod tests {
 
         let out_dir = dir.path().join("out");
         let g = lvc_core::graph::Graph {
-            version: 1,
+            version: 2,
             nodes: vec![
                 lvc_core::graph::Node {
                     id: "pr".to_string(),
-                    kind: lvc_core::graph::NodeKind::Prompt {
-                        text: "canh 1\ncanh 2\ncanh 3".to_string(),
-                    },
+                    kind: lvc_core::graph::NodeData::new(
+                        "prompt",
+                        serde_json::json!({ "text": "canh 1\ncanh 2\ncanh 3".to_string() }),
+                    ),
                     x: 0.0,
                     y: 0.0,
                 },
                 lvc_core::graph::Node {
                     id: "vid".to_string(),
-                    kind: lvc_core::graph::NodeKind::Video {
-                        mode: lvc_core::Mode::Fast,
-                        model: lvc_core::Model::Seedance20,
-                        ratio: lvc_core::Ratio::R9x16,
-                        duration: 10,
-                        logo: lvc_core::LogoMode::Off,
-                        account: String::new(),
-                    },
+                    kind: lvc_core::graph::NodeData::new(
+                        "dola_video",
+                        serde_json::json!({ "mode": lvc_core::Mode::Fast, "model": lvc_core::Model::Seedance20, "ratio": lvc_core::Ratio::R9x16, "duration": 10, "logo": lvc_core::LogoMode::Off, "account": String::new() }),
+                    ),
                     x: 0.0,
                     y: 0.0,
                 },
                 lvc_core::graph::Node {
                     id: "sv".to_string(),
-                    kind: lvc_core::graph::NodeKind::Save {
-                        out_dir: out_dir.display().to_string(),
-                    },
+                    kind: lvc_core::graph::NodeData::new(
+                        "save",
+                        serde_json::json!({ "out_dir": out_dir.display().to_string() }),
+                    ),
                     x: 0.0,
                     y: 0.0,
                 },
@@ -547,10 +545,12 @@ mod tests {
         let info = task_resume_impl(&ctx, "t1").await.unwrap();
         assert_eq!(info.task_id, "t1");
 
-        // Cho task chuyen trang thai (spawn nen) — poll voi timeout ngan.
+        // Cho task chuyen trang thai (spawn nen) — poll voi timeout ngan. Cho CA viec go id khoi
+        // `resuming`: task nen ghi `Completed` TRUOC roi moi go id (hai buoc rieng) — chi cho
+        // `Completed` thi assert ben duoi dua (flaky ~50%, phat hien khi chay P4a).
         for _ in 0..500 {
             let row = tasks.get("t1").await.unwrap().unwrap();
-            if row.status == TaskStatus::Completed {
+            if row.status == TaskStatus::Completed && !ctx.resuming.contains("t1") {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
