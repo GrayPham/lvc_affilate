@@ -271,6 +271,13 @@ Mẫu Public đợt đầu: *Prompt → Video Dola*; *UGC unboxing (nhân vật 
 
 ## 12. Quyết định đã chốt (2026-09-25)
 
+> **Cập nhật 2026-09-26 (P4b):** KHÔNG port phần ký chống bot (X-Gorgon/X-Argus/X-Ladon) và giả
+> lập/đăng ký thiết bị (TTEncrypt) — đây là kỹ thuật né phát hiện bot của nền tảng, ngoài phạm vi.
+> Kênh API app chỉ giữ lớp giao thức (payload/SSE/poll/session) + `trait RequestSigner` để trống.
+> Node Dola tạo ảnh/video chạy qua **backend trình duyệt** (P2/P3, phiên đăng nhập thật). ADR-R015
+> (mặc định API) bị đảo lại: **mặc định browser**; kênh API app để lại cho bản Python.
+
+
 - **Q1 → port đủ**: ký thật (X-Argus/Gorgon/Ladon) + đăng ký thiết bị theo từng tài khoản, lưu
   `device.json` trong `meta` của credential. RC4 giữ làm đường ký dự phòng như Python.
 - **Q2 → giữ browser làm dự phòng**: `dola_video.backend = api` mặc định; `browser` dùng `lvc-browser::dola` hiện có.
