@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   AccountStatusSchema,
   AppSettingsSchema,
+  CredentialListSchema,
   EngineEventSchema,
   GraphErrorSchema,
   GraphSchema,
@@ -29,6 +30,7 @@ import {
   ScriptRunReportSchema,
   StageSchema,
   TaskDtoSchema,
+  VerifyOutcomeSchema,
   WorkflowMetaSchema,
 } from "../src/ipc/types";
 import { NODE_LABEL_VI, PORTS } from "../src/graph/ports";
@@ -72,11 +74,14 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["script_run_report.json", ScriptRunReportSchema],
   // P4a: manifest node (lenh `node_catalog`).
   ["catalog.json", NodeCatalogSchema],
+  // P4c: kho tai khoan AI (lenh `credential_*`).
+  ["credentials.json", CredentialListSchema],
+  ["verify_outcome.json", VerifyOutcomeSchema],
 ];
 
-describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban) parse dung voi schema zod (Task 11/14)", () => {
-  it("bao phu dung 18 file da commit — khong sot, khong thua", () => {
-    expect(FIXTURE_CASES).toHaveLength(18);
+describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban + P4c credentials) parse dung voi schema zod (Task 11/14)", () => {
+  it("bao phu dung 20 file da commit — khong sot, khong thua", () => {
+    expect(FIXTURE_CASES).toHaveLength(20);
   });
 
   it.each(FIXTURE_CASES)("%s parse OK", (file, schema) => {
@@ -117,5 +122,23 @@ describe("stages.json khop STAGES (src/ipc/types.ts)", () => {
   it("danh sach giong het, dung thu tu", () => {
     const fixture = z.array(StageSchema).parse(loadFixture("stages.json"));
     expect(fixture).toEqual([...STAGES]);
+  });
+});
+
+describe("credentials.json — bat bien AN TOAN: KHONG bao gio lo bi mat nguyen van (P4c)", () => {
+  it("khong `CredentialView` nao co truong ten 'secret' (chi duoc co 'secretHint' da che)", () => {
+    const rows = CredentialListSchema.parse(loadFixture("credentials.json"));
+    for (const row of rows) {
+      // `secretHint` la BIEU DIEN DUY NHAT cua bi mat — khong duoc co truong 'secret' tho.
+      expect(Object.prototype.hasOwnProperty.call(row, "secret")).toBe(false);
+      expect(row).toHaveProperty("secretHint");
+    }
+  });
+
+  it("meta cung khong chua khoa ten 'secret' (phong bi mat lot qua meta)", () => {
+    const rows = CredentialListSchema.parse(loadFixture("credentials.json"));
+    for (const row of rows) {
+      expect(Object.prototype.hasOwnProperty.call(row.meta, "secret")).toBe(false);
+    }
   });
 });

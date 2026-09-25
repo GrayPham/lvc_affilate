@@ -5,14 +5,17 @@ import ScriptsPage from "./pages/ScriptsPage";
 import TasksPage from "./pages/TasksPage";
 import SettingsPage from "./pages/SettingsPage";
 import AccountsPage from "./pages/AccountsPage";
+import CredentialsPage from "./pages/CredentialsPage";
 
-// P3c Task 2: tab "Kịch bản" dat NGAY SAU "Workflow" (5 tab, theo dung brief).
+// P3c Task 2: tab "Kịch bản" dat NGAY SAU "Workflow". P4c: them "Tài khoản AI" (kho tai khoan AI)
+// SAU "Tài khoản" (Dola) — giu tab Dola cu nguyen ven.
 const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "workflow", label: "Workflow" },
   { id: "scripts", label: "Kịch bản" },
   { id: "tasks", label: "Tác vụ" },
   { id: "settings", label: "Cài đặt" },
   { id: "accounts", label: "Tài khoản" },
+  { id: "credentials", label: "Tài khoản AI" },
 ];
 
 const PAGES: Record<TabId, () => JSX.Element> = {
@@ -21,6 +24,7 @@ const PAGES: Record<TabId, () => JSX.Element> = {
   tasks: TasksPage,
   settings: SettingsPage,
   accounts: AccountsPage,
+  credentials: CredentialsPage,
 };
 
 export default function App() {

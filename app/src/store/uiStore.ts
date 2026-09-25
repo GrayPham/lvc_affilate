@@ -4,7 +4,7 @@ import { create } from "zustand";
 // tren cung. Task 12-14 se them store rieng cho tung mien du lieu (workflow dang sua,
 // danh sach run/task, cai dat) trong cung thu muc `src/store/`; xem huong dan trong
 // task-11-report.md. "scripts" (P3c Task 2) them SAU "workflow" — xem `App.tsx::TABS`.
-export type TabId = "workflow" | "scripts" | "tasks" | "settings" | "accounts";
+export type TabId = "workflow" | "scripts" | "tasks" | "settings" | "accounts" | "credentials";
 
 interface UiState {
   activeTab: TabId;

@@ -554,6 +554,64 @@ export const ScriptDocSchema = z.object({
 });
 export type ScriptDoc = z.infer<typeof ScriptDocSchema>;
 
+// ---------------------------------------------------------------------------------------------
+// Kho tai khoan AI (P4c, `crates/lvc-app/src/commands/credentials.rs` + `crates/lvc-store` +
+// `crates/lvc-vault`) — 5 lenh `credential_*`. Fixture nguon su that: `fixtures/credentials.json`
+// (`CredentialView[]`) + `fixtures/verify_outcome.json` (`VerifyOutcome`). Toan bo camelCase.
+//
+// AN TOAN BI MAT: `CredentialView` KHONG BAO GIO chua bi mat nguyen van — chi co `secretHint`
+// (chuoi da che san phia Rust) va `proxyMasked` (proxy da che, giong `mask_proxy` cua accounts).
+// UI khong duoc "un-mask", chi gui bi mat MOI khi them/sua (write-only, xem `store/credentials.ts`).
+// ---------------------------------------------------------------------------------------------
+
+/** Nha cung cap tai khoan AI — khop wire cua backend (P4c contract). */
+export const CredentialProviderSchema = z.enum([
+  "dola",
+  "google",
+  "chatgpt_web",
+  "openai",
+  "gemini",
+]);
+export type CredentialProvider = z.infer<typeof CredentialProviderSchema>;
+
+/** Loai bi mat theo provider (dola->session; openai/gemini->api_key; google/chatgpt_web->login|session). */
+export const CredentialKindSchema = z.enum(["session", "api_key", "login"]);
+export type CredentialKind = z.infer<typeof CredentialKindSchema>;
+
+/** Trang thai kiem tra gan nhat cua mot tai khoan AI. */
+export const CredentialStatusSchema = z.enum(["ok", "expired", "banned", "quota", "unknown"]);
+export type CredentialStatus = z.infer<typeof CredentialStatusSchema>;
+
+/**
+ * `CredentialView` — ban chieu (view) an toan cua mot tai khoan AI. `secretHint` la BIEU DIEN DUY
+ * NHAT cua bi mat (da che phia Rust); khong co truong `secret` nao — `tests/ipc_fixtures.test.ts`
+ * ghim bat bien nay. `meta` la object tuy provider (vd `base_url` cho openai/gemini,
+ * `profile_dir` cho dola). `lastUsedAt`/`lastVerifiedAt` la epoch giay (0 = chua tung).
+ */
+export const CredentialViewSchema = z.object({
+  id: z.string(),
+  provider: CredentialProviderSchema,
+  kind: CredentialKindSchema,
+  label: z.string(),
+  secretHint: z.string(),
+  meta: z.record(z.string(), z.unknown()),
+  proxyMasked: z.string(),
+  status: CredentialStatusSchema,
+  enabled: z.boolean(),
+  lastUsedAt: z.number(),
+  lastVerifiedAt: z.number(),
+});
+export type CredentialView = z.infer<typeof CredentialViewSchema>;
+
+export const CredentialListSchema = z.array(CredentialViewSchema);
+
+/** Ket qua `credential_verify` (`fixtures/verify_outcome.json`). */
+export const VerifyOutcomeSchema = z.object({
+  status: CredentialStatusSchema,
+  detail: z.string(),
+});
+export type VerifyOutcome = z.infer<typeof VerifyOutcomeSchema>;
+
 /** `lvc_store::scripts::SceneRow` — ket qua `script_put_scenes` (khong kem trang thai task, khac
  * `SceneDto`). */
 export const SceneRowSchema = z.object({

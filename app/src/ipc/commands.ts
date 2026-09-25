@@ -7,6 +7,9 @@ import { invoke } from "./tauri";
 import {
   AccountStatusSchema,
   AppSettingsSchema,
+  CredentialListSchema,
+  CredentialViewSchema,
+  VerifyOutcomeSchema,
   ImportCookiesReportSchema,
   LegacyImportReportSchema,
   NodeCatalogSchema,
@@ -27,6 +30,7 @@ import {
   IpcErrorSchema,
   type AccountStatus,
   type AppSettings,
+  type CredentialView,
   type Graph,
   type ImportCookiesReport,
   type IpcError,
@@ -44,6 +48,7 @@ import {
   type ScriptRunReport,
   type TaskDto,
   type TaskResumeInfo,
+  type VerifyOutcome,
   type VerifyReport,
   type WorkflowDoc,
   type WorkflowMeta,
@@ -268,4 +273,65 @@ export async function scriptResetScenes(id: string, sceneIds: string[]): Promise
 export async function scriptImportTxt(id: string, text: string): Promise<number> {
   const res = await invoke<unknown>("script_import_txt", { id, text });
   return z.number().parse(res);
+}
+
+// ---- credentials.rs (P4c kho tai khoan AI) --------------------------------------------------
+// 5 lenh `credential_*`. Tham so Rust snake_case -> JS camelCase tu dong (giong moi lenh khac).
+// `secret` la tham so GHI-MOT-CHIEU: chi gui khi them/sua, KHONG BAO GIO tra ve — ket qua chi co
+// `secretHint` da che. Ma loi rieng: CRED_BAD_PROVIDER/CRED_BAD_KIND/CRED_BAD_LABEL/
+// CRED_EMPTY_SECRET/CRED_NOT_FOUND/CRED_CRYPTO/STORE (xem `format/credential.ts`).
+
+/** `provider` rong = lay TAT CA; nguoc lai loc theo mot provider. */
+export async function credentialList(provider?: string): Promise<CredentialView[]> {
+  const res = await invoke<unknown>("credential_list", { provider: provider ?? null });
+  return CredentialListSchema.parse(res);
+}
+
+/** `secret` ghi-mot-chieu; `meta` la object tuy provider (vd `{ base_url }`); `proxy` chuoi (co the rong). */
+export async function credentialAdd(
+  provider: string,
+  kind: string,
+  label: string,
+  secret: string,
+  meta?: Record<string, unknown>,
+  proxy?: string,
+): Promise<CredentialView> {
+  const res = await invoke<unknown>("credential_add", {
+    provider,
+    kind,
+    label,
+    secret,
+    meta: meta ?? null,
+    proxy: proxy ?? null,
+  });
+  return CredentialViewSchema.parse(res);
+}
+
+/** Moi truong `undefined` = KHONG doi truong do (chi gui gia tri co mat). `secret` ghi-mot-chieu. */
+export async function credentialUpdate(
+  id: string,
+  secret?: string,
+  label?: string,
+  proxy?: string,
+  enabled?: boolean,
+): Promise<null> {
+  const res = await invoke<unknown>("credential_update", {
+    id,
+    secret: secret ?? null,
+    label: label ?? null,
+    proxy: proxy ?? null,
+    enabled: enabled ?? null,
+  });
+  return z.null().parse(res);
+}
+
+export async function credentialVerify(id: string): Promise<VerifyOutcome> {
+  const res = await invoke<unknown>("credential_verify", { id });
+  return VerifyOutcomeSchema.parse(res);
+}
+
+/** `false` = khong co gi de xoa (idempotent). */
+export async function credentialDelete(id: string): Promise<boolean> {
+  const res = await invoke<unknown>("credential_delete", { id });
+  return z.boolean().parse(res);
 }
