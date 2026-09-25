@@ -1,0 +1,29 @@
+[package]
+name = "lvc-vault"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Kho bi mat (P4c, ADR-R017): ma hoa bi mat tai khoan AI truoc khi ghi DB. LUAT: la NOI DUY NHAT
+# cham plaintext bi mat; khong log; khong lo plaintext ra IPC (xem CLAUDE.md cung thu muc).
+[dependencies]
+lvc-core.workspace = true
+lvc-store.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+# Verifier API key (OpenAI/Gemini): GET list models — khong ky gi (khong ne phat hien).
+reqwest.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+wiremock.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# DPAPI: CryptProtectData/CryptUnprotectData (pham vi user) + LocalFree.
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
+[lints]
+workspace = true

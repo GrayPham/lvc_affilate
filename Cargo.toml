@@ -7,6 +7,7 @@ members = [
     "crates/lvc-engine",
     "crates/lvc-app",
     "crates/lvc-node-api",
+    "crates/lvc-vault",
     "crates/providers/lvc-dola",
     "crates/nodes/node-prompt",
     "crates/nodes/node-image-upload",
@@ -39,6 +40,7 @@ tracing = "0.1"
 lvc-browser = { path = "crates/lvc-browser" }
 # P4a (ADR-R014): hop dong node + provider + node module.
 lvc-node-api = { path = "crates/lvc-node-api" }
+lvc-vault = { path = "crates/lvc-vault" }
 lvc-dola = { path = "crates/providers/lvc-dola" }
 node-prompt = { path = "crates/nodes/node-prompt" }
 node-image-upload = { path = "crates/nodes/node-image-upload" }

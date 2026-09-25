@@ -20,6 +20,7 @@ async fn migration_tao_du_bang() {
         "usage",
         "workflows",
         "runs",
+        "credentials",
     ] {
         assert!(
             names.contains(&expected),

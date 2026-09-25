@@ -1,6 +1,7 @@
 //! Tầng lưu trữ: `SQLite` qua sqlx, migration, và bộ nhập dữ liệu Python cũ.
 
 pub mod accounts;
+pub mod credentials;
 pub mod db;
 pub mod error;
 pub mod legacy;
@@ -10,6 +11,7 @@ pub mod tasks;
 pub mod workflows;
 
 pub use accounts::{AccountRepo, AccountRow};
+pub use credentials::{CredentialRepo, CredentialRow, NewCredential};
 pub use db::Db;
 pub use error::StoreError;
 pub use legacy::{ImportReport, import_legacy};

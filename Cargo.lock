@@ -2413,6 +2413,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "lvc-vault"
+version = "0.1.0"
+dependencies = [
+ "lvc-core",
+ "lvc-store",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+ "windows-sys 0.59.0",
+ "wiremock",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
