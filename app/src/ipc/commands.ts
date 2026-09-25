@@ -24,6 +24,9 @@ import {
   SceneRowSchema,
   TaskDtoSchema,
   TaskResumeInfoSchema,
+  TemplateDocSchema,
+  TemplateListSchema,
+  TemplateMetaSchema,
   VerifyReportSchema,
   WorkflowDocSchema,
   WorkflowMetaSchema,
@@ -48,6 +51,8 @@ import {
   type ScriptRunReport,
   type TaskDto,
   type TaskResumeInfo,
+  type TemplateDoc,
+  type TemplateMeta,
   type VerifyOutcome,
   type VerifyReport,
   type WorkflowDoc,
@@ -333,5 +338,51 @@ export async function credentialVerify(id: string): Promise<VerifyOutcome> {
 /** `false` = khong co gi de xoa (idempotent). */
 export async function credentialDelete(id: string): Promise<boolean> {
   const res = await invoke<unknown>("credential_delete", { id });
+  return z.boolean().parse(res);
+}
+
+// ---- templates.rs (P4d kho template) --------------------------------------------------------
+// 4 lenh `template_*`. Tham so Rust snake_case -> JS camelCase tu dong (giong moi lenh khac).
+// Mau Public (`id` bat dau "public:") CHI DOC — luu de/xoa se bi backend tu choi TEMPLATE_READONLY.
+// Ma loi rieng: TEMPLATE_NOT_FOUND/TEMPLATE_CORRUPT/TEMPLATE_READONLY/GRAPH_ENCODE/STORE (xem
+// `format/template.ts`).
+
+/** `scope` khong dat = lay CA public + private; nguoc lai loc theo mot pham vi. */
+export async function templateList(scope?: "public" | "private"): Promise<TemplateMeta[]> {
+  const res = await invoke<unknown>("template_list", { scope: scope ?? null });
+  return TemplateListSchema.parse(res);
+}
+
+export async function templateGet(id: string): Promise<TemplateDoc> {
+  const res = await invoke<unknown>("template_get", { id });
+  // Migrate do thi cu (kind `video` -> `dola_video`, bo kind P4 da xoa) TRUOC zod — giong
+  // `workflowGet`, phong khi mau luu tu ban cu con do thi v1 chua migrate.
+  if (res !== null && typeof res === "object" && "graph" in res) {
+    return TemplateDocSchema.parse({ ...res, graph: migrateGraphJson(res.graph) });
+  }
+  return TemplateDocSchema.parse(res);
+}
+
+/** `id` null = tao mau moi; nguoc lai luu de mau private do. `description`/`thumbnail` null = rong. */
+export async function templateSavePrivate(
+  id: string | null,
+  name: string,
+  graph: Graph,
+  description?: string,
+  thumbnail?: string,
+): Promise<TemplateMeta> {
+  const res = await invoke<unknown>("template_save_private", {
+    id,
+    name,
+    description: description ?? null,
+    graph,
+    thumbnail: thumbnail ?? null,
+  });
+  return TemplateMetaSchema.parse(res);
+}
+
+/** `false` = khong co gi de xoa (idempotent). Chi xoa duoc mau private. */
+export async function templateDelete(id: string): Promise<boolean> {
+  const res = await invoke<unknown>("template_delete_private", { id });
   return z.boolean().parse(res);
 }

@@ -30,6 +30,8 @@ import {
   ScriptRunReportSchema,
   StageSchema,
   TaskDtoSchema,
+  TemplateDocSchema,
+  TemplateListSchema,
   VerifyOutcomeSchema,
   WorkflowMetaSchema,
 } from "../src/ipc/types";
@@ -77,11 +79,14 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   // P4c: kho tai khoan AI (lenh `credential_*`).
   ["credentials.json", CredentialListSchema],
   ["verify_outcome.json", VerifyOutcomeSchema],
+  // P4d: kho template (lenh `template_*`).
+  ["template_list.json", TemplateListSchema],
+  ["template_doc.json", TemplateDocSchema],
 ];
 
-describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban + P4c credentials) parse dung voi schema zod (Task 11/14)", () => {
-  it("bao phu dung 20 file da commit — khong sot, khong thua", () => {
-    expect(FIXTURE_CASES).toHaveLength(20);
+describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban + P4c credentials + P4d template) parse dung voi schema zod (Task 11/14)", () => {
+  it("bao phu dung 22 file da commit — khong sot, khong thua", () => {
+    expect(FIXTURE_CASES).toHaveLength(22);
   });
 
   it.each(FIXTURE_CASES)("%s parse OK", (file, schema) => {

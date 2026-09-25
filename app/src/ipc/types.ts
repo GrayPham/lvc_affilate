@@ -680,3 +680,36 @@ export const ScriptResetReportSchema = z.object({
   skipped: z.array(z.string()),
 });
 export type ScriptResetReport = z.infer<typeof ScriptResetReportSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Kho template (P4d, `crates/lvc-app/src/commands/templates.rs` + `crates/lvc-store`) — 4 lenh
+// `template_*`. Fixture nguon su that: `fixtures/template_list.json` (`TemplateMeta[]`) +
+// `fixtures/template_doc.json` (`TemplateDoc`). Toan bo camelCase.
+//
+// `scope` "public" (id bat dau "public:", CHI DOC — khong luu de/xoa) vs "private" (id "tpl_").
+// `graph` trong `TemplateDoc` dung y het `GraphSchema` (dinh dang file workflow, version 2).
+// ---------------------------------------------------------------------------------------------
+
+/** Pham vi template — khop wire cua backend (P4d contract). */
+export const TemplateScopeSchema = z.enum(["public", "private"]);
+export type TemplateScope = z.infer<typeof TemplateScopeSchema>;
+
+/** `TemplateMeta` — sieu du lieu mot mau (khong kem do thi). `thumbnail` co the rong (""). */
+export const TemplateMetaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  scope: TemplateScopeSchema,
+  thumbnail: z.string(),
+  updatedAt: z.number(),
+});
+export type TemplateMeta = z.infer<typeof TemplateMetaSchema>;
+
+export const TemplateListSchema = z.array(TemplateMetaSchema);
+
+/** Ket qua `template_get` — meta + do thi day du (`GraphSchema` tai su dung tu tren). */
+export const TemplateDocSchema = z.object({
+  meta: TemplateMetaSchema,
+  graph: GraphSchema,
+});
+export type TemplateDoc = z.infer<typeof TemplateDocSchema>;

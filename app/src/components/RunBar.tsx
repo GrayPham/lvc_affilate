@@ -6,11 +6,20 @@ import { z } from "zod";
 
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
-import { isIpcError, runCancel, runStart, workflowSave, workflowValidate } from "../ipc/commands";
+import {
+  isIpcError,
+  runCancel,
+  runStart,
+  templateSavePrivate,
+  workflowSave,
+  workflowValidate,
+} from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
+import { describeTemplateError } from "../format/template";
 import { GraphErrorSchema, type PlanSummary, type WorkflowDoc } from "../ipc/types";
 import { formatGraphError } from "../graph/errors";
 import WorkflowListModal from "./WorkflowListModal";
+import TemplateGallery from "./TemplateGallery";
 
 function newEphemeralId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -40,6 +49,7 @@ export default function RunBar() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [showOpen, setShowOpen] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const nodeErrorCount = Object.keys(nodeErrors).length;
   const running = runId !== null && runStatus === null;
@@ -126,6 +136,34 @@ export default function RunBar() {
       setMessage(`Đã lưu "${meta.name}".`);
     } catch (e) {
       setMessage(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** "Lưu thành mẫu" — hoi ten (+ mo ta tuy chon) roi luu canvas hien tai thanh mau private moi.
+   * `thumbnail` de rong ("") — chua chup anh canvas. Dung cung `toGraph` nhu duong luu workflow. */
+  async function handleSaveTemplate(): Promise<void> {
+    if (nodes.length === 0) {
+      setMessage("Canvas trống — chưa có gì để lưu thành mẫu.");
+      return;
+    }
+    const name = window.prompt("Tên mẫu:", workflowName);
+    if (name === null || name.trim() === "") {
+      return;
+    }
+    const description = window.prompt("Mô tả (tuỳ chọn):", "");
+    if (description === null) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const graph = toGraph();
+      const meta = await templateSavePrivate(null, name.trim(), graph, description.trim(), "");
+      setMessage(`Đã lưu mẫu "${meta.name}".`);
+    } catch (e) {
+      setMessage(describeTemplateError(e));
     } finally {
       setBusy(false);
     }
@@ -245,6 +283,23 @@ export default function RunBar() {
         >
           Mới
         </button>
+        <span className="mx-1 h-4 w-px bg-slate-200" />
+        <button
+          type="button"
+          disabled={busy}
+          className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+          onClick={() => setShowTemplates(true)}
+        >
+          Kho mẫu
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+          onClick={() => void handleSaveTemplate()}
+        >
+          Lưu thành mẫu
+        </button>
         {running ? (
           <span className="text-xs text-sky-600">Đang chạy (run {runId})…</span>
         ) : runStatus ? (
@@ -274,6 +329,13 @@ export default function RunBar() {
 
       {showOpen ? (
         <WorkflowListModal onClose={() => setShowOpen(false)} onPicked={(doc) => void handlePicked(doc)} />
+      ) : null}
+
+      {showTemplates ? (
+        <TemplateGallery
+          onClose={() => setShowTemplates(false)}
+          onApplied={(name) => setMessage(`Đã dùng mẫu "${name}".`)}
+        />
       ) : null}
     </div>
   );
