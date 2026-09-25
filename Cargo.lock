@@ -2271,6 +2271,7 @@ dependencies = [
  "lvc-engine",
  "lvc-node-api",
  "lvc-store",
+ "lvc-vault",
  "node-dola-video",
  "node-image-upload",
  "node-prompt",

@@ -157,8 +157,10 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
         "requeue_on_start hoan tat"
     );
 
+    let vault = Arc::new(lvc_vault::Vault::new(&db, lvc_vault::default_box()));
     app.manage(AppState {
         engine,
+        vault,
         handle,
         db,
         settings: RwLock::new(settings),

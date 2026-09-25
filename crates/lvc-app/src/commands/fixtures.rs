@@ -467,4 +467,47 @@ fn fixtures_khop_ban_da_commit() {
         "script_run_report.json",
         &serde_json::to_value(script_run_report_fixture()).unwrap(),
     );
+    check_or_write("credentials.json", &credentials_fixture());
+    check_or_write(
+        "verify_outcome.json",
+        &serde_json::to_value(lvc_vault::VerifyOutcome {
+            status: "ok".to_string(),
+            detail: "key hop le".to_string(),
+        })
+        .unwrap(),
+    );
+}
+
+/// P4c: hai [`lvc_vault::CredentialView`] (một api key đã che, một session Dola) — UI dựng tab
+/// "Tài khoản AI" từ đây. Bí mật KHÔNG bao giờ có trong view (chỉ `secretHint`).
+fn credentials_fixture() -> Value {
+    let views = vec![
+        lvc_vault::CredentialView {
+            id: "cred_1".to_string(),
+            provider: "openai".to_string(),
+            kind: "api_key".to_string(),
+            label: "OpenAI chinh".to_string(),
+            secret_hint: "••••1234".to_string(),
+            meta: serde_json::json!({"base_url": ""}),
+            proxy_masked: String::new(),
+            status: "ok".to_string(),
+            enabled: true,
+            last_used_at: 1_700_000_050.0,
+            last_verified_at: 1_700_000_060.0,
+        },
+        lvc_vault::CredentialView {
+            id: "cred_2".to_string(),
+            provider: "dola".to_string(),
+            kind: "session".to_string(),
+            label: "dola-01".to_string(),
+            secret_hint: "12 cookie · có sessionid".to_string(),
+            meta: serde_json::json!({"profile_dir": "accounts/dola-01"}),
+            proxy_masked: "http://1.2.3.4:***".to_string(),
+            status: "unknown".to_string(),
+            enabled: true,
+            last_used_at: 0.0,
+            last_verified_at: 0.0,
+        },
+    ];
+    serde_json::to_value(views).unwrap()
 }

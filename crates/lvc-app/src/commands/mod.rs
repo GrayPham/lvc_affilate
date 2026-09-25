@@ -25,6 +25,7 @@
 //! `invoke("settings_set", { s })`. Ten LENH (command) thi giu nguyen `snake_case`, khong doi.
 
 pub mod accounts;
+pub mod credentials;
 pub mod scripts;
 pub mod settings;
 pub mod tasks;
@@ -40,6 +41,7 @@ use lvc_browser::BrowserDriver;
 use lvc_core::AppSettings;
 use lvc_engine::{AccountError, Engine, EngineError, LimiterHandle};
 use lvc_store::{Db, StoreError};
+use lvc_vault::{Vault, VaultRepoError};
 use serde::Serialize;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -113,6 +115,13 @@ impl From<AccountError> for IpcError {
     }
 }
 
+/// P4c (`lvc_vault`): loi kho tai khoan AI — `code()` on dinh (giong `AccountError`).
+impl From<VaultRepoError> for IpcError {
+    fn from(e: VaultRepoError) -> Self {
+        Self::new(e.code(), e.to_string())
+    }
+}
+
 /// P3c Task 1 (`lvc_engine::scripts`): `Engine::import_txt_to_script`/`Engine::delete_script`
 /// dung loi rieng nay (khong phai `EngineError`, xem doc `lvc_engine::scripts::ScriptError`) —
 /// `Store` di qua CUNG anh xa `STORE` voi moi `StoreError` khac trong file nay.
@@ -157,6 +166,8 @@ impl From<lvc_store::ReplaceScenesError> for IpcError {
 /// tham chieu 'static toi map nay ma khong the muon `&Ctx`.
 pub struct Ctx<D: BrowserDriver + 'static> {
     pub engine: Arc<Engine<D>>,
+    /// P4c: kho tai khoan AI (DPAPI). Khong generic tren D (khong dung trinh duyet).
+    pub vault: Arc<Vault>,
     /// Ban sao `LimiterHandle` (`Clone`, cung mot `watch::Sender` voi ban Engine giu noi bo) — Task
     /// 9 KHONG dung truc tiep (`settings::settings_set_impl` chi goi `Engine::apply_settings`, da
     /// tu `set_threads` qua ban NOI BO cua no — goi lai o day se trung, xem doc do). Task 10 (lenh
@@ -218,6 +229,7 @@ pub(crate) mod test_support {
 
         let ctx = Ctx {
             engine: boot.engine,
+            vault: Arc::new(lvc_vault::Vault::new(&boot.db, lvc_vault::default_box())),
             handle: boot.handle,
             db: boot.db,
             settings: RwLock::new(boot.settings),
