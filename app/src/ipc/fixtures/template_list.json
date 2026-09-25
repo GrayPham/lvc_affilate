@@ -1,0 +1,18 @@
+[
+  {
+    "id": "public:prompt-video-save",
+    "name": "Prompt -> Video -> Luu",
+    "description": "Mau co ban",
+    "scope": "public",
+    "thumbnail": "",
+    "updatedAt": 0.0
+  },
+  {
+    "id": "tpl_1",
+    "name": "Mau cua toi",
+    "description": "",
+    "scope": "private",
+    "thumbnail": "",
+    "updatedAt": 1700000000.0
+  }
+]

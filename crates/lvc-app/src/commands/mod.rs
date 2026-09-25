@@ -29,6 +29,7 @@ pub mod credentials;
 pub mod scripts;
 pub mod settings;
 pub mod tasks;
+pub mod templates;
 pub mod workflow;
 
 #[cfg(test)]

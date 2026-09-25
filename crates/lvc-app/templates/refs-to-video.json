@@ -1,0 +1,18 @@
+{
+  "name": "Ảnh tham chiếu → Video",
+  "description": "Một bộ ảnh tham chiếu gắn vào mọi cảnh của video (giữ nhân vật/bối cảnh nhất quán).",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "refs", "kind": { "kind": "image_upload", "paths": [], "label": "reference" }, "x": 80, "y": 80 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "cảnh 1\ncảnh 2\ncảnh 3" }, "x": 80, "y": 300 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.5", "ratio": "9:16", "duration": 10, "logo": "off", "account": "" }, "x": 440, "y": 180 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 800, "y": 180 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "refs", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e3", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

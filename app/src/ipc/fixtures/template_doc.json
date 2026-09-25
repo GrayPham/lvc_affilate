@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "id": "public:prompt-video-save",
+    "name": "Prompt -> Video -> Luu",
+    "description": "Mau co ban",
+    "scope": "public",
+    "thumbnail": "",
+    "updatedAt": 0.0
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "n1",
+        "kind": {
+          "kind": "prompt",
+          "text": "canh 1\ncanh 2\ncanh 3"
+        },
+        "x": 0.0,
+        "y": 0.0
+      },
+      {
+        "id": "n2",
+        "kind": {
+          "kind": "dola_video",
+          "mode": "fast",
+          "model": "seedance-2.0",
+          "ratio": "9:16",
+          "duration": 10,
+          "logo": "off",
+          "account": ""
+        },
+        "x": 300.0,
+        "y": 0.0
+      },
+      {
+        "id": "n3",
+        "kind": {
+          "kind": "save",
+          "out_dir": "downloads"
+        },
+        "x": 600.0,
+        "y": 0.0
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from": "n1",
+        "from_port": "out",
+        "to": "n2",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e2",
+        "from": "n2",
+        "from_port": "out",
+        "to": "n3",
+        "to_port": "video"
+      }
+    ]
+  }
+}

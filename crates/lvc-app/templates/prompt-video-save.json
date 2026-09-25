@@ -1,0 +1,16 @@
+{
+  "name": "Prompt → Video Dola → Lưu",
+  "description": "Mẫu cơ bản: mỗi dòng prompt thành một video Seedance rồi lưu ra thư mục.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "Một cô gái đi dạo phố Tokyo lúc hoàng hôn" }, "x": 80, "y": 120 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.0", "ratio": "9:16", "duration": 10, "logo": "off", "account": "" }, "x": 420, "y": 120 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 760, "y": 120 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e2", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

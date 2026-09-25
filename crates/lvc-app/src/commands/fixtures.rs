@@ -375,6 +375,10 @@ fn script_run_report_fixture() -> ScriptRunReport {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "mot danh sach check_or_write phang cho tung fixture - de doc tuan tu, khong nen tach"
+)]
 fn fixtures_khop_ban_da_commit() {
     check_or_write(
         "graph.json",
@@ -468,6 +472,11 @@ fn fixtures_khop_ban_da_commit() {
         &serde_json::to_value(script_run_report_fixture()).unwrap(),
     );
     check_or_write("credentials.json", &credentials_fixture());
+    check_or_write("template_list.json", &template_list_fixture());
+    check_or_write(
+        "template_doc.json",
+        &serde_json::to_value(template_doc_fixture()).unwrap(),
+    );
     check_or_write(
         "verify_outcome.json",
         &serde_json::to_value(lvc_vault::VerifyOutcome {
@@ -476,6 +485,46 @@ fn fixtures_khop_ban_da_commit() {
         })
         .unwrap(),
     );
+}
+
+/// P4d: danh sach meta template (1 public + 1 private) — UI dung gallery.
+fn template_list_fixture() -> Value {
+    use crate::commands::templates::TemplateMeta;
+    serde_json::to_value(vec![
+        TemplateMeta {
+            id: "public:prompt-video-save".to_string(),
+            name: "Prompt -> Video -> Luu".to_string(),
+            description: "Mau co ban".to_string(),
+            scope: "public".to_string(),
+            thumbnail: String::new(),
+            updated_at: 0.0,
+        },
+        TemplateMeta {
+            id: "tpl_1".to_string(),
+            name: "Mau cua toi".to_string(),
+            description: String::new(),
+            scope: "private".to_string(),
+            thumbnail: String::new(),
+            updated_at: 1_700_000_000.0,
+        },
+    ])
+    .unwrap()
+}
+
+/// P4d: mot template day du (graph 3 node) — cho "Dung mau".
+fn template_doc_fixture() -> crate::commands::templates::TemplateDoc {
+    use crate::commands::templates::{TemplateDoc, TemplateMeta};
+    TemplateDoc {
+        meta: TemplateMeta {
+            id: "public:prompt-video-save".to_string(),
+            name: "Prompt -> Video -> Luu".to_string(),
+            description: "Mau co ban".to_string(),
+            scope: "public".to_string(),
+            thumbnail: String::new(),
+            updated_at: 0.0,
+        },
+        graph: three_scene_graph(),
+    }
 }
 
 /// P4c: hai [`lvc_vault::CredentialView`] (một api key đã che, một session Dola) — UI dựng tab

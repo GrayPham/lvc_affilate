@@ -21,6 +21,7 @@ async fn migration_tao_du_bang() {
         "workflows",
         "runs",
         "credentials",
+        "templates",
     ] {
         assert!(
             names.contains(&expected),

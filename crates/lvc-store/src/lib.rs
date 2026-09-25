@@ -8,6 +8,7 @@ pub mod legacy;
 pub mod scripts;
 pub mod settings;
 pub mod tasks;
+pub mod templates;
 pub mod workflows;
 
 pub use accounts::{AccountRepo, AccountRow};
@@ -18,4 +19,5 @@ pub use legacy::{ImportReport, import_legacy};
 pub use scripts::{ReplaceScenesError, SceneIn, SceneRow, ScriptMeta, ScriptRepo, ScriptRow};
 pub use settings::SettingsRepo;
 pub use tasks::{BatchRef, TaskRepo, TaskRow};
+pub use templates::{TemplateRepo, TemplateRow};
 pub use workflows::{RunRepo, RunRow, RunStatus, WorkflowMeta, WorkflowRepo, WorkflowRow};
