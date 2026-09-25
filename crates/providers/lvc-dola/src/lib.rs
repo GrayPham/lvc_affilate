@@ -4,6 +4,9 @@
 //! sở hữu tài nguyên dùng chung (pool tài khoản, limiter, bảng `tasks`, trình duyệt) nên node KHÔNG
 //! tự làm những việc đó. P4b thêm client API app Android.
 
+pub mod device;
+pub mod sign;
+
 use std::path::PathBuf;
 
 use async_trait::async_trait;
