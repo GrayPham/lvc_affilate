@@ -502,7 +502,7 @@ pub async fn submit_fast(ctx: &SubmitCtx<'_>, req: &SubmitRequest) -> Result<(),
     if let Some(ratio) = req.ratio {
         compose::select_ratio(page, ratio).await?; // :2272-2273
     }
-    let hooked = select_duration_or_hook(page, account, req.duration).await?; // :2274-2288
+    let hooked = select_duration_or_hook(page, account, req.duration, req.model, req.ratio).await?; // :2274-2288
     before_prompt(ctx, account)?; // P3 R4 + :2122
     compose::type_and_send(page, &req.prompt, false).await?; // :2289
     if hooked {
@@ -573,6 +573,8 @@ async fn select_duration_or_hook(
     page: &Page,
     account: &str,
     duration: u16,
+    model: lvc_core::Model,
+    ratio: Option<lvc_core::Ratio>,
 ) -> Result<bool, DolaError> {
     match compose::select_fast_duration(page, duration).await {
         Ok(()) => Ok(false),
@@ -585,7 +587,13 @@ async fn select_duration_or_hook(
             );
             compose::close_open_menus(page).await?; // :2283
             compose::select_fast_duration(page, 10).await?; // :2284
-            compose::install_duration_hook(page, duration).await?; // :2285-2287
+            compose::install_duration_hook(
+                page,
+                duration,
+                model,
+                ratio.map(lvc_core::Ratio::as_str),
+            )
+            .await?; // :2285-2287
             Ok(true)
         }
         Err(e) => Err(e),

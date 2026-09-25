@@ -83,9 +83,12 @@ async fn labels_js_chay_duoc_tren_trang() {
         "khong co nut OK/Đồng ý tren fixture"
     );
     // DURATION_HOOK_JS chay duoc o MAIN world (dat data-lvc-hook)
-    let _: serde_json::Value = ops::eval_json(p, &labels::duration_hook_script(30))
-        .await
-        .unwrap();
+    let _: serde_json::Value = ops::eval_json(
+        p,
+        &labels::duration_hook_script(30, lvc_core::Model::Seedance20, None),
+    )
+    .await
+    .unwrap();
     let hook: String = ops::eval_json(p, "document.documentElement.getAttribute('data-lvc-hook')")
         .await
         .unwrap();

@@ -1268,27 +1268,4 @@ mod tests {
         assert_eq!(POLL_PARAMS[13], ("use-olympus-account", "1"));
         assert!(POLL_UA.contains("Chrome/153.0.0.0"));
     }
-
-    /// So byte `POLL_UA` + tung cap `POLL_PARAMS` (dung THU TU) voi nguon Python
-    /// (`hub_browser.py:747-750`); file vang -> bo qua (nhu `labels`).
-    #[test]
-    fn poll_params_va_ua_chep_nguyen_van_python() {
-        use crate::dola::py_src::{python_source, same_bytes};
-        let Some(src) = python_source(r"src\browser\hub_browser.py") else {
-            return;
-        };
-        assert!(same_bytes(&src, "POLL_UA", POLL_UA));
-        let start = src.find("\nPOLL_PARAMS = {").expect("POLL_PARAMS") + 1;
-        let end = src[start..].find('}').expect("dong ngoac") + start;
-        let re = regex::Regex::new(r#""([^"]+)":\s*"([^"]*)""#).unwrap();
-        let py: Vec<(String, String)> = re
-            .captures_iter(&src[start..end])
-            .map(|c| (c[1].to_string(), c[2].to_string()))
-            .collect();
-        let rust: Vec<(String, String)> = POLL_PARAMS
-            .iter()
-            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-            .collect();
-        assert_eq!(rust, py);
-    }
 }

@@ -497,7 +497,9 @@ async fn hook_patch_duration_15() {
     let fx = Fx::open("compose.html").await;
     let p = fx.page();
     assert_eq!(hook_state(p).await.unwrap(), "");
-    install_duration_hook(p, 15).await.unwrap();
+    install_duration_hook(p, 15, lvc_core::Model::Seedance20, None)
+        .await
+        .unwrap();
     assert_eq!(hook_state(p).await.unwrap(), "installed:15");
     // Chua co request -> chua patched (20 x 250 ms)
     let t0 = std::time::Instant::now();
@@ -531,7 +533,9 @@ async fn hook_patch_duration_15() {
             .contains("fetch /im/chain/recent_conv body={\"chat_ability\":{\"duration\":10}}")
     );
     // Cai lai (hook da co) -> installed:15, khong boc them lan nua
-    install_duration_hook(p, 15).await.unwrap();
+    install_duration_hook(p, 15, lvc_core::Model::Seedance20, None)
+        .await
+        .unwrap();
     assert_eq!(hook_state(p).await.unwrap(), "installed:15");
     // M-4 (review Task 7): body /chat/completion KHONG co `chat_ability` -> hook de nguyen
     // (`patch` chi doi khi `body.includes('chat_ability')`), state van `installed:15`.
@@ -556,7 +560,9 @@ async fn hook_patch_duration_15() {
     assert!(!verify_hook_patched(p, 15).await.unwrap());
     assert_eq!(hook_state(p).await.unwrap(), "installed:15");
     // Cai so khac -> installed:30, sau do khong phai patched:15
-    install_duration_hook(p, 30).await.unwrap();
+    install_duration_hook(p, 30, lvc_core::Model::Seedance20, None)
+        .await
+        .unwrap();
     assert_eq!(hook_state(p).await.unwrap(), "installed:30");
     fx.close().await;
 }
@@ -568,7 +574,9 @@ async fn hook_patch_duration_15() {
 async fn type_and_send_ghi_log_enter() {
     let fx = Fx::open("compose.html?open=1").await;
     let p = fx.page();
-    install_duration_hook(p, 15).await.unwrap();
+    install_duration_hook(p, 15, lvc_core::Model::Seedance20, None)
+        .await
+        .unwrap();
     // Chu cu con trong o (session am) phai bi xoa truoc khi go
     let _: serde_json::Value =
         js(&fx, "document.getElementById('prompt').value = 'cu'; null").await;

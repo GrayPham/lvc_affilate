@@ -180,42 +180,105 @@ pub const NEW_IMAGES_JS: &str = r"() => [...document.querySelectorAll('img')]
   .filter(i => i.naturalWidth >= 400 && /ibyteimg|byteimg|tos-/.test(i.src) && !/avatar/.test(i.src))
   .map(i => ({src: i.src, w: i.naturalWidth, h: i.naturalHeight}))";
 
-/// `video_worker_ui.py:2215-2242` `DURATION_HOOK_JS` (ADR-044) — boc `fetch`/XHR o MAIN world de
-/// doi `duration` trong `ability_param` TRUOC khi SDK ky (`a_bogus`). Giu placeholder `__DUR__`;
-/// dung [`duration_hook_script`] de thay.
+/// Hook `fetch`/XHR ở MAIN world: ghi đè `duration` + `ratio` + `model` trong `ability_param` của
+/// body `/chat/completion` TRƯỚC khi SDK trang ký (UI hay để 30s/tỉ lệ trượt về mặc định). Đây là
+/// đường TRÌNH DUYỆT — trang tự ký request của nó, KHÔNG dựng lại chữ ký. Cũng sao response/request
+/// ra thuộc tính DOM (`data-lvc-chat-*`) để chẩn đoán.
+///
+/// Đồng bộ từ bản mới (2026-09-25) sang Rust THUẦN — KHÔNG còn đọc/so byte với cây Python. KHÁC bản
+/// Python một điểm CỐ Ý: guard KHÔNG chặn cứng (không `reject`) khi thiếu `duration` — chỉ đánh dấu
+/// rồi để body đi tiếp (bản này chưa có kênh API để lùi về nên chặn cứng sẽ làm hỏng task).
+/// Placeholder: `__DUR__` (số), `__MODEL_RE__`/`__MODEL__`/`__RATIO__` (chuỗi JSON) — dùng
+/// [`duration_hook_script`].
 pub const DURATION_HOOK_JS: &str = r#"
 (() => {
-  const N = __DUR__;
-  const patch = (body) => {
-    if (typeof body !== 'string' || !body.includes('chat_ability')) return body;
-    let changed = false;
-    let out = body.replace(/\\"duration\\":\s*\d+/g, () => { changed = true; return '\\"duration\\":' + N; });
-    out = out.replace(/"duration":\s*\d+/g, () => { changed = true; return '"duration":' + N; });
-    if (changed) document.documentElement.setAttribute('data-lvc-hook', 'patched:' + N);
+  const N = __DUR__, M = __MODEL_RE__, R = __RATIO__, MODEL = __MODEL__;
+  const mark = (v) => document.documentElement.setAttribute('data-lvc-hook', v);
+  const st = window.__lvcDurationHook || (window.__lvcDurationHook = {});
+  Object.assign(st, {N, M: M ? new RegExp(M, 'i') : null, R: R || '', MODEL: MODEL || ''});
+  const grab = (body, re) => { const m = body.match(re); return m ? m[1] : ''; };
+  const isVideoBody = (b) => typeof b === 'string' && b.includes('chat_ability') && /\\?"model\\?":\s*\\?"(seedance|Seedance|ic_mini)/.test(b);
+  const guard = (body) => {
+    if (!isVideoBody(body)) return body;
+    let out = body.replace(/(\\*)"duration(\\*)"\s*:\s*\d+/g, (m, l, r) => l + '"duration' + r + '":' + st.N);
+    if (st.R) {
+      out = out.replace(/(\\*)"ratio(\\*)"\s*:\s*(\\*)"[^"\\]*(\\*)"/g,
+        (m, a, b, c, d) => a + '"ratio' + b + '":' + c + '"' + st.R + d + '"');
+    }
+    if (st.MODEL) {
+      out = out.replace(/(\\*)"model(\\*)"\s*:\s*(\\*)"[^"\\]*(\\*)"/g,
+        (m, a, b, c, d) => a + '"model' + b + '":' + c + '"' + st.MODEL + d + '"');
+    }
+    const model = grab(out, /\\?"model\\?":\s*\\?"?([^"\\,}]+)/), ratio = grab(out, /\\?"ratio\\?":\s*\\?"?([^"\\,}]+)/);
+    mark('patched:' + st.N + ':' + model + ':' + ratio);
     return out;
   };
   const isTarget = (u) => typeof u === 'string' && u.includes('/chat/completion');
-  if (window.__lvcDurationHook) { window.__lvcDurationHook.N = N; document.documentElement.setAttribute('data-lvc-hook', 'installed:' + N); return; }
-  const st = window.__lvcDurationHook = {N};
+  const note = (t) => { try { document.documentElement.setAttribute('data-lvc-chat-resp', String(t).slice(0, 2000)); } catch (e) {} };
+  const tee = (resp) => { try { resp.clone().text().then(note, () => {}); } catch (e) {} return resp; };
+  const noteReq = (u, b) => { try {
+      document.documentElement.setAttribute('data-lvc-chat-url', String(u || '').slice(0, 1200));
+      document.documentElement.setAttribute('data-lvc-chat-req', String(b || '').slice(0, 4000));
+    } catch (e) {} };
+  if (st.installed) { mark('installed:' + N); return; }
+  st.installed = true;
   const of = window.fetch;
   window.fetch = function (input, init) {
     try {
       const u = typeof input === 'string' ? input : (input && input.url);
-      if (isTarget(u) && init && typeof init.body === 'string') init = Object.assign({}, init, {body: patch(init.body)});
+      if (isTarget(u) && init && typeof init.body === 'string') { init = Object.assign({}, init, {body: guard(init.body)}); noteReq(u, init.body); }
     } catch (e) {}
-    return of.call(this, input, init);
+    const p = of.call(this, input, init);
+    try {
+      const u = typeof input === 'string' ? input : (input && input.url);
+      if (isTarget(u)) return p.then(tee, (e) => { note('FETCH_FAILED ' + (e && e.message)); throw e; });
+    } catch (e) {}
+    return p;
   };
   const oo = XMLHttpRequest.prototype.open, os = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (m, u) { this.__lvc_u = u; return oo.apply(this, arguments); };
-  XMLHttpRequest.prototype.send = function (b) { try { if (isTarget(this.__lvc_u)) b = patch(b); } catch (e) {} return os.call(this, b); };
-  document.documentElement.setAttribute('data-lvc-hook', 'installed:' + N);
+  XMLHttpRequest.prototype.send = function (b) {
+    try { if (isTarget(this.__lvc_u)) { b = guard(b); noteReq(this.__lvc_u, b); } } catch (e) {}
+    try { if (isTarget(this.__lvc_u)) this.addEventListener('load', () => note(this.responseText || ('HTTP ' + this.status))); } catch (e) {}
+    return os.call(this, b);
+  };
+  mark('installed:' + N);
 })();
 "#;
 
-/// `video_worker_ui.py:2245-2246` `duration_hook_script(duration)` — thay `__DUR__` bang so giay.
+/// Khoá model → regex khớp giá trị `model` trong body web (`model_body_regex`, bản mới).
 #[must_use]
-pub fn duration_hook_script(duration: u16) -> String {
-    DURATION_HOOK_JS.replace("__DUR__", &duration.to_string())
+pub fn model_body_regex(model: Model) -> &'static str {
+    match model {
+        Model::Seedance25 => r"2[._]?5",
+        Model::Seedance10 => r"ic_mini|1[._]?0",
+        Model::Seedance20 => r"2[._]?0",
+    }
+}
+
+/// Giá trị `model` ghi vào `ability_param` (`model_body_value`, bản mới).
+#[must_use]
+pub fn model_body_value(model: Model) -> &'static str {
+    match model {
+        Model::Seedance25 => "seedance_v2.5",
+        Model::Seedance10 => "ic_mini",
+        Model::Seedance20 => "Seedance_2.0_Pro",
+    }
+}
+
+/// Thay các placeholder trong [`DURATION_HOOK_JS`]. `ratio` rỗng/`default` → không ép tỉ lệ. Giá
+/// trị model/ratio bọc JSON (khớp `_json.dumps` của bản Python).
+#[must_use]
+pub fn duration_hook_script(duration: u16, model: Model, ratio: Option<&str>) -> String {
+    let json = |s: &str| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string());
+    let ratio = ratio
+        .filter(|r| !r.is_empty() && *r != "default")
+        .unwrap_or("");
+    DURATION_HOOK_JS
+        .replace("__DUR__", &duration.to_string())
+        .replace("__MODEL_RE__", &json(model_body_regex(model)))
+        .replace("__MODEL__", &json(model_body_value(model)))
+        .replace("__RATIO__", &json(ratio))
 }
 
 /// `video_worker_ui.py:2329` `ABILITY_TAG_SEL` — the ky nang trong o nhap (do DOM 2026-09-17: dau
@@ -541,7 +604,6 @@ pub const SEND_BTN_FINDER: &str = "(() => { const has = (b, s) => (b.getAttribut
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dola::py_src::{MODES_PY, VIDEO_WORKER_UI, python_source, same_bytes};
 
     // ---------- regex (semantics Python/Playwright) ----------
 
@@ -847,13 +909,30 @@ mod tests {
     }
 
     #[test]
-    fn duration_hook_script_thay_dur() {
-        assert_eq!(DURATION_HOOK_JS.matches("__DUR__").count(), 1);
-        let js = duration_hook_script(30);
-        assert!(js.contains("const N = 30;"), "{js}");
-        assert!(!js.contains("__DUR__"));
+    fn duration_hook_script_thay_placeholder() {
+        use lvc_core::Model;
+        let js = duration_hook_script(30, Model::Seedance25, Some("16:9"));
+        // Moi placeholder da duoc thay, khong con sot.
+        for ph in ["__DUR__", "__MODEL_RE__", "__MODEL__", "__RATIO__"] {
+            assert!(!js.contains(ph), "con sot {ph}: {js}");
+        }
+        assert!(
+            js.contains("const N = 30, M = \"2[._]?5\", R = \"16:9\", MODEL = \"seedance_v2.5\";"),
+            "{js}"
+        );
         assert!(js.starts_with("\n(() => {"));
         assert!(js.ends_with("})();\n"));
+    }
+
+    #[test]
+    fn duration_hook_ratio_rong_thanh_chuoi_rong() {
+        use lvc_core::Model;
+        let js = duration_hook_script(10, Model::Seedance20, None);
+        assert!(js.contains("R = \"\""), "{js}");
+        assert!(js.contains("MODEL = \"Seedance_2.0_Pro\""), "{js}");
+        // "default" cung coi nhu khong ep ti le.
+        let js2 = duration_hook_script(10, Model::Seedance20, Some("default"));
+        assert!(js2.contains("R = \"\""), "{js2}");
     }
 
     #[test]
@@ -894,142 +973,5 @@ mod tests {
         assert_eq!(LANGUAGE_COOKIES, ["user_language_code", "i18next"]);
         assert_eq!(DOLA_CHAT_URL, "https://www.dola.com/chat");
         assert_eq!(CAPTCHA_FRAME_KEY, "bdcaptcha.html");
-    }
-
-    // ---------- so byte voi nguon Python (bo qua neu file vang) ----------
-
-    /// Moi hang chep nguyen van <-> literal Python cung ten trong `video_worker_ui.py` (HEAD
-    /// 3d07c19). Doc file luc test; vang -> in ly do, khong fail.
-    #[test]
-    fn chep_nguyen_van_khop_video_worker_ui_py() {
-        let Some(src) = python_source(VIDEO_WORKER_UI) else {
-            return;
-        };
-        let pairs: [(&str, &str); 22] = [
-            ("CAPTCHA_FRAME_KEY", CAPTCHA_FRAME_KEY),
-            ("RECENT_IDS_JS", RECENT_IDS_JS),
-            ("COUNT_IMG_JS", COUNT_IMG_JS),
-            ("PASTE_IMAGE_JS", PASTE_IMAGE_JS),
-            ("PASTE_MAIN_WORLD_SCRIPT", PASTE_MAIN_WORLD_SCRIPT),
-            ("PASTE_INJECT_JS", PASTE_INJECT_JS),
-            ("PASTE_TRIGGER_JS", PASTE_TRIGGER_JS),
-            ("PASTE_RESULT_JS", PASTE_RESULT_JS),
-            ("ATTACH_CARD_SEL", ATTACH_CARD_SEL),
-            ("SESSION_JS", SESSION_JS),
-            ("DOLA_LANG_JS", DOLA_LANG_JS),
-            ("DOLA_SET_JA_JS", DOLA_SET_JA_JS),
-            ("MODE_BTN_JS", MODE_BTN_JS),
-            ("SIDEBAR_LAST_LEAF_JS", SIDEBAR_LAST_LEAF_JS),
-            ("NEW_IMAGES_JS", NEW_IMAGES_JS),
-            ("ADD_REF_TIP_RE", ADD_REF_TIP_SRC),
-            ("VIDEO_BTN_RE", VIDEO_BTN_SRC),
-            ("RATIO_BTN_RE", RATIO_BTN_SRC),
-            ("MODEL_BTN_RE", MODEL_BTN_SRC),
-            ("DUR_BTN_RE", DUR_BTN_SRC),
-            ("DURATION_HOOK_JS", DURATION_HOOK_JS),
-            ("ABILITY_TAG_SEL", ABILITY_TAG_SEL),
-        ];
-        let mut bad = Vec::new();
-        for (name, rust) in pairs {
-            if !same_bytes(&src, name, rust) {
-                bad.push(name);
-            }
-        }
-        if !same_bytes(&src, "CLEAR_ABILITY_TAG_JS", CLEAR_ABILITY_TAG_JS) {
-            bad.push("CLEAR_ABILITY_TAG_JS");
-        }
-        if !same_bytes(&src, "ABILITY_TAG_RE", ABILITY_TAG_SRC) {
-            bad.push("ABILITY_TAG_RE");
-        }
-        // Task 7: `_BUTTONS_JS` (:1948) la hang module (ten bat dau `_`)
-        if !same_bytes(&src, "_BUTTONS_JS", BUTTONS_JS) {
-            bad.push("_BUTTONS_JS");
-        }
-        // M-4: VIDEO_ID_RE (re-export lvc-core) — bo tien to `(?i)` roi so voi :1432
-        let video_id_src = VIDEO_ID_RE
-            .as_str()
-            .strip_prefix("(?i)")
-            .expect("VIDEO_ID_RE co (?i)");
-        if !same_bytes(&src, "VIDEO_ID_RE", video_id_src) {
-            bad.push("VIDEO_ID_RE");
-        }
-        assert!(bad.is_empty(), "lech nguon Python: {bad:?}");
-        // M-4: DOLA_CHAT_URL (:1195, :2462) va OPEN_MENU_JS (:1848) — chuoi nam trong ham
-        assert!(
-            src.contains(&format!("\"{DOLA_CHAT_URL}\"")),
-            "DOLA_CHAT_URL"
-        );
-        assert!(
-            src.contains("page.locator('[role=\"menu\"]')"),
-            "OPEN_MENU_JS selector :1848"
-        );
-        assert!(
-            OPEN_MENU_JS.contains(r#"'[role="menu"]'"#),
-            "OPEN_MENU_JS dung cung selector"
-        );
-
-        // Nhan che do :1854-1856 (tuple) + regex :1858 xay tu do
-        assert!(src.contains("\nFAST_MODE_LABELS = (\"高速\", \"Nhanh\", \"Fast\")\n"));
-        assert!(src.contains("\nPRO_MODE_LABELS = (\"プロ\", \"Pro\")\n"));
-        assert!(src.contains("\nMODE_BTN_RE = re.compile(r\"(\" + \"|\".join(re.escape(v) for v in ALL_MODE_LABELS) + r\")\", re.IGNORECASE)\n"));
-        // Regex/chuoi nam TRONG ham (khong phai hang module) :1903, :2038, :2059, :2091, :2095, :1987
-        for needle in [
-            format!("has_text=re.compile(r\"{SKILL_BTN_SRC}\", re.IGNORECASE)"),
-            format!("has_text=re.compile(r\"{VIDEO_SKILL_OPT_SRC}\", re.IGNORECASE)"),
-            format!("has_text=re.compile(r\"{VIDEO_TAG_SRC}\", re.IGNORECASE)"),
-            format!("page.locator('{MENU_ITEM_SEL}', has_text=item_re)"),
-            format!("page.locator('{DUR_MENU_ITEM_SEL}', has_text=re.compile("),
-            "page.locator('button:has-text(\"OK\"), button:has-text(\"Đồng ý\")')".to_string(),
-            // Task 7 (:791 f-string, :1929-1930, :2003, :2037, :1903-1904, :2192)
-            "COUNT_ATTACH_JS = f\"() => document.querySelectorAll('{ATTACH_CARD_SEL}').length\"".to_string(),
-            format!("has_text=re.compile(r\"{MODE_BTN_LOOSE_SRC}\", re.IGNORECASE)"),
-            "page.locator('button:has-text(\"高速\"), button:has-text(\"Fast\"), button:has-text(\"Nhanh\"), button:has-text(\"Pro\"), button:has-text(\"プロ\")')".to_string(),
-            format!("page.locator(\"{DRAFT_BOX_SEL}\")"),
-            format!("re.compile(r\"{FAST_ITEM_SRC}\", re.IGNORECASE) if mode == \"fast\" else re.compile(r\"{PRO_ITEM_SRC}\", re.IGNORECASE)"),
-            r#"has_text=re.compile(
-                rf"^\s*{int(duration)}s(?:\b|\s|$)", re.IGNORECASE)"#.to_string(),
-            r#"page.locator('[role="menuitem"]', has_text=re.compile(rf"^\s*{re.escape(ratio)}(?:\b|\s|$)"))"#.to_string(),
-        ] {
-            assert!(src.contains(&needle), "khong thay trong Python: {needle}");
-        }
-        // Playwright chay regex `has_text=` TRONG trinh duyet (JS RegExp, co i) — literal JS cua ta
-        // phai la chinh pattern do.
-        assert!(finder_button_text(VIDEO_BTN_SRC).contains(&format!("/{VIDEO_BTN_SRC}/i")));
-    }
-
-    /// `UI_LABELS` <-> `modes.py:36-50`.
-    #[test]
-    fn ui_labels_khop_modes_py() {
-        let Some(src) = python_source(MODES_PY) else {
-            return;
-        };
-        for (key, val) in [
-            ("mode_fast", UI_LABELS.mode_fast),
-            ("mode_pro", UI_LABELS.mode_pro),
-            ("video_btn", UI_LABELS.video_btn),
-            ("skill_btn", UI_LABELS.skill_btn),
-            ("skill_video", UI_LABELS.skill_video),
-            ("ratio_btn", UI_LABELS.ratio_btn),
-            ("model_prefix", UI_LABELS.model_prefix),
-        ] {
-            assert!(
-                src.contains(&format!("    \"{key}\": \"{val}\",")),
-                "UI_LABELS[{key:?}] != {val:?}"
-            );
-        }
-        let tuple = |xs: &[&str]| {
-            xs.iter()
-                .map(|x| format!("\"{x}\""))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        assert!(src.contains(&format!(
-            "    \"model_current\": ({}),",
-            tuple(UI_LABELS.model_current)
-        )));
-        for (model, opts) in &MODEL_OPTIONS {
-            let line = format!("        \"{}\": ({}),", model.wire_str(), tuple(opts));
-            assert!(src.contains(&line), "khong thay: {line}");
-        }
     }
 }

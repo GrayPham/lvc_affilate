@@ -1036,10 +1036,18 @@ pub async fn hook_state(page: &Page) -> Result<String, BrowserError> {
 ///
 /// # Errors
 /// `DurationUnavailable` khi trang thai khong dung; `Browser` (JS/CDP).
-pub async fn install_duration_hook(page: &Page, duration: u16) -> Result<(), DolaError> {
-    let _: serde_json::Value = ops::eval_json(page, &duration_hook_script(duration)).await?;
+pub async fn install_duration_hook(
+    page: &Page,
+    duration: u16,
+    model: lvc_core::Model,
+    ratio: Option<&str>,
+) -> Result<(), DolaError> {
+    let _: serde_json::Value =
+        ops::eval_json(page, &duration_hook_script(duration, model, ratio)).await?;
     let state = hook_state(page).await?;
-    if state == format!("installed:{duration}") || state == format!("patched:{duration}") {
+    // Bản hook mới đánh dấu `patched:N:model:ratio` — chấp nhận mọi `patched:N...`.
+    if state == format!("installed:{duration}") || state.starts_with(&format!("patched:{duration}"))
+    {
         tracing::info!(state = %state, "hook duration da cai (ADR-044)");
         return Ok(());
     }

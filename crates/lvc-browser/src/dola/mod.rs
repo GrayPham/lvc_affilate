@@ -9,8 +9,6 @@ pub mod error;
 pub mod http;
 pub mod labels;
 pub mod poll;
-#[cfg(test)]
-pub(crate) mod py_src;
 pub mod refs;
 pub mod session;
 pub mod skill;

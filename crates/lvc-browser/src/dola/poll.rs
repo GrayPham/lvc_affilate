@@ -1953,19 +1953,6 @@ mod tests {
         assert_eq!(confirm_key(&[]), "");
     }
 
-    /// `DOM_TAIL_JS` chep nguyen van `video_worker_ui.py:1306` (inline, khong phai hang co ten).
-    #[test]
-    fn dom_tail_js_khop_python() {
-        let Some(src) = super::super::py_src::python_source("src/video/video_worker_ui.py") else {
-            return;
-        };
-        let needle = format!("page.evaluate(\"{DOM_TAIL_JS}\")");
-        assert!(
-            src.contains(&needle),
-            "khong thay {needle:?} trong nguon Python"
-        );
-    }
-
     // ===== Vong poll (wiremock + FakePollPage) =====
 
     /// Trang gia: cookie co dinh, captcha/DOM/loi tuy chinh, ghi lai tra loi da gui.
