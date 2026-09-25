@@ -263,6 +263,39 @@ impl Vault {
         Ok(self.repo.delete(id).await?)
     }
 
+    /// Kiểm tra một credential và ghi `status`. `api_key` (openai/gemini) → gọi list-models bằng
+    /// key; provider/kind khác → `unknown`. reqwest nằm TRONG crate này (lvc-app không cần).
+    ///
+    /// # Errors
+    /// [`VaultRepoError`] khi không tìm thấy hoặc giải mã/ghi lỗi.
+    pub async fn verify(&self, id: &str) -> Result<crate::VerifyOutcome, VaultRepoError> {
+        let row = self.repo.get(id).await?.ok_or(VaultRepoError::NotFound)?;
+        let outcome = if row.kind == "api_key" {
+            let plain = self.secret_box.decrypt(&row.secret)?;
+            let meta: serde_json::Value =
+                serde_json::from_str(&row.meta).unwrap_or(serde_json::Value::Null);
+            let base = meta
+                .get("base_url")
+                .and_then(serde_json::Value::as_str)
+                .filter(|s| !s.is_empty());
+            let client = reqwest::Client::new();
+            crate::verify_api_key(
+                &client,
+                &row.provider,
+                &String::from_utf8_lossy(&plain),
+                base,
+            )
+            .await
+        } else {
+            crate::VerifyOutcome {
+                status: "unknown".to_string(),
+                detail: "kiem bang trinh duyet - chua ho tro o P4c".to_string(),
+            }
+        };
+        self.repo.set_status(id, &outcome.status).await?;
+        Ok(outcome)
+    }
+
     /// Mượn plaintext bí mật để THỰC THI (node) — KHÔNG đi qua IPC. `meta` kèm theo.
     ///
     /// # Errors
