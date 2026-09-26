@@ -1,0 +1,16 @@
+{
+  "name": "Kịch bản nhiều cảnh → nhiều video",
+  "description": "Mỗi dòng prompt là một cảnh; tạo hàng loạt video rồi lưu tất cả (dựng story/storyboard).",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "cảnh 1: toàn cảnh thành phố lúc bình minh | ratio=16:9\ncảnh 2: cận cảnh nhân vật bước đi | dur=10\ncảnh 3: máy quay lướt qua con phố đông người" }, "x": 60, "y": 220 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.0", "ratio": "16:9", "duration": 10, "logo": "off", "account": "" }, "x": 470, "y": 220 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 220 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e2", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Talking-head review",
+  "description": "Một ảnh nhân vật + prompt kịch bản review → video người thật nói trước camera, lưu ra thư mục.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "character", "kind": { "kind": "image_upload", "paths": [], "label": "character" }, "x": 60, "y": 140 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "Cận cảnh một người nói trước camera, phong cách review chân thật, ánh sáng mềm, 9:16" }, "x": 60, "y": 360 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.5", "ratio": "9:16", "duration": 10, "logo": "off", "account": "" }, "x": 470, "y": 220 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 220 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "character", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e3", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}
