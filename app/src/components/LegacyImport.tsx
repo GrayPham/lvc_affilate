@@ -3,6 +3,7 @@
 // tu `src/ipc/commands.ts`/`src/ipc/types.ts` (Task 14 da them, review Task 13 fix round 1 I1:
 // xoa ban wrapper/schema tay tung co o day de tranh trung lap voi ban chinh thuc).
 import { useState } from "react";
+import { confirmDialog } from "../store/dialog";
 
 import { legacyImport, pickDirectory } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
@@ -23,12 +24,15 @@ export default function LegacyImport() {
     if (dir === null) {
       return;
     }
-    const confirmed = window.confirm(
-      `Nhập dữ liệu từ bản Python cũ tại:\n"${dir}"\n\n` +
+    const confirmed = await confirmDialog({
+      title: "Nhập dữ liệu bản Python",
+      message:
+        `Nhập dữ liệu từ bản Python cũ tại:\n"${dir}"\n\n` +
         "Sẽ đọc DB task/tài khoản/lượt dùng/cài đặt của bản cũ và ghi vào dữ liệu hiện tại " +
         "(hồ sơ trình duyệt tài khoản đã có sẵn ở đây sẽ KHÔNG bị ghi đè). Thư mục bản Python cũ " +
-        "chỉ được ĐỌC (mở chế độ read-only) và giữ nguyên, không bị sửa/xoá gì. Tiếp tục?",
-    );
+        "chỉ được ĐỌC (read-only) và giữ nguyên. Tiếp tục?",
+      okText: "Nhập",
+    });
     if (!confirmed) {
       return;
     }

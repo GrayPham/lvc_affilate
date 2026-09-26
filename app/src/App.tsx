@@ -6,6 +6,7 @@ import TasksPage from "./pages/TasksPage";
 import SettingsPage from "./pages/SettingsPage";
 import AccountsPage from "./pages/AccountsPage";
 import CredentialsPage from "./pages/CredentialsPage";
+import DialogHost from "./components/DialogHost";
 
 // P3c Task 2: tab "Kịch bản" dat NGAY SAU "Workflow". P4c: them "Tài khoản AI" (kho tai khoan AI)
 // SAU "Tài khoản" (Dola) — giu tab Dola cu nguyen ven.
@@ -58,6 +59,8 @@ export default function App() {
       <main className="flex-1 overflow-auto">
         <ActivePage />
       </main>
+      {/* Dialog trong-app (thay window.confirm/prompt/alert) — mount mot lan cho ca app. */}
+      <DialogHost />
     </div>
   );
 }

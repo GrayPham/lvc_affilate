@@ -4,6 +4,7 @@
 // canh cua kich ban DANG MO — vo hieu khi chua chon kich ban nao). Doc THANG `store/scripts.ts`
 // (giong `TaskTable` doc thang `store/tasks.ts`).
 import { useState } from "react";
+import { promptDialog } from "../store/dialog";
 
 import { useScriptsStore } from "../store/scripts";
 import { pickDirectory } from "../ipc/commands";
@@ -160,7 +161,7 @@ export default function ScriptList() {
   }
 
   async function handleCreate(): Promise<void> {
-    const name = window.prompt("Tên kịch bản mới:", "");
+    const name = await promptDialog({ title: "Kịch bản mới", message: "Tên kịch bản:", defaultValue: "", okText: "Tạo" });
     if (name === null) {
       return;
     }

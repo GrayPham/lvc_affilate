@@ -4,6 +4,7 @@
 // nhan CA `draft` (dang sua) LAN `docScene` (su that server, `undefined` cho dong MOI chua luu)
 // tu `SceneTable`, khong tu doc store.
 import { ModeSchema, ModelSchema, RatioSchema, type Mode, type Model, type SceneDto } from "../ipc/types";
+import { confirmDialog } from "../store/dialog";
 import { allowedDurations } from "../graph/rules";
 import { canEditScene, canRerun, canRun, canStop, sceneStatusLabel } from "../format/scene";
 import type { DraftScene } from "../store/scripts";
@@ -86,8 +87,14 @@ export default function SceneRow({
     onRun();
   }
 
-  function handleRerunClick(): void {
-    if (window.confirm("Chạy lại cảnh này sẽ tạo video mới và tốn credit. Tiếp tục?")) {
+  async function handleRerunClick(): Promise<void> {
+    if (
+      await confirmDialog({
+        title: "Chạy lại cảnh",
+        message: "Chạy lại cảnh này sẽ tạo video mới và tốn credit. Tiếp tục?",
+        okText: "Chạy lại",
+      })
+    ) {
       onRun();
     }
   }
@@ -211,7 +218,7 @@ export default function SceneRow({
             </button>
           ) : null}
           {showRerun ? (
-            <button type="button" disabled={disabled} className={BTN_NEUTRAL} onClick={handleRerunClick}>
+            <button type="button" disabled={disabled} className={BTN_NEUTRAL} onClick={() => void handleRerunClick()}>
               Chạy lại
             </button>
           ) : null}

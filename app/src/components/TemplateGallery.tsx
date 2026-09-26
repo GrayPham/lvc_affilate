@@ -3,6 +3,7 @@
 // the private con co xoa 2-buoc. "Dùng mẫu" lay `template_get` roi goi `loadGraph` (dung duong nhu
 // mo mot workflow da luu, xem `RunBar.handlePicked`) — neu canvas dang co node thi hoi truoc.
 import { useEffect, useMemo, useState } from "react";
+import { confirmDialog } from "../store/dialog";
 
 import { useGraphStore } from "../store/graph";
 import { useTemplatesStore } from "../store/templates";
@@ -54,7 +55,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
       const doc = await getDoc(meta.id);
       // Kiem tra TRUC TIEP tu store (khong subscribe node vao component nay cho re-render vo ich).
       const hasNodes = useGraphStore.getState().nodes.length > 0;
-      if (hasNodes && !window.confirm("Thay đồ thị hiện tại?")) {
+      if (hasNodes && !(await confirmDialog({ title: "Dùng mẫu", message: "Thay đồ thị hiện tại bằng mẫu này?", okText: "Thay", danger: true }))) {
         setBusyId(null);
         return;
       }

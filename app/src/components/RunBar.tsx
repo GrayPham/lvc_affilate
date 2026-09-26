@@ -16,6 +16,7 @@ import {
   workflowValidate,
 } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
+import { confirmDialog, promptDialog } from "../store/dialog";
 import { describeTemplateError } from "../format/template";
 import { GraphErrorSchema, type PlanSummary, type WorkflowDoc } from "../ipc/types";
 import { formatGraphError } from "../graph/errors";
@@ -128,7 +129,7 @@ export default function RunBar() {
   }
 
   async function handleSave(): Promise<void> {
-    const name = window.prompt("Tên workflow:", workflowName);
+    const name = await promptDialog({ title: "Lưu workflow", message: "Tên workflow:", defaultValue: workflowName, okText: "Lưu" });
     if (name === null || name.trim() === "") {
       return;
     }
@@ -154,11 +155,11 @@ export default function RunBar() {
       setMessage("Canvas trống — chưa có gì để lưu thành mẫu.");
       return;
     }
-    const name = window.prompt("Tên mẫu:", workflowName);
+    const name = await promptDialog({ title: "Lưu thành mẫu", message: "Tên mẫu:", defaultValue: workflowName, okText: "Tiếp" });
     if (name === null || name.trim() === "") {
       return;
     }
-    const description = window.prompt("Mô tả (tuỳ chọn):", "");
+    const description = await promptDialog({ title: "Lưu thành mẫu", message: "Mô tả (tuỳ chọn):", defaultValue: "", multiline: true, okText: "Lưu" });
     if (description === null) {
       return;
     }
@@ -188,9 +189,13 @@ export default function RunBar() {
     if (!running || !runId) {
       return true;
     }
-    const proceed = window.confirm(
-      `Đang có lần chạy (run ${runId}) chưa xong. Huỷ lần chạy này để tiếp tục?`,
-    );
+    const proceed = await confirmDialog({
+      title: "Đang chạy",
+      message: `Đang có lần chạy (run ${runId}) chưa xong. Huỷ lần chạy này để tiếp tục?`,
+      okText: "Huỷ lần chạy",
+      cancelText: "Để nguyên",
+      danger: true,
+    });
     if (!proceed) {
       return false;
     }
@@ -206,7 +211,15 @@ export default function RunBar() {
     if (!(await confirmCancelIfRunning())) {
       return;
     }
-    if (nodes.length > 0 && !window.confirm("Tạo workflow mới? Canvas hiện tại sẽ bị xoá (nếu chưa lưu sẽ mất).")) {
+    if (
+      nodes.length > 0 &&
+      !(await confirmDialog({
+        title: "Workflow mới",
+        message: "Tạo workflow mới? Canvas hiện tại sẽ bị xoá (nếu chưa lưu sẽ mất).",
+        okText: "Tạo mới",
+        danger: true,
+      }))
+    ) {
       return;
     }
     resetGraph();
