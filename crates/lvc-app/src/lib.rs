@@ -101,6 +101,7 @@ pub fn run() {
             commands::credentials::credential_update,
             commands::credentials::credential_verify,
             commands::credentials::credential_delete,
+            commands::login::cookie::login_import_cookie_files,
             commands::templates::template_list,
             commands::templates::template_get,
             commands::templates::template_save_private,

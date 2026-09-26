@@ -225,6 +225,23 @@ export async function accountImportCookieFiles(
   return z.array(BulkCookieItemSchema).parse(res);
 }
 
+/** (A) Nap cookie NHIEU FILE vao kho credentials theo NEN TANG (provider), kind session. */
+export const LoginImportItemSchema = z.object({
+  label: z.string(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+});
+export type LoginImportItem = z.infer<typeof LoginImportItemSchema>;
+
+export async function loginImportCookieFiles(
+  provider: string,
+  paths: string[],
+  proxy: string,
+): Promise<LoginImportItem[]> {
+  const res = await invoke<unknown>("login_import_cookie_files", { provider, paths, proxy });
+  return z.array(LoginImportItemSchema).parse(res);
+}
+
 export async function accountVerify(name: string): Promise<VerifyReport> {
   const res = await invoke<unknown>("account_verify", { name });
   return VerifyReportSchema.parse(res);

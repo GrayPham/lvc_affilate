@@ -22,6 +22,8 @@ export const CREDENTIAL_PROVIDER_VI: Record<CredentialProvider, string> = {
   chatgpt_web: "ChatGPT (web)",
   openai: "OpenAI",
   gemini: "Gemini",
+  facebook: "Facebook",
+  apple: "Apple",
 };
 
 export function credentialProviderLabel(provider: CredentialProvider): string {

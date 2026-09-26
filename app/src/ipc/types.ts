@@ -601,6 +601,8 @@ export const CredentialProviderSchema = z.enum([
   "chatgpt_web",
   "openai",
   "gemini",
+  "facebook",
+  "apple",
 ]);
 export type CredentialProvider = z.infer<typeof CredentialProviderSchema>;
 

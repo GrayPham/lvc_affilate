@@ -19,15 +19,19 @@ import {
   type CredentialMode,
 } from "../format/credential";
 import { useCredentialsStore } from "../store/credentials";
+import { loginImportCookieFiles, pickFiles, type LoginImportItem } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import type { CredentialKind, CredentialProvider, CredentialView } from "../ipc/types";
 
 // Loai bi mat cho phep theo provider (P4c contract) — dung suy `kind` tu che do "cookie".
 const KINDS_BY_PROVIDER: Record<CredentialProvider, readonly CredentialKind[]> = {
   dola: ["session"],
   openai: ["api_key"],
-  gemini: ["api_key"],
+  gemini: ["api_key", "session"],
   google: ["login", "session"],
   chatgpt_web: ["login", "session"],
+  facebook: ["login", "session"],
+  apple: ["login", "session"],
 };
 
 // Che do API hop le theo provider.
@@ -36,15 +40,29 @@ const MODES_BY_PROVIDER: Record<CredentialProvider, readonly CredentialMode[]> =
   google: ["cookie"],
   chatgpt_web: ["cookie"],
   openai: ["official", "custom", "sdk"],
-  gemini: ["official", "custom", "sdk"],
+  gemini: ["official", "custom", "sdk", "cookie"],
+  facebook: ["cookie"],
+  apple: ["cookie"],
 };
 
 const PROVIDER_ORDER: readonly CredentialProvider[] = [
   "dola",
   "google",
+  "gemini",
+  "facebook",
+  "apple",
   "chatgpt_web",
   "openai",
+];
+
+/** Nền tảng dùng cookie/đăng nhập (cho nạp cookie hàng loạt). */
+const COOKIE_PROVIDERS: readonly CredentialProvider[] = [
+  "dola",
+  "google",
   "gemini",
+  "facebook",
+  "apple",
+  "chatgpt_web",
 ];
 
 /** Che do -> loai bi mat (kind) luu xuong backend. */
@@ -88,6 +106,8 @@ export default function CredentialsPage() {
         <p className="text-xs text-red-600">Không tải được danh sách tài khoản AI: {error}</p>
       ) : null}
 
+      <BulkCookieLogin onDone={() => void load()} />
+
       {rows.length === 0 && !loading ? (
         <p className="text-sm text-slate-400">Chưa có tài khoản AI nào — thêm ở form bên dưới.</p>
       ) : null}
@@ -114,6 +134,101 @@ export default function CredentialsPage() {
 
       <AddCredentialForm />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// (A) Nạp cookie HÀNG LOẠT: chọn nền tảng + chọn nhiều file cookies.txt cùng lúc -> kho.
+// ---------------------------------------------------------------------------------------------
+
+function BulkCookieLogin({ onDone }: { onDone: () => void }) {
+  const [provider, setProvider] = useState<CredentialProvider>("dola");
+  const [proxy, setProxy] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<LoginImportItem[] | null>(null);
+
+  async function pick(): Promise<void> {
+    setError(null);
+    let paths: string[] = [];
+    try {
+      paths = await pickFiles(false);
+    } catch (e) {
+      setError(errorText(e));
+      return;
+    }
+    if (paths.length === 0) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await loginImportCookieFiles(provider, paths, proxy.trim());
+      setItems(res);
+      onDone();
+    } catch (e) {
+      setError(describeCredentialError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded border border-dashed border-slate-300 bg-slate-50 p-3">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Nạp cookie hàng loạt (nhiều file)
+      </h3>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs">
+          Nền tảng
+          <select
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            value={provider}
+            disabled={busy}
+            onChange={(e) => setProvider(e.target.value as CredentialProvider)}
+          >
+            {COOKIE_PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {credentialProviderLabel(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-xs">
+          Proxy chung (tuỳ chọn)
+          <input
+            className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
+            value={proxy}
+            disabled={busy}
+            onChange={(e) => setProxy(e.target.value)}
+            placeholder="để trống, hoặc ip:port"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy}
+          className="rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700 disabled:opacity-50"
+          onClick={() => void pick()}
+        >
+          {busy ? "Đang nạp…" : "Chọn nhiều file cookie…"}
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400">
+        Mỗi file = một tài khoản (tên = tên file), lưu dạng phiên (cookie) cho nền tảng đã chọn. Đường
+        hợp lệ — bạn tự xuất cookie đã đăng nhập.
+      </p>
+      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      {items ? (
+        <div className="mt-2 max-h-40 overflow-auto rounded border border-slate-200 bg-white">
+          {items.map((b, i) => (
+            <div key={`${b.label}-${i}`} className="flex items-start gap-2 border-b border-slate-100 px-2 py-1 text-xs last:border-b-0">
+              <span className={b.ok ? "text-emerald-600" : "text-red-600"}>{b.ok ? "✓" : "✗"}</span>
+              <span className="font-medium text-slate-800">{b.label}</span>
+              {b.error ? <span className="text-red-600">— {b.error}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
