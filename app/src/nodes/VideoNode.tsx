@@ -105,8 +105,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
           {videoSrc ? (
             <video
               src={videoSrc}
-              className="nodrag absolute inset-0 h-full w-full bg-black object-contain"
-              controls
+              className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain"
               muted
               playsInline
               preload="metadata"

@@ -47,7 +47,7 @@ function LabelPill({ label, onRename }: { label: string; onRename?: (name: strin
     return (
       <input
         ref={inputRef}
-        className="nodrag absolute left-2 top-2 z-10 w-28 rounded-md border border-sky-400/60 bg-black/80 px-1.5 py-0.5 text-[11px] text-white outline-none"
+        className="nodrag absolute left-2 top-2 z-10 w-32 rounded-md border border-sky-400/60 bg-black/80 px-1.5 py-0.5 text-[11px] text-white outline-none"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
@@ -65,7 +65,7 @@ function LabelPill({ label, onRename }: { label: string; onRename?: (name: strin
   return (
     <span
       className={
-        "absolute left-2 top-2 z-10 rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm " +
+        "absolute left-2 top-2 z-10 max-w-[80%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm " +
         (onRename ? "nodrag cursor-text hover:bg-black/75" : "pointer-events-none")
       }
       title={onRename ? "Nhấp đúp để đổi tên" : undefined}
@@ -97,14 +97,14 @@ export default function MediaCard({ label, selected, errors, runState, wide, onR
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >
-      {/* Than the = vung xem truoc */}
+      {/* Than the = vung xem truoc (KÉO node bằng chính vùng này — media để KHÔNG `nodrag`) */}
       <div className="relative">{children}</div>
 
-      {/* Pill nhan goc tren-trai (nhap dup de doi ten neu co onRename) */}
+      {/* Nhãn nhỏ góc trên-trái (kiểu Lumina; nhấp đúp đổi tên nếu có onRename) */}
       <LabelPill label={label} onRename={onRename} />
 
-      {/* Cham trang thai + badge tien do goc tren-phai */}
-      <div className="absolute right-2 top-2 flex items-center gap-1.5">
+      {/* Trạng thái góc trên-phải */}
+      <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1.5">
         {runState ? <NodeStatusBadge state={runState} /> : null}
         <span className={"h-2 w-2 rounded-full " + dotClass} />
       </div>

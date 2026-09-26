@@ -136,7 +136,7 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
       >
         <div className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]">
           {src ? (
-            <video src={src} className="nodrag absolute inset-0 h-full w-full bg-black object-contain" controls muted playsInline preload="metadata" />
+            <video src={src} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted playsInline preload="metadata" />
           ) : (
             <div className="flex flex-col items-center gap-2 text-slate-400">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
