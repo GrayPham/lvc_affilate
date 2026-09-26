@@ -13,6 +13,7 @@ members = [
     "crates/nodes/node-image-upload",
     "crates/nodes/node-save",
     "crates/nodes/node-dola-video",
+    "crates/nodes/node-concat",
 ]
 
 [workspace.package]
@@ -42,6 +43,7 @@ lvc-browser = { path = "crates/lvc-browser" }
 lvc-node-api = { path = "crates/lvc-node-api" }
 lvc-vault = { path = "crates/lvc-vault" }
 lvc-dola = { path = "crates/providers/lvc-dola" }
+node-concat = { path = "crates/nodes/node-concat" }
 node-prompt = { path = "crates/nodes/node-prompt" }
 node-image-upload = { path = "crates/nodes/node-image-upload" }
 node-save = { path = "crates/nodes/node-save" }

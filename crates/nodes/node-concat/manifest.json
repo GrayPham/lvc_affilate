@@ -1,0 +1,29 @@
+{
+  "kind": "concat",
+  "version": 1,
+  "category": "video",
+  "labelVi": "Ghép phân cảnh",
+  "inputs": [
+    {
+      "name": "in",
+      "type": "video",
+      "many": true,
+      "required": true,
+      "collect": true
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "video",
+      "many": false,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "defaultParams": {},
+  "paramsSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

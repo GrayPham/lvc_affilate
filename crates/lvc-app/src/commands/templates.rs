@@ -41,7 +41,7 @@ struct PublicTemplate {
 }
 
 /// `(id, raw json)` mỗi mẫu Public. id ổn định `public:<tên file>` (lưu trong workflow người dùng).
-const PUBLIC: [(&str, &str); 7] = [
+const PUBLIC: [(&str, &str); 8] = [
     (
         "public:affiliate-review",
         include_str!("../../templates/affiliate-review.json"),
@@ -61,6 +61,10 @@ const PUBLIC: [(&str, &str); 7] = [
     (
         "public:multi-scene-story",
         include_str!("../../templates/multi-scene-story.json"),
+    ),
+    (
+        "public:multi-scene-concat",
+        include_str!("../../templates/multi-scene-concat.json"),
     ),
     (
         "public:refs-to-video",
@@ -282,7 +286,7 @@ mod tests {
         let only_public = template_list_impl(&ctx, Some("public".into()))
             .await
             .unwrap();
-        assert_eq!(only_public.len(), 7);
+        assert_eq!(only_public.len(), 8);
         assert!(only_public.iter().all(|t| t.scope == "public"));
 
         let g = template_get_impl(&ctx, "public:product-unboxing")
@@ -295,7 +299,7 @@ mod tests {
         assert_eq!(meta.scope, "private");
 
         let all = template_list_impl(&ctx, None).await.unwrap();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 9);
         let priv_only = template_list_impl(&ctx, Some("private".into()))
             .await
             .unwrap();

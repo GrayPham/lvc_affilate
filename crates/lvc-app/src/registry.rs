@@ -12,6 +12,7 @@ pub fn build_registry() -> Registry {
         .with(node_image_upload::node())
         .with(node_save::node())
         .with(node_dola_video::node())
+        .with(node_concat::node())
 }
 
 #[cfg(test)]
@@ -25,6 +26,9 @@ mod tests {
             .into_iter()
             .map(|m| m.kind)
             .collect();
-        assert_eq!(kinds, ["dola_video", "image_upload", "prompt", "save"]);
+        assert_eq!(
+            kinds,
+            ["concat", "dola_video", "image_upload", "prompt", "save"]
+        );
     }
 }

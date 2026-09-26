@@ -32,6 +32,7 @@ import PromptNode from "../nodes/PromptNode";
 import ImageUploadNode from "../nodes/ImageUploadNode";
 import VideoNode from "../nodes/VideoNode";
 import SaveNode from "../nodes/SaveNode";
+import ConcatNode from "../nodes/ConcatNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import { isValidConnection } from "../graph/rules";
 import { ADDABLE_KINDS, type AddableNodeKind } from "../graph/ports";
@@ -53,6 +54,7 @@ const nodeTypes: NodeTypes = {
   prompt: PromptNode,
   image_upload: ImageUploadNode,
   dola_video: VideoNode,
+  concat: ConcatNode,
   save: SaveNode,
 } as unknown as NodeTypes;
 

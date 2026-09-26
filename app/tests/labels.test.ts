@@ -11,11 +11,12 @@ const RUST_LABEL_VI: Record<string, string> = {
   prompt: "Prompt",
   image_upload: "Tải ảnh lên",
   dola_video: "Tạo video Dola",
+  concat: "Ghép phân cảnh",
   save: "Lưu",
 };
 
 describe("NODE_LABEL_VI khop dung labelVi cua manifest node (Rust, P4a)", () => {
-  it("bao phu du 4 NodeKindTag, khong sot khong thua", () => {
+  it("bao phu du NodeKindTag, khong sot khong thua", () => {
     expect(Object.keys(NODE_LABEL_VI).sort()).toEqual([...NODE_KIND_ORDER].sort());
     expect(Object.keys(RUST_LABEL_VI).sort()).toEqual([...NODE_KIND_ORDER].sort());
   });

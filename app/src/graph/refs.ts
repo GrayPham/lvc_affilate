@@ -43,6 +43,8 @@ export function nodeChipLabel(data: NodeKind): string {
     }
     case "dola_video":
       return NODE_LABEL_VI.dola_video;
+    case "concat":
+      return NODE_LABEL_VI.concat;
     case "save":
       return NODE_LABEL_VI.save;
   }

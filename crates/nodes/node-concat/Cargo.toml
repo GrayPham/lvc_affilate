@@ -1,0 +1,22 @@
+[package]
+name = "node-concat"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Node "concat" — ghep nhieu video thanh 1 bang ffmpeg (spawn tien trinh). Xem CLAUDE.md cung thu
+# muc. Chi phu thuoc lvc-node-api + tokio (process/fs). KHONG node khac / engine / store / browser.
+[dependencies]
+lvc-node-api.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["process", "fs", "io-util"] }
+
+[dev-dependencies]
+lvc-core.workspace = true
+tokio-util.workspace = true
+
+[lints]
+workspace = true

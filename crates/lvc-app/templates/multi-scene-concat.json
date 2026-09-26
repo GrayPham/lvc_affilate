@@ -1,0 +1,18 @@
+{
+  "name": "Nhiều cảnh → ghép thành 1 video",
+  "description": "Mỗi dòng prompt là một short; tạo hàng loạt rồi GHÉP PHÂN CẢNH thành một video liền mạch, lưu ra thư mục.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "cảnh 1: mở đầu gây chú ý\ncảnh 2: nội dung chính\ncảnh 3: chốt và kêu gọi hành động" }, "x": 60, "y": 220 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.0", "ratio": "9:16", "duration": 10, "logo": "off", "account": "" }, "x": 430, "y": 220 },
+      { "id": "concat", "kind": { "kind": "concat" }, "x": 800, "y": 220 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 1150, "y": 220 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e2", "from": "video", "from_port": "out", "to": "concat", "to_port": "in" },
+      { "id": "e3", "from": "concat", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

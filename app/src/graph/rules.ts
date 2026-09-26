@@ -35,6 +35,7 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   prompt: {},
   image_upload: {},
   dola_video: { prompt: true, refs: true },
+  concat: { in: true },
   save: { video: true, image: true },
 };
 

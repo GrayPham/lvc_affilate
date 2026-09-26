@@ -2278,6 +2278,7 @@ dependencies = [
  "lvc-node-api",
  "lvc-store",
  "lvc-vault",
+ "node-concat",
  "node-dola-video",
  "node-image-upload",
  "node-prompt",
@@ -2567,6 +2568,19 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "node-concat"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
 
 [[package]]
 name = "node-dola-video"

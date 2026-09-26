@@ -28,6 +28,7 @@ const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
     logo: "off",
     account: "",
   }),
+  concat: () => ({ kind: "concat" }),
   save: () => ({ kind: "save", out_dir: "" }),
 };
 

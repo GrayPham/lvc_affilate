@@ -37,7 +37,8 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
       logo: "off",
       account: "",
     },
-    save: { kind: "save", out_dir: "downloads" },
+    concat: { kind: "concat" },
+    save: { kind: "save", out_dir: "" },
   };
 
   function node(id: string, kind: NodeKindTag): RFNode {
