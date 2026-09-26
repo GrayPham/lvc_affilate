@@ -12,6 +12,7 @@ interface WorkflowUiState {
   openTemplates: () => void;
   closeTemplates: () => void;
   toggleAddMenu: () => void;
+  openAddMenu: () => void;
   closeAddMenu: () => void;
 }
 
@@ -21,5 +22,6 @@ export const useWorkflowUi = create<WorkflowUiState>((set) => ({
   openTemplates: () => set({ templatesOpen: true }),
   closeTemplates: () => set({ templatesOpen: false }),
   toggleAddMenu: () => set((s) => ({ addMenuOpen: !s.addMenuOpen })),
+  openAddMenu: () => set({ addMenuOpen: true }),
   closeAddMenu: () => set({ addMenuOpen: false }),
 }));

@@ -26,7 +26,7 @@ node-prompt.workspace = true
 node-image-upload.workspace = true
 node-save.workspace = true
 node-dola-video.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 # log.rs: ghi logs/app.log xoay theo ngay (chinh sach log, khong bao gio in cookie/prompt/proxy).

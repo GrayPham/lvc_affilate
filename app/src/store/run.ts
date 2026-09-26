@@ -36,6 +36,8 @@ export interface RunState {
   status: string | null;
   tasks: Record<string, TaskRunState>;
   nodes: Record<string, NodeRunState>;
+  /** P-lumina: duong dan video HOAN TAT theo node (nodeId -> local_path) de node video preview. */
+  nodeVideos: Record<string, string>;
   events: EngineEvent[];
 }
 
@@ -44,6 +46,7 @@ export const EMPTY_RUN_STATE: RunState = {
   status: null,
   tasks: {},
   nodes: {},
+  nodeVideos: {},
   events: [],
 };
 
@@ -190,9 +193,17 @@ export function reconcileFromRunRow(state: RunState, row: RunRow): RunState {
  */
 export function reconcileTasksFromDb(state: RunState, dtos: readonly TaskDto[]): RunState {
   let tasks = state.tasks;
+  let nodeVideos = state.nodeVideos;
   for (const dto of dtos) {
     if (dto.runId !== state.runId) {
       continue;
+    }
+    // Video hoan tat -> nho path theo node de node video preview (dto co ca nodeId lan localPath).
+    if (dto.status === "completed" && dto.localPath && dto.nodeId) {
+      if (nodeVideos === state.nodeVideos) {
+        nodeVideos = { ...state.nodeVideos };
+      }
+      nodeVideos[dto.nodeId] = dto.localPath;
     }
     const prev = tasks[dto.id];
     if (prev && (prev.status === "done" || prev.status === "failed")) {
@@ -215,7 +226,10 @@ export function reconcileTasksFromDb(state: RunState, dtos: readonly TaskDto[]):
     }
     tasks[dto.id] = next;
   }
-  return tasks === state.tasks ? state : { ...state, tasks };
+  if (tasks === state.tasks && nodeVideos === state.nodeVideos) {
+    return state;
+  }
+  return { ...state, tasks, nodeVideos };
 }
 
 interface RunStore extends RunState {

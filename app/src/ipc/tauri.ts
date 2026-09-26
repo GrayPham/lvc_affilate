@@ -5,6 +5,7 @@
 // 2. Chay ngoai cua so Tauri (vd `pnpm dev` mo trong trinh duyet de xem UI nhanh) se bao loi ro
 //    rang thay vi mot loi noi bo kho hieu tu `@tauri-apps/api`.
 import {
+  convertFileSrc,
   invoke as tauriInvoke,
   type InvokeArgs,
   type InvokeOptions,
@@ -41,6 +42,25 @@ export async function invoke<T>(cmd: string, args?: InvokeArgs, options?: Invoke
 export async function listen<T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> {
   assertTauriRuntime();
   return tauriListen<T>(event, handler);
+}
+
+/**
+ * Đổi đường dẫn file cục bộ → URL webview đọc được (giao thức `asset:` của Tauri, đã bật scope
+ * trong `tauri.conf.json`). Dùng để preview ảnh/video đã chọn trong node. Ngoài Tauri (dev/browser)
+ * → trả rỗng để `<img>`/`<video>` không cố tải đường dẫn tuyệt đối (tránh lỗi).
+ */
+export function assetUrl(path: string | null | undefined): string {
+  if (!path) {
+    return "";
+  }
+  if (!hasTauriRuntime()) {
+    return "";
+  }
+  try {
+    return convertFileSrc(path);
+  } catch {
+    return "";
+  }
 }
 
 export type { UnlistenFn };

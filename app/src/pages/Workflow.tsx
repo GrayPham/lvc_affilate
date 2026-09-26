@@ -8,8 +8,8 @@
 // mot lan tu `main.tsx`, song suot vong doi app. Trang nay chi con lo dong bo lai (reconcile)
 // trang thai run TU DB moi khi MO trang (xem effect ben duoi) — phong truong hop da bo lo
 // `run_done`/cac su kien `task_*` trong luc trang bi unmount.
-import { useCallback, useEffect, useRef } from "react";
-import type { DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -71,9 +71,35 @@ function WorkflowCanvas() {
   const loadGraph = useGraphStore((s) => s.loadGraph);
   const addMenuOpen = useWorkflowUi((s) => s.addMenuOpen);
   const closeAddMenu = useWorkflowUi((s) => s.closeAddMenu);
+  const openAddMenu = useWorkflowUi((s) => s.openAddMenu);
 
   const reactFlow = useReactFlow<RFNode, RFEdge>();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Chuot phai tren canvas: mo menu "Them node" tai con tro. `screen` = vi tri hien popup (px trong
+  // wrapper); `flow` = toa do do thi de dat node moi dung cho. `null` = menu mo kieu cu (nut "+").
+  const [menuAt, setMenuAt] = useState<{ screen: { x: number; y: number }; flow: { x: number; y: number } } | null>(
+    null,
+  );
+
+  // Mo menu them node tai vi tri chuot phai; chan menu mac dinh cua WebView2 (Back/Refresh/Inspect).
+  const openMenuAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      const screen = { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) };
+      const flow = reactFlow.screenToFlowPosition({ x: clientX, y: clientY });
+      setMenuAt({ screen, flow });
+      openAddMenu();
+    },
+    [reactFlow, openAddMenu],
+  );
+
+  const onPaneContextMenu = useCallback(
+    (e: ReactMouseEvent | globalThis.MouseEvent) => {
+      e.preventDefault();
+      openMenuAt(e.clientX, e.clientY);
+    },
+    [openMenuAt],
+  );
 
   // Tai canvas da luu tam (localStorage, xem store/graph.ts) MOT LAN luc trang mo — reload trang
   // khong mat viec dang sua.
@@ -105,6 +131,13 @@ function WorkflowCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Menu dong (nut "+" tat, hoac bam ra ngoai) -> quen vi tri chuot phai de lan mo sau bat dau sach.
+  useEffect(() => {
+    if (!addMenuOpen) {
+      setMenuAt(null);
+    }
+  }, [addMenuOpen]);
+
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes(DRAG_KIND_MIME)) {
       e.preventDefault();
@@ -131,7 +164,14 @@ function WorkflowCanvas() {
   );
 
   return (
-    <div ref={wrapperRef} className="relative flex-1 bg-[#0a0a0b]" onDragOver={onDragOver} onDrop={onDrop}>
+    <div
+      ref={wrapperRef}
+      className="relative flex-1 bg-[#0a0a0b]"
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      // Chan menu chuot phai mac dinh cua WebView2 tren toan canvas (Back/Refresh/Inspect).
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -141,8 +181,10 @@ function WorkflowCanvas() {
         onNodeClick={(_e, node) => setSelected(node.id)}
         onPaneClick={() => {
           setSelected(null);
+          setMenuAt(null);
           closeAddMenu();
         }}
+        onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
         isValidConnection={handleIsValidConnection}
         colorMode="dark"
@@ -159,11 +201,20 @@ function WorkflowCanvas() {
         <CanvasToolbar />
       </div>
 
-      {/* Popup them node (Palette) — bam "+" tren CanvasToolbar de mo */}
+      {/* Popup them node (Palette): chuot phai -> tai con tro (menuAt); nut "+" -> canh thanh trai */}
       {addMenuOpen ? (
-        <div className="absolute left-16 top-1/2 z-20 -translate-y-1/2">
-          <Palette />
-        </div>
+        menuAt ? (
+          <div
+            className="absolute z-20"
+            style={{ left: menuAt.screen.x, top: menuAt.screen.y }}
+          >
+            <Palette at={menuAt.flow} />
+          </div>
+        ) : (
+          <div className="absolute left-16 top-1/2 z-20 -translate-y-1/2">
+            <Palette />
+          </div>
+        )
       ) : null}
 
       {/* Bang tham so duoi — chi hien khi node dola_video duoc chon (component tu an) */}

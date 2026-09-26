@@ -10,6 +10,7 @@ import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import { pickFiles } from "../ipc/commands";
+import { assetUrl } from "../ipc/tauri";
 import { errorText } from "../ipc/error_text";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar from "./NodeFloatingToolbar";
@@ -43,6 +44,7 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
   }
 
   const count = data.paths.length;
+  const firstSrc = count > 0 ? assetUrl(data.paths[0]) : "";
   return (
     <>
       <NodeFloatingToolbar nodeId={id} />
@@ -50,19 +52,29 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
         {/* Than the = vung tha/chon anh. Bam vao ca vung de mo dialog chon anh. */}
         <button
           type="button"
-          className="nodrag flex aspect-square w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-b from-white/[0.03] to-transparent text-slate-400 hover:bg-white/[0.06]"
+          className="nodrag relative flex aspect-square w-full flex-col items-center justify-center gap-1.5 overflow-hidden bg-gradient-to-b from-white/[0.03] to-transparent text-slate-400 hover:bg-white/[0.06]"
           onClick={() => void handlePick()}
           title="Chọn ảnh…"
         >
-          {count === 0 ? (
+          {count > 0 && firstSrc ? (
             <>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="9" cy="9" r="1.6" />
-                <path d="m21 15-4.5-4.5L7 20" />
-              </svg>
-              <span className="text-[11px]">Chọn ảnh…</span>
+              {/* Preview anh dau tien lam nen phu kin the (asset:// cua Tauri) */}
+              <img
+                src={firstSrc}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+              {count > 1 ? (
+                <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  +{count - 1}
+                </span>
+              ) : null}
             </>
+          ) : count > 0 ? (
+            <span className="text-[11px] text-slate-200">{count} ảnh đã chọn</span>
           ) : (
             <>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -70,7 +82,7 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
                 <circle cx="9" cy="9" r="1.6" />
                 <path d="m21 15-4.5-4.5L7 20" />
               </svg>
-              <span className="text-[11px] text-slate-200">{count} ảnh đã chọn</span>
+              <span className="text-[11px]">Chọn ảnh…</span>
             </>
           )}
         </button>

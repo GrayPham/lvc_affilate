@@ -11,6 +11,7 @@ import type { NodeKind } from "../ipc/types";
 import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
+import { assetUrl } from "../ipc/tauri";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar from "./NodeFloatingToolbar";
 
@@ -20,6 +21,9 @@ export type VideoRFNode = RFNodeBase<VideoKind, "dola_video">;
 export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>) {
   const errors = useGraphStore((s) => s.nodeErrors[id]);
   const runState = useRunStore((s) => s.nodes[id]);
+  // Video HOAN TAT cua node nay (neu co) — preview mp4 ket qua (asset:// cua Tauri).
+  const videoPath = useRunStore((s) => s.nodeVideos[id]);
+  const videoSrc = assetUrl(videoPath);
 
   return (
     <>
@@ -37,14 +41,25 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
         style={{ top: "70%", background: PORT_TYPE_COLOR.image }}
       />
       <MediaCard label={NODE_LABEL_VI.dola_video} selected={selected} errors={errors} runState={runState} wide>
-        {/* Vung xem truoc video (placeholder toi + glyph play + badge "Video" + ti le hien tai). */}
+        {/* Vung xem truoc: video ket qua neu da chay xong; chua co thi placeholder toi + glyph play. */}
         <div className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </span>
-          <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-slate-200 backdrop-blur-sm">
+          {videoSrc ? (
+            <video
+              src={videoSrc}
+              className="nodrag absolute inset-0 h-full w-full bg-black object-contain"
+              controls
+              muted
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </span>
+          )}
+          <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-slate-200 backdrop-blur-sm">
             Video · {data.ratio}
           </span>
         </div>

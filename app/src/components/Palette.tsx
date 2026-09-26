@@ -12,12 +12,13 @@ export const DRAG_KIND_MIME = "application/lvc-node-kind";
 
 // P-lumina: Palette gio la mot POPUP toi noi ben canh thanh cong cu trai (khong con aside co dinh) —
 // bam "+" tren CanvasToolbar de mo. Keo-tha va nhap-de-them van hoat dong nhu cu.
-export default function Palette() {
+// `at` (toa do FLOW): khi mo bang CHUOT PHAI tren canvas, node moi dat DUNG cho con tro thay vi so le.
+export default function Palette({ at }: { at?: { x: number; y: number } }) {
   return (
     <div className="flex w-44 flex-col gap-1.5 rounded-2xl border border-white/10 bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
       <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Thêm node</h2>
       {NODE_KIND_ORDER.map((kind) => (
-        <PaletteItem key={kind} kind={kind} />
+        <PaletteItem key={kind} kind={kind} at={at} />
       ))}
     </div>
   );
@@ -33,14 +34,14 @@ function nextClickPosition(count: number): { x: number; y: number } {
   return { x: 80 + (count % 8) * step, y: 80 + (count % 8) * step };
 }
 
-function PaletteItem({ kind }: { kind: NodeKindTag }) {
+function PaletteItem({ kind, at }: { kind: NodeKindTag; at?: { x: number; y: number } }) {
   const enabled = ADDABLE_KINDS.has(kind);
   const addNode = useGraphStore((s) => s.addNode);
   const nodeCount = useGraphStore((s) => s.nodes.length);
   const closeAddMenu = useWorkflowUi((s) => s.closeAddMenu);
 
   function add(): void {
-    addNode(kind as AddableNodeKind, nextClickPosition(nodeCount));
+    addNode(kind as AddableNodeKind, at ?? nextClickPosition(nodeCount));
     closeAddMenu();
   }
 
