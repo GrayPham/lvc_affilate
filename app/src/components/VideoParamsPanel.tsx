@@ -61,6 +61,15 @@ export default function VideoParamsPanel() {
   const durationValue = durations.includes(data.duration) ? data.duration : durations[0]!;
   const chips = referenceChips(id, nodes, edges);
 
+  // Node Prompt noi vao cong `prompt` (neu co) — hien chu prompt ngay trong panel (kieu Lumina),
+  // sua o day cap nhat thang node Prompt do. Nhieu node Prompt -> sua cai DAU TIEN.
+  const promptEdge = edges.find((e) => e.target === id && e.targetHandle === "prompt");
+  const promptNode = promptEdge
+    ? nodes.find((n) => n.id === promptEdge.source && n.data.kind === "prompt")
+    : undefined;
+  const promptText =
+    promptNode && promptNode.data.kind === "prompt" ? promptNode.data.text : "";
+
   function setMode(mode: Mode): void {
     const nextDurations = allowedDurations(mode, data.model);
     const duration = nextDurations.includes(data.duration) ? data.duration : nextDurations[0]!;
@@ -99,6 +108,24 @@ export default function VideoParamsPanel() {
           ))}
         </div>
       ) : null}
+
+      {/* O prompt (tu node Prompt da noi) — kieu Lumina: sua ngay trong panel video. */}
+      {promptNode ? (
+        <textarea
+          className="nodrag min-h-[64px] w-full resize-y rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-xs leading-relaxed text-slate-100 outline-none focus:border-sky-400/60"
+          value={promptText}
+          placeholder="Mô tả video (mỗi dòng một cảnh)…"
+          onChange={(e) => {
+            if (promptNode && promptNode.data.kind === "prompt") {
+              updateNodeData(promptNode.id, { ...promptNode.data, text: e.target.value });
+            }
+          }}
+        />
+      ) : (
+        <p className="rounded-md border border-dashed border-white/15 bg-white/[0.02] px-2 py-1.5 text-[11px] text-slate-500">
+          Nối một node <span className="text-slate-300">Prompt</span> vào cổng prompt để nhập nội dung video.
+        </p>
+      )}
 
       {/* Hang tham so chinh */}
       <div className="flex flex-wrap items-center gap-2">

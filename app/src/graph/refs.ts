@@ -22,6 +22,11 @@ function baseName(p: string): string {
 export function nodeChipLabel(data: NodeKind): string {
   switch (data.kind) {
     case "image_upload": {
+      // Uu tien TEN TUY CHINH cua node (nguoi dung dat, vd "character"/"hung") lam nhan tham chieu.
+      const custom = (data.label ?? "").trim();
+      if (custom.length > 0) {
+        return custom;
+      }
       const n = data.paths.length;
       if (n === 0) {
         return NODE_LABEL_VI.image_upload;

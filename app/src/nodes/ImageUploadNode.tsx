@@ -95,7 +95,13 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
   return (
     <>
       <NodeFloatingToolbar nodeId={id} actions={actions} />
-      <MediaCard label={NODE_LABEL_VI.image_upload} selected={selected} errors={errors} runState={runState}>
+      <MediaCard
+        label={(data.label ?? "").trim() || NODE_LABEL_VI.image_upload}
+        selected={selected}
+        errors={errors}
+        runState={runState}
+        onRename={(name) => updateNodeData(id, { ...data, label: name })}
+      >
         {count === 0 ? (
           // Chua co anh: than the KEO duoc; nut "Chọn ảnh" (nodrag) o giua de chon lan dau.
           <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-white/[0.03] to-transparent text-slate-400">
