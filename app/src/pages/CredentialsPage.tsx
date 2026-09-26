@@ -1,25 +1,27 @@
-// Man "Tài khoản AI" (P4c) — quan ly kho tai khoan AI (credentials) qua 5 lenh `credential_*`.
-// Nhom theo provider: Dola / Google / ChatGPT / API key (OpenAI/Gemini). Moi dong hien nhan, loai,
-// `secretHint` (BIEU DIEN DUY NHAT cua bi mat — da che), badge trang thai, toggle bat/tat, proxy da
-// che, nut "Kiểm tra" va xoa 2 buoc. Form "Thêm" o cuoi.
+// Man "Tài khoản AI" (P4c + mở rộng chế độ API) — quản lý kho credentials qua 5 lệnh `credential_*`.
+// Chia HAI KHU: "Kho API (khoá/endpoint)" cho entry dùng key (openai/gemini), và "Kho đăng nhập /
+// Cookie" cho phiên/đăng nhập (dola/google/chatgpt). Mỗi entry có CHẾ ĐỘ (meta.mode): chính thức
+// (key) / endpoint tuỳ chỉnh (base_url bên thứ 3) / SDK / cookie.
 //
-// AN TOAN BI MAT: o nhap bi mat la GHI-MOT-CHIEU — khong bao gio dien san / hien lai gia tri da
-// nhap; xoa NGAY khi bam "Thêm" (truoc ca khi cho IPC). Khong `console.*` nao cham vao bi mat. UI
-// chi bao gio nhan `secretHint` da che, khong bao gio nhan bi mat nguyen van tu backend.
+// AN TOAN BI MAT: ô nhập bí mật GHI-MỘT-CHIỀU — không điền sẵn / hiện lại; xoá NGAY khi bấm "Thêm".
+// UI chỉ nhận `secretHint` đã che, không bao giờ nhận bí mật nguyên văn.
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { validateProxy } from "../format/account";
 import {
   CREDENTIAL_STATUS_BADGE_CLASS,
-  credentialKindLabel,
+  credentialModeLabel,
   credentialProviderLabel,
   credentialStatusLabel,
   describeCredentialError,
+  rowBaseUrl,
+  rowMode,
+  type CredentialMode,
 } from "../format/credential";
 import { useCredentialsStore } from "../store/credentials";
 import type { CredentialKind, CredentialProvider, CredentialView } from "../ipc/types";
 
-// Loai bi mat cho phep theo provider (P4c contract). Thu tu = thu tu hien tren dropdown.
+// Loai bi mat cho phep theo provider (P4c contract) — dung suy `kind` tu che do "cookie".
 const KINDS_BY_PROVIDER: Record<CredentialProvider, readonly CredentialKind[]> = {
   dola: ["session"],
   openai: ["api_key"],
@@ -28,13 +30,14 @@ const KINDS_BY_PROVIDER: Record<CredentialProvider, readonly CredentialKind[]> =
   chatgpt_web: ["login", "session"],
 };
 
-// Nhom hien thi — moi nhom gom mot hoac nhieu provider.
-const GROUPS: ReadonlyArray<{ title: string; providers: readonly CredentialProvider[] }> = [
-  { title: "Dola", providers: ["dola"] },
-  { title: "Google", providers: ["google"] },
-  { title: "ChatGPT", providers: ["chatgpt_web"] },
-  { title: "API key (OpenAI/Gemini)", providers: ["openai", "gemini"] },
-];
+// Che do API hop le theo provider.
+const MODES_BY_PROVIDER: Record<CredentialProvider, readonly CredentialMode[]> = {
+  dola: ["cookie"],
+  google: ["cookie"],
+  chatgpt_web: ["cookie"],
+  openai: ["official", "custom", "sdk"],
+  gemini: ["official", "custom", "sdk"],
+};
 
 const PROVIDER_ORDER: readonly CredentialProvider[] = [
   "dola",
@@ -44,9 +47,9 @@ const PROVIDER_ORDER: readonly CredentialProvider[] = [
   "gemini",
 ];
 
-/** `base_url` chi co y nghia voi provider goi API (openai/gemini). */
-function providerUsesBaseUrl(provider: CredentialProvider): boolean {
-  return provider === "openai" || provider === "gemini";
+/** Che do -> loai bi mat (kind) luu xuong backend. */
+function modeToKind(provider: CredentialProvider, mode: CredentialMode): CredentialKind {
+  return mode === "cookie" ? KINDS_BY_PROVIDER[provider][0]! : "api_key";
 }
 
 export default function CredentialsPage() {
@@ -62,6 +65,9 @@ export default function CredentialsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const apiRows = rows.filter((r) => r.kind === "api_key");
+  const loginRows = rows.filter((r) => r.kind !== "api_key");
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-auto p-3">
@@ -84,52 +90,89 @@ export default function CredentialsPage() {
 
       {rows.length === 0 && !loading ? (
         <p className="text-sm text-slate-400">Chưa có tài khoản AI nào — thêm ở form bên dưới.</p>
-      ) : (
-        GROUPS.map((group) => {
-          const groupRows = rows.filter((r) => group.providers.includes(r.provider));
-          if (groupRows.length === 0) {
-            return null;
-          }
-          return (
-            <section key={group.title} className="flex flex-col gap-1">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {group.title}
-              </h3>
-              <div className="overflow-auto rounded border border-slate-200">
-                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                  <thead className="bg-slate-50 text-xs text-slate-500">
-                    <tr>
-                      <th className="px-2 py-1.5 font-medium">Nhãn</th>
-                      <th className="px-2 py-1.5 font-medium">Nhà cung cấp</th>
-                      <th className="px-2 py-1.5 font-medium">Loại</th>
-                      <th className="px-2 py-1.5 font-medium">Bí mật (đã che)</th>
-                      <th className="px-2 py-1.5 font-medium">Trạng thái</th>
-                      <th className="px-2 py-1.5 font-medium">Bật</th>
-                      <th className="px-2 py-1.5 font-medium">Proxy</th>
-                      <th className="px-2 py-1.5 font-medium">Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groupRows.map((row) => (
-                      <CredentialRow
-                        key={row.id}
-                        row={row}
-                        busy={(busy[row.id] ?? 0) > 0}
-                        onVerify={verify}
-                        onToggleEnabled={(id, enabled) => update(id, { enabled })}
-                        onDelete={remove}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          );
-        })
-      )}
+      ) : null}
+
+      <CredentialArea
+        title="Kho API (khoá / endpoint)"
+        hint="Tài khoản dùng API key: OpenAI, Gemini (kể cả endpoint bên thứ 3)."
+        rows={apiRows}
+        busy={busy}
+        onVerify={verify}
+        onToggle={(id, enabled) => update(id, { enabled })}
+        onDelete={remove}
+      />
+
+      <CredentialArea
+        title="Kho đăng nhập / Cookie"
+        hint="Phiên đăng nhập/cookie: Dola, Google, ChatGPT — dùng cho các node kênh trình duyệt."
+        rows={loginRows}
+        busy={busy}
+        onVerify={verify}
+        onToggle={(id, enabled) => update(id, { enabled })}
+        onDelete={remove}
+      />
 
       <AddCredentialForm />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mot KHU (Kho API / Kho dang nhap) — nhom theo provider.
+// ---------------------------------------------------------------------------------------------
+
+interface AreaProps {
+  title: string;
+  hint: string;
+  rows: CredentialView[];
+  busy: Record<string, number>;
+  onVerify: (id: string) => Promise<unknown>;
+  onToggle: (id: string, enabled: boolean) => Promise<void>;
+  onDelete: (id: string) => Promise<boolean>;
+}
+
+function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete }: AreaProps) {
+  if (rows.length === 0) {
+    return null;
+  }
+  const providers = PROVIDER_ORDER.filter((p) => rows.some((r) => r.provider === p));
+  return (
+    <section className="flex flex-col gap-1">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
+      <p className="text-[11px] text-slate-400">{hint}</p>
+      <div className="overflow-auto rounded border border-slate-200">
+        <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500">
+            <tr>
+              <th className="px-2 py-1.5 font-medium">Nhãn</th>
+              <th className="px-2 py-1.5 font-medium">Nhà cung cấp</th>
+              <th className="px-2 py-1.5 font-medium">Chế độ</th>
+              <th className="px-2 py-1.5 font-medium">Bí mật (đã che)</th>
+              <th className="px-2 py-1.5 font-medium">Trạng thái</th>
+              <th className="px-2 py-1.5 font-medium">Bật</th>
+              <th className="px-2 py-1.5 font-medium">Proxy</th>
+              <th className="px-2 py-1.5 font-medium">Hành động</th>
+            </tr>
+          </thead>
+          <tbody>
+            {providers.flatMap((p) =>
+              rows
+                .filter((r) => r.provider === p)
+                .map((row) => (
+                  <CredentialRow
+                    key={row.id}
+                    row={row}
+                    busy={(busy[row.id] ?? 0) > 0}
+                    onVerify={onVerify}
+                    onToggleEnabled={onToggle}
+                    onDelete={onDelete}
+                  />
+                )),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -149,6 +192,9 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const mode = rowMode(row.meta, row.kind);
+  const baseUrl = rowBaseUrl(row.meta);
 
   async function handleVerify(): Promise<void> {
     setVerifyMsg(null);
@@ -184,7 +230,14 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
     <tr className="border-b border-slate-100 align-top">
       <td className="px-2 py-1.5 font-medium text-slate-800">{row.label}</td>
       <td className="px-2 py-1.5 text-slate-600">{credentialProviderLabel(row.provider)}</td>
-      <td className="px-2 py-1.5 text-slate-600">{credentialKindLabel(row.kind)}</td>
+      <td className="px-2 py-1.5 text-slate-600">
+        {credentialModeLabel(mode)}
+        {baseUrl ? (
+          <span className="block max-w-[220px] truncate font-mono text-[10px] text-slate-400" title={baseUrl}>
+            {baseUrl}
+          </span>
+        ) : null}
+      </td>
       <td className="px-2 py-1.5 font-mono text-xs text-slate-600">{row.secretHint}</td>
       <td className="px-2 py-1.5">
         <span
@@ -260,9 +313,9 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
 function AddCredentialForm() {
   const add = useCredentialsStore((s) => s.add);
 
-  const [provider, setProvider] = useState<CredentialProvider>("dola");
-  const allowedKinds = KINDS_BY_PROVIDER[provider];
-  const [kind, setKind] = useState<CredentialKind>(allowedKinds[0]!);
+  const [provider, setProvider] = useState<CredentialProvider>("gemini");
+  const allowedModes = MODES_BY_PROVIDER[provider];
+  const [mode, setMode] = useState<CredentialMode>(allowedModes[0]!);
   const [label, setLabel] = useState("");
   const [secret, setSecret] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -271,37 +324,40 @@ function AddCredentialForm() {
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
-  // api_key -> o mot dong kieu mat khau; session/login -> textarea (cookie/noi dung dai).
-  const secretIsApiKey = kind === "api_key";
-  const usesBaseUrl = providerUsesBaseUrl(provider);
+  const isCookie = mode === "cookie";
+  const needsBaseUrl = mode === "custom";
   const proxyError = useMemo(() => (proxy === "" ? null : validateProxy(proxy)), [proxy]);
 
   function handleProviderChange(next: CredentialProvider): void {
     setProvider(next);
-    // Doi kind ve gia tri hop le dau tien cua provider moi.
-    setKind(KINDS_BY_PROVIDER[next][0]!);
+    setMode(MODES_BY_PROVIDER[next][0]!);
   }
 
   const canSubmit =
-    !busy && label.trim() !== "" && secret !== "" && (proxy === "" || proxyError === null);
+    !busy &&
+    label.trim() !== "" &&
+    secret !== "" &&
+    (!needsBaseUrl || baseUrl.trim() !== "") &&
+    (proxy === "" || proxyError === null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     if (!canSubmit) {
       return;
     }
-    // Doc bi mat ra bien cuc bo roi XOA NGAY o (truoc ca khi cho IPC) — xem ghi chu AN TOAN.
     const secretToSend = secret;
     setSecret("");
     setBusy(true);
     setError(null);
     setOkMsg(null);
-    const meta =
-      usesBaseUrl && baseUrl.trim() !== "" ? { base_url: baseUrl.trim() } : undefined;
+    const meta: Record<string, unknown> = { mode };
+    if (baseUrl.trim() !== "" && (mode === "custom" || mode === "sdk")) {
+      meta.base_url = baseUrl.trim();
+    }
     try {
       const view = await add({
         provider,
-        kind,
+        kind: modeToKind(provider, mode),
         label: label.trim(),
         secret: secretToSend,
         meta,
@@ -342,16 +398,16 @@ function AddCredentialForm() {
           </label>
 
           <label className="flex flex-col gap-1 text-xs">
-            Loại
+            Chế độ
             <select
               className="rounded border border-slate-300 px-2 py-1 text-sm"
-              value={kind}
-              disabled={busy || allowedKinds.length === 1}
-              onChange={(e) => setKind(e.target.value as CredentialKind)}
+              value={mode}
+              disabled={busy || allowedModes.length === 1}
+              onChange={(e) => setMode(e.target.value as CredentialMode)}
             >
-              {allowedKinds.map((k) => (
-                <option key={k} value={k}>
-                  {credentialKindLabel(k)}
+              {allowedModes.map((m) => (
+                <option key={m} value={m}>
+                  {credentialModeLabel(m)}
                 </option>
               ))}
             </select>
@@ -364,24 +420,14 @@ function AddCredentialForm() {
               value={label}
               disabled={busy}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="vd OpenAI chính"
+              placeholder="vd Gemini chính chủ"
             />
           </label>
         </div>
 
         <label className="flex flex-col gap-1 text-xs">
-          {secretIsApiKey ? "API key" : "Bí mật (cookie/đăng nhập)"}
-          {secretIsApiKey ? (
-            <input
-              type="password"
-              autoComplete="off"
-              className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
-              value={secret}
-              disabled={busy}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="sk-…"
-            />
-          ) : (
+          {isCookie ? "Bí mật (cookie/đăng nhập)" : "API key"}
+          {isCookie ? (
             <textarea
               className="h-28 resize-none rounded border border-slate-300 px-2 py-1 font-mono text-xs"
               value={secret}
@@ -389,21 +435,31 @@ function AddCredentialForm() {
               onChange={(e) => setSecret(e.target.value)}
               placeholder="Dán cookie/nội dung đăng nhập vào đây"
             />
+          ) : (
+            <input
+              type="password"
+              autoComplete="off"
+              className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
+              value={secret}
+              disabled={busy}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="sk-… / API key"
+            />
           )}
           <span className="text-slate-400">
             Bí mật chỉ ghi một chiều — không hiển thị lại, xoá ngay khi bấm "Thêm".
           </span>
         </label>
 
-        {usesBaseUrl ? (
+        {mode === "custom" || mode === "sdk" ? (
           <label className="flex flex-col gap-1 text-xs">
-            Base URL (tuỳ chọn)
+            Base URL {mode === "custom" ? "(bắt buộc — endpoint bên thứ 3)" : "(tuỳ chọn)"}
             <input
               className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
               value={baseUrl}
               disabled={busy}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="để trống = mặc định của nhà cung cấp"
+              placeholder="vd https://api.nhacungcap-thu-3.com/v1"
             />
           </label>
         ) : null}
