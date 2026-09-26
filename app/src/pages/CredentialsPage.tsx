@@ -263,20 +263,104 @@ interface AreaProps {
 }
 
 function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete }: AreaProps) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Đóng menu chuột phải khi bấm ra ngoài.
+  useEffect(() => {
+    if (!menu) {
+      return;
+    }
+    const close = (): void => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
   if (rows.length === 0) {
     return null;
   }
   const providers = COOKIE_PROVIDERS.concat(API_PROVIDERS).filter(
     (p, i, a) => a.indexOf(p) === i && rows.some((r) => r.provider === p),
   );
+  const ordered = providers.flatMap((p) => rows.filter((r) => r.provider === p));
+  const selCount = ordered.filter((r) => selected.has(r.id)).length;
+  const allSel = selCount === ordered.length && ordered.length > 0;
+
+  function toggleOne(id: string, on: boolean): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+  function toggleAll(on: boolean): void {
+    setSelected(on ? new Set(ordered.map((r) => r.id)) : new Set());
+  }
+
+  async function bulkDelete(): Promise<void> {
+    setBulkBusy(true);
+    try {
+      for (const r of ordered.filter((x) => selected.has(x.id))) {
+        await onDelete(r.id);
+      }
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  async function bulkEnable(on: boolean): Promise<void> {
+    setBulkBusy(true);
+    try {
+      for (const r of ordered.filter((x) => selected.has(x.id))) {
+        await onToggle(r.id, on);
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const menuRow = menu ? ordered.find((r) => r.id === menu.id) : undefined;
+
   return (
     <section className="flex flex-col gap-1">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
       <p className="text-[11px] text-slate-400">{hint}</p>
+
+      {/* Thanh thao tác hàng loạt — hiện khi có dòng được chọn */}
+      {selCount > 0 ? (
+        <div className="flex items-center gap-2 rounded bg-slate-100 px-2 py-1 text-xs">
+          <span className="text-slate-600">Đã chọn {selCount}</span>
+          <button type="button" disabled={bulkBusy} className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50" onClick={() => void bulkEnable(true)}>
+            Bật
+          </button>
+          <button type="button" disabled={bulkBusy} className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50" onClick={() => void bulkEnable(false)}>
+            Tắt
+          </button>
+          <button type="button" disabled={bulkBusy} className="rounded border border-red-300 bg-white px-2 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50" onClick={() => void bulkDelete()}>
+            {bulkBusy ? "Đang xoá…" : "Xoá đã chọn"}
+          </button>
+          <button type="button" className="ml-auto text-slate-400 hover:text-slate-700" onClick={() => setSelected(new Set())}>
+            Bỏ chọn
+          </button>
+        </div>
+      ) : null}
+
       <div className="overflow-auto rounded border border-slate-200">
-        <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[860px] border-collapse text-left text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500">
             <tr>
+              <th className="w-8 px-2 py-1.5">
+                <input type="checkbox" checked={allSel} onChange={(e) => toggleAll(e.target.checked)} aria-label="Chọn tất cả" />
+              </th>
               <th className="px-2 py-1.5 font-medium">Nhãn</th>
               <th className="px-2 py-1.5 font-medium">Nền tảng</th>
               <th className="px-2 py-1.5 font-medium">Chế độ</th>
@@ -288,23 +372,41 @@ function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete 
             </tr>
           </thead>
           <tbody>
-            {providers.flatMap((p) =>
-              rows
-                .filter((r) => r.provider === p)
-                .map((row) => (
-                  <CredentialRow
-                    key={row.id}
-                    row={row}
-                    busy={(busy[row.id] ?? 0) > 0}
-                    onVerify={onVerify}
-                    onToggleEnabled={onToggle}
-                    onDelete={onDelete}
-                  />
-                )),
-            )}
+            {ordered.map((row) => (
+              <CredentialRow
+                key={row.id}
+                row={row}
+                busy={(busy[row.id] ?? 0) > 0}
+                selected={selected.has(row.id)}
+                onSelect={toggleOne}
+                onContext={(id, x, y) => setMenu({ id, x, y })}
+                onVerify={onVerify}
+                onToggleEnabled={onToggle}
+                onDelete={onDelete}
+              />
+            ))}
           </tbody>
         </table>
       </div>
+
+      {/* Menu chuột phải */}
+      {menu && menuRow ? (
+        <div
+          className="fixed z-50 min-w-[140px] rounded-md border border-slate-200 bg-white py-1 text-xs shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-slate-100" onClick={() => { setMenu(null); void onVerify(menuRow.id); }}>
+            Kiểm tra
+          </button>
+          <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-slate-100" onClick={() => { setMenu(null); void onToggle(menuRow.id, !menuRow.enabled); }}>
+            {menuRow.enabled ? "Tắt" : "Bật"}
+          </button>
+          <button type="button" className="block w-full px-3 py-1.5 text-left text-red-700 hover:bg-red-50" onClick={() => { setMenu(null); void onDelete(menuRow.id); }}>
+            Xoá
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -316,12 +418,15 @@ function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete 
 interface CredentialRowProps {
   row: CredentialView;
   busy: boolean;
+  selected: boolean;
+  onSelect: (id: string, on: boolean) => void;
+  onContext: (id: string, x: number, y: number) => void;
   onVerify: (id: string) => Promise<unknown>;
   onToggleEnabled: (id: string, enabled: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<boolean>;
 }
 
-function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: CredentialRowProps) {
+function CredentialRow({ row, busy, selected, onSelect, onContext, onVerify, onToggleEnabled, onDelete }: CredentialRowProps) {
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -360,7 +465,16 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
   }
 
   return (
-    <tr className="border-b border-slate-100 align-top">
+    <tr
+      className={"border-b border-slate-100 align-top " + (selected ? "bg-sky-50" : "")}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContext(row.id, e.clientX, e.clientY);
+      }}
+    >
+      <td className="px-2 py-1.5">
+        <input type="checkbox" checked={selected} onChange={(e) => onSelect(row.id, e.target.checked)} aria-label={`Chọn ${row.label}`} />
+      </td>
       <td className="px-2 py-1.5 font-medium text-slate-800">{row.label}</td>
       <td className="px-2 py-1.5 text-slate-600">{credentialProviderLabel(row.provider)}</td>
       <td className="px-2 py-1.5 text-slate-600">

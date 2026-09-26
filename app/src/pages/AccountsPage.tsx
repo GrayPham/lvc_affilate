@@ -44,7 +44,7 @@ export default function AccountsPage() {
           className="rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
           onClick={() => setShowImport(true)}
         >
-          Nạp cookie
+          Nạp cookie Dola
         </button>
         <button
           type="button"
