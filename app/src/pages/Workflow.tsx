@@ -359,10 +359,10 @@ function WorkflowCanvas() {
         isValidConnection={handleIsValidConnection}
         zoomOnDoubleClick={false}
         deleteKeyCode={["Delete", "Backspace"]}
-        multiSelectionKeyCode={["Control", "Meta", "Shift"]}
+        multiSelectionKeyCode={["Shift"]}
         selectionOnDrag
         panOnDrag={[1, 2]}
-        panActivationKeyCode="Space"
+        panActivationKeyCode={["Space", "Control", "Meta"]}
         selectionKeyCode={null}
         colorMode="dark"
         defaultEdgeOptions={{ type: "default", style: { stroke: "#8b8b93", strokeWidth: 1.5 } }}

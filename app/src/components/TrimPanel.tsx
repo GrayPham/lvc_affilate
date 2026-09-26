@@ -1,7 +1,7 @@
-// Bảng "Cắt video" kiểu Lumina — mở từ nút trên node video. Phát/xem video, kéo 2 tay cầm chọn đoạn
-// [bắt đầu, kết thúc] trên thanh thời gian; "Cắt & thêm vào canvas" gọi ffmpeg (trim_video) tạo file
-// mới rồi thêm node "Tải video lên" cho đoạn đã cắt. Dùng đường dẫn thật (`path`) để cắt, `src` để xem.
-import { useRef, useState } from "react";
+// Bảng "Cắt video" kiểu Lumina — mở từ nút trên node video. Xem video + THANH THỜI GIAN kéo hai tay
+// cầm (bắt đầu/kết thúc) để chọn đoạn; "Cắt & thêm vào canvas" gọi ffmpeg (trim_video) tạo file mới
+// rồi thêm node "Tải video lên". `path` (đường dẫn thật) để cắt, `src` để xem.
+import { useCallback, useRef, useState } from "react";
 
 import { useWorkflowUi } from "../store/workflowUi";
 import { useGraphStore } from "../store/graph";
@@ -21,43 +21,81 @@ export default function TrimPanel() {
   const addVideoNode = useGraphStore((s) => s.addVideoNode);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const [duration, setDuration] = useState(0);
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!target) {
-    return null;
-  }
-
-  function onLoaded(): void {
+  const onLoaded = useCallback(() => {
     const d = videoRef.current?.duration ?? 0;
-    const dur = Number.isFinite(d) ? d : 0;
+    const dur = Number.isFinite(d) && d > 0 ? d : 0;
     setDuration(dur);
     setStart(0);
     setEnd(dur);
-  }
+  }, []);
 
-  function seek(t: number): void {
-    const v = videoRef.current;
-    if (v) {
-      v.currentTime = Math.max(0, Math.min(t, duration || 0));
-    }
-  }
+  const timeAtClientX = useCallback(
+    (clientX: number): number => {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || duration <= 0) {
+        return 0;
+      }
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      return ratio * duration;
+    },
+    [duration],
+  );
 
-  function setStartClamped(t: number): void {
-    const s = Math.max(0, Math.min(t, end - 0.05));
-    setStart(s);
-    seek(s);
-  }
-  function setEndClamped(t: number): void {
-    const e = Math.min(duration, Math.max(t, start + 0.05));
-    setEnd(e);
-    seek(e);
-  }
+  // Kéo tay cầm start/end bằng pointer (đáng tin hơn hai <input range> chồng nhau).
+  const drag = useCallback(
+    (which: "start" | "end") =>
+      (e: React.PointerEvent): void => {
+        e.preventDefault();
+        e.stopPropagation();
+        const move = (ev: PointerEvent): void => {
+          const t = timeAtClientX(ev.clientX);
+          if (which === "start") {
+            setStart((prevStart) => {
+              void prevStart;
+              const s = Math.max(0, Math.min(t, end - 0.05));
+              if (videoRef.current) {
+                videoRef.current.currentTime = s;
+              }
+              return s;
+            });
+          } else {
+            setEnd(() => {
+              const en = Math.min(duration, Math.max(t, start + 0.05));
+              if (videoRef.current) {
+                videoRef.current.currentTime = en;
+              }
+              return en;
+            });
+          }
+        };
+        const up = (): void => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      },
+    [timeAtClientX, duration, start, end],
+  );
 
-  async function confirm(): Promise<void> {
+  const seekTo = useCallback(
+    (e: React.MouseEvent): void => {
+      const t = timeAtClientX(e.clientX);
+      if (videoRef.current) {
+        videoRef.current.currentTime = t;
+      }
+    },
+    [timeAtClientX],
+  );
+
+  const confirm = useCallback(async (): Promise<void> => {
     if (!target) {
       return;
     }
@@ -67,20 +105,24 @@ export default function TrimPanel() {
       const newPath = await trimVideo(target.path, start, end, `${target.label} cat`);
       addVideoNode(newPath, `${target.label} · cắt ${fmt(start)}–${fmt(end)}`, { x: target.x, y: target.y });
       close();
-    } catch (e) {
-      setError(errorText(e));
+    } catch (err) {
+      setError(errorText(err));
     } finally {
       setBusy(false);
     }
+  }, [target, start, end, addVideoNode, close]);
+
+  if (!target) {
+    return null;
   }
 
-  const selDur = Math.max(0, end - start);
   const pct = (t: number): number => (duration > 0 ? (t / duration) * 100 : 0);
+  const selDur = Math.max(0, end - start);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={close}>
       <div
-        className="flex max-h-[90vh] w-[720px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] p-3 text-slate-200 shadow-2xl"
+        className="flex max-h-[92vh] w-[760px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] p-3 text-slate-200 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -99,45 +141,38 @@ export default function TrimPanel() {
           playsInline
           preload="auto"
           onLoadedMetadata={onLoaded}
-          className="max-h-[44vh] w-full rounded-lg bg-black object-contain"
+          onDurationChange={onLoaded}
+          className="max-h-[52vh] w-full rounded-lg bg-black object-contain"
         />
 
-        {/* Thanh thời gian: đoạn chọn tô sáng giữa hai tay cầm start/end */}
-        <div className="relative h-6 rounded bg-white/10">
-          <div
-            className="absolute top-0 h-full rounded bg-sky-500/40"
-            style={{ left: `${pct(start)}%`, width: `${pct(selDur)}%` }}
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-          <label className="flex items-center gap-1">
-            Bắt đầu
-            <input
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.05}
-              value={start}
-              onChange={(e) => setStartClamped(Number(e.target.value))}
-              className="w-40"
+        {/* Thanh thời gian: nền + đoạn chọn tô sáng + hai tay cầm kéo được */}
+        <div className="px-1">
+          <div ref={trackRef} className="relative h-9 cursor-pointer select-none rounded-md bg-white/10" onClick={seekTo}>
+            <div
+              className="absolute top-0 h-full rounded-md bg-sky-500/35"
+              style={{ left: `${pct(start)}%`, width: `${pct(selDur)}%` }}
             />
-            <span className="w-14 font-mono text-slate-200">{fmt(start)}</span>
-          </label>
-          <label className="flex items-center gap-1">
-            Kết thúc
-            <input
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.05}
-              value={end}
-              onChange={(e) => setEndClamped(Number(e.target.value))}
-              className="w-40"
+            {/* Tay cầm bắt đầu */}
+            <div
+              className="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize rounded bg-sky-400 shadow"
+              style={{ left: `${pct(start)}%` }}
+              onPointerDown={drag("start")}
+              title="Kéo: điểm bắt đầu"
             />
-            <span className="w-14 font-mono text-slate-200">{fmt(end)}</span>
-          </label>
-          <span className="ml-auto">Đoạn: <span className="font-mono text-sky-300">{fmt(selDur)}</span></span>
+            {/* Tay cầm kết thúc */}
+            <div
+              className="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize rounded bg-sky-400 shadow"
+              style={{ left: `${pct(end)}%` }}
+              onPointerDown={drag("end")}
+              title="Kéo: điểm kết thúc"
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Bắt đầu <span className="font-mono text-slate-200">{fmt(start)}</span></span>
+            <span>Đoạn <span className="font-mono text-sky-300">{fmt(selDur)}</span></span>
+            <span>Kết thúc <span className="font-mono text-slate-200">{fmt(end)}</span></span>
+          </div>
+          {duration <= 0 ? <p className="mt-1 text-[11px] text-slate-500">Đang tải video…</p> : null}
         </div>
 
         {error ? <p className="text-xs text-red-400">{error}</p> : null}
@@ -148,7 +183,7 @@ export default function TrimPanel() {
           </button>
           <button
             type="button"
-            disabled={busy || selDur <= 0}
+            disabled={busy || selDur <= 0 || duration <= 0}
             className="rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40"
             onClick={() => void confirm()}
           >
