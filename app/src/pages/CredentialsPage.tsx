@@ -19,7 +19,13 @@ import {
   type CredentialMode,
 } from "../format/credential";
 import { useCredentialsStore } from "../store/credentials";
-import { loginImportCookieFiles, pickFiles, type LoginImportItem } from "../ipc/commands";
+import {
+  loginImportCookieFiles,
+  loginOpenInteractive,
+  pickFiles,
+  type InteractiveLoginResult,
+  type LoginImportItem,
+} from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 import type { CredentialKind, CredentialProvider, CredentialView } from "../ipc/types";
 
@@ -138,6 +144,7 @@ export function LoginCookieManager() {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-slate-800">Tài khoản đăng nhập / Cookie (nền tảng khác)</h2>
+      <InteractiveLogin onDone={() => void load()} />
       <BulkCookieLogin onDone={() => void load()} />
       <CredentialArea
         title="Kho đăng nhập / Cookie"
@@ -150,6 +157,104 @@ export function LoginCookieManager() {
       />
       <AddCredentialForm scope="cookie" />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// (B) Đăng nhập THỦ CÔNG có hỗ trợ — mở cửa sổ trình duyệt THẬT cho người dùng tự đăng nhập.
+// ĐƯỜNG HỢP LỆ: không tự điền email/mật khẩu, không tính TOTP/2FA, không né bot.
+// ---------------------------------------------------------------------------------------------
+
+function InteractiveLogin({ onDone }: { onDone: () => void }) {
+  const [provider, setProvider] = useState<CredentialProvider>("google");
+  const [label, setLabel] = useState("");
+  const [proxy, setProxy] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<InteractiveLoginResult | null>(null);
+
+  const canSubmit = !busy && label.trim() !== "";
+
+  async function open(): Promise<void> {
+    if (!canSubmit) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await loginOpenInteractive(provider, label.trim(), proxy.trim());
+      setResult(res);
+      onDone();
+    } catch (e) {
+      setError(describeCredentialError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded border border-dashed border-sky-300 bg-sky-50 p-3">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700">
+        Đăng nhập thủ công (mở trình duyệt)
+      </h3>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs">
+          Nền tảng
+          <select
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            value={provider}
+            disabled={busy}
+            onChange={(e) => setProvider(e.target.value as CredentialProvider)}
+          >
+            {COOKIE_PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {credentialProviderLabel(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          Nhãn
+          <input
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            value={label}
+            disabled={busy}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="vd Gmail acc1"
+          />
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-xs">
+          Proxy (tuỳ chọn)
+          <input
+            className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
+            value={proxy}
+            disabled={busy}
+            onChange={(e) => setProxy(e.target.value)}
+            placeholder="để trống, hoặc ip:port"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!canSubmit}
+          className="rounded bg-sky-700 px-3 py-1 text-xs text-white hover:bg-sky-600 disabled:opacity-50"
+          onClick={() => void open()}
+        >
+          {busy ? "Đang mở…" : "Mở trình duyệt đăng nhập"}
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-slate-500">
+        Cửa sổ trình duyệt sẽ mở tới trang đăng nhập. Bạn TỰ đăng nhập trong cửa sổ đó; phiên được lưu
+        vào profile để tái dùng. Ứng dụng không tự điền thông tin đăng nhập.
+      </p>
+      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      {result ? (
+        <p className="mt-1 text-xs text-emerald-700">
+          Đã mở &amp; lưu &quot;{result.label}&quot; ({credentialProviderLabel(result.provider as CredentialProvider)}).
+          Hãy đăng nhập trong cửa sổ vừa mở.
+        </p>
+      ) : null}
+    </section>
   );
 }
 
