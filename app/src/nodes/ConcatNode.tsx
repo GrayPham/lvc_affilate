@@ -11,6 +11,7 @@ import { useRunStore } from "../store/run";
 import { assetUrl } from "../ipc/tauri";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
+import { useHoverPlay } from "./useHoverPlay";
 import Lightbox from "../components/Lightbox";
 
 type ConcatKind = Extract<NodeKind, { kind: "concat" }>;
@@ -22,6 +23,7 @@ export default function ConcatNode({ id, selected }: NodeProps<ConcatRFNode>) {
   const videoPath = useRunStore((s) => s.nodeVideos[id]);
   const videoSrc = assetUrl(videoPath);
   const [zoom, setZoom] = useState(false);
+  const hp = useHoverPlay();
 
   const actions: ToolbarAction[] = [
     {
@@ -42,9 +44,13 @@ export default function ConcatNode({ id, selected }: NodeProps<ConcatRFNode>) {
       <NodeFloatingToolbar nodeId={id} actions={actions} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
       <MediaCard label={NODE_LABEL_VI.concat} selected={selected} errors={errors} runState={runState} wide>
-        <div className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]">
+        <div
+          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]"
+          {...(videoSrc ? hp.hover : {})}
+          title={videoSrc ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
+        >
           {videoSrc ? (
-            <video src={videoSrc} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted playsInline preload="metadata" />
+            <video ref={hp.videoRef} src={videoSrc} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted loop playsInline preload="metadata" />
           ) : (
             <span className="flex flex-col items-center gap-1 text-slate-400">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

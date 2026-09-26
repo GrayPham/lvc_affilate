@@ -15,6 +15,7 @@ import { assetUrl } from "../ipc/tauri";
 import { errorText } from "../ipc/error_text";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
+import { useHoverPlay } from "./useHoverPlay";
 import Lightbox from "../components/Lightbox";
 
 type LoadVideoKind = Extract<NodeKind, { kind: "load_video" }>;
@@ -29,6 +30,7 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
   const runState = useRunStore((s) => s.nodes[id]);
   const [pickError, setPickError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
+  const hp = useHoverPlay();
 
   // Bam -> sinh node MOI noi san tu cong ra `out` (video) cua node nay (kieu Lumina).
   function spawn(kind: "trim" | "frame_capture", slot: number): void {
@@ -134,9 +136,13 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
         wide
         onRename={(name) => updateNodeData(id, { ...data, label: name })}
       >
-        <div className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]">
+        <div
+          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]"
+          {...(src ? hp.hover : {})}
+          title={src ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
+        >
           {src ? (
-            <video src={src} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted playsInline preload="metadata" />
+            <video ref={hp.videoRef} src={src} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted loop playsInline preload="metadata" />
           ) : (
             <div className="flex flex-col items-center gap-2 text-slate-400">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

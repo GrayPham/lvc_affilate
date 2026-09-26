@@ -16,6 +16,7 @@ import { useWorkflowUi } from "../store/workflowUi";
 import { assetUrl } from "../ipc/tauri";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
+import { useHoverPlay } from "./useHoverPlay";
 import Lightbox from "../components/Lightbox";
 
 type VideoKind = Extract<NodeKind, { kind: "dola_video" }>;
@@ -31,6 +32,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
   const videoPath = useRunStore((s) => s.nodeVideos[id]);
   const videoSrc = assetUrl(videoPath);
   const [zoom, setZoom] = useState(false);
+  const hp = useHoverPlay();
 
   // Bam nut chuc nang -> sinh node MOI noi san tu cong ra `out` (video) cua node nay (kieu Lumina).
   // Dat ben phai node, xep doc theo `slot` de khong chong len nhau.
@@ -101,12 +103,18 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
       />
       <MediaCard label={NODE_LABEL_VI.dola_video} selected={selected} errors={errors} runState={runState} wide>
         {/* Vung xem truoc: video ket qua neu da chay xong; chua co thi placeholder toi + glyph play. */}
-        <div className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]">
+        <div
+          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]"
+          {...(videoSrc ? hp.hover : {})}
+          title={videoSrc ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
+        >
           {videoSrc ? (
             <video
+              ref={hp.videoRef}
               src={videoSrc}
               className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain"
               muted
+              loop
               playsInline
               preload="metadata"
             />
