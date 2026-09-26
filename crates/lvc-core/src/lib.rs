@@ -8,6 +8,7 @@ pub mod cookie;
 pub mod dola_text;
 pub mod error;
 pub mod failure;
+pub mod ffmpeg;
 pub mod graph;
 pub mod limits;
 pub mod mode;

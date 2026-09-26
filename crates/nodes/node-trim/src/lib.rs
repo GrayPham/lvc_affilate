@@ -1,7 +1,7 @@
 //! Node `trim` — cắt MỘT video (cổng `in`) theo khoảng thời gian `[start, end]` giây bằng ffmpeg.
 //!
 //! Ưu tiên CẮT NHANH (`-c copy`, không giải mã lại); nếu ffmpeg từ chối (khác keyframe/thông số) thì
-//! lùi về RE-ENCODE (libx264/aac). ffmpeg lấy từ env `LVC_FFMPEG` hoặc `ffmpeg` trong PATH. Không tải
+//! lùi về RE-ENCODE (libx264/aac). ffmpeg qua `lvc_core::ffmpeg` (ưu tiên bản đi kèm tool; env `LVC_FFMPEG`; PATH cuối). Không tải
 //! mạng, không tài khoản. `end <= start` (hoặc `end = 0`) = cắt tới hết video.
 
 use std::path::{Path, PathBuf};
@@ -53,7 +53,7 @@ pub fn node() -> Arc<dyn NodeExecutor> {
 struct TrimNode;
 
 fn ffmpeg_bin() -> String {
-    std::env::var("LVC_FFMPEG").unwrap_or_else(|_| "ffmpeg".to_string())
+    lvc_core::ffmpeg::ffmpeg_path()
 }
 
 /// Nơi ghi file cắt: cạnh video vào (cùng thư mục), tên `trim_<run>_<node>.mp4`.

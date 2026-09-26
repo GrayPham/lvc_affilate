@@ -62,7 +62,7 @@ pub async fn frame_save_png(data: String, name_hint: Option<String>) -> Result<S
 // ---------------------------------------------------------------------------------------------
 
 fn ffmpeg_bin() -> String {
-    std::env::var("LVC_FFMPEG").unwrap_or_else(|_| "ffmpeg".to_string())
+    lvc_core::ffmpeg::ffmpeg_path()
 }
 
 /// `[start, end]` -> tham số thời gian ffmpeg (đặt SAU `-i`). `end <= start` -> chỉ `-ss`.

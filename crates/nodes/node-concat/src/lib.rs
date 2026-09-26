@@ -2,7 +2,7 @@
 //!
 //! ADR-R008: ưu tiên NỐI THẲNG (concat demuxer `-c copy`, nhanh, không giảm chất lượng) khi các
 //! clip cùng codec/thông số; nếu ffmpeg từ chối (khác thông số) thì lùi về RE-ENCODE (libx264/aac).
-//! ffmpeg lấy từ env `LVC_FFMPEG` hoặc `ffmpeg` trong PATH. Không tải mạng, không tài khoản.
+//! ffmpeg giải quyết qua `lvc_core::ffmpeg` (ưu tiên bản đi kèm tool; env `LVC_FFMPEG`; PATH cuối). Không tải mạng, không tài khoản.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
@@ -42,7 +42,7 @@ pub fn node() -> Arc<dyn NodeExecutor> {
 struct ConcatNode;
 
 fn ffmpeg_bin() -> String {
-    std::env::var("LVC_FFMPEG").unwrap_or_else(|_| "ffmpeg".to_string())
+    lvc_core::ffmpeg::ffmpeg_path()
 }
 
 /// Nơi ghi file ghép: cạnh video đầu tiên (cùng thư mục `downloads`), tên `concat_<run>_<node>.mp4`.
