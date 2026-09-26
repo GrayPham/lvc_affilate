@@ -242,6 +242,26 @@ export async function loginImportCookieFiles(
   return z.array(LoginImportItemSchema).parse(res);
 }
 
+/** (B) Ket qua mo dang nhap thu cong (login_open_interactive). */
+export const InteractiveLoginResultSchema = z.object({
+  label: z.string(),
+  provider: z.string(),
+  profileDir: z.string(),
+  credentialId: z.string(),
+});
+export type InteractiveLoginResult = z.infer<typeof InteractiveLoginResultSchema>;
+
+/** (B) Mo cua so trinh duyet THAT toi trang dang nhap cho NGUOI DUNG tu dang nhap, roi luu
+ * credential `session` tham chieu profile ben vung. Duong HOP LE — khong tu dien thong tin. */
+export async function loginOpenInteractive(
+  platform: string,
+  label: string,
+  proxy: string,
+): Promise<InteractiveLoginResult> {
+  const res = await invoke<unknown>("login_open_interactive", { platform, label, proxy });
+  return InteractiveLoginResultSchema.parse(res);
+}
+
 export async function accountVerify(name: string): Promise<VerifyReport> {
   const res = await invoke<unknown>("account_verify", { name });
   return VerifyReportSchema.parse(res);

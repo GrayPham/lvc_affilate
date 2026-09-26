@@ -22,6 +22,8 @@
 //! P3c Task 1: [`scripts`] — `Engine::{run_script, import_txt_to_script, delete_script}` (tab Kich
 //! ban UI: chay/chay lai cac canh da chon qua DAG co san, nhap TXT thay toan bo canh, xoa kich ban
 //! co bao ve canh dang chay).
+//! P4 (B): [`login`] — `Engine::open_login` (mo cua so trinh duyet THAT cho NGUOI DUNG tu dang nhap
+//! thu cong, giu profile ben vung; DUONG HOP LE — khong tu dien thong tin/khong ne bot).
 
 pub mod accounts;
 pub mod cancel;
@@ -31,6 +33,7 @@ pub mod error;
 pub mod events;
 pub mod generate;
 pub mod limiter;
+pub mod login;
 pub mod pool;
 pub mod resume;
 pub mod scripts;
