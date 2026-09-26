@@ -2280,9 +2280,11 @@ dependencies = [
  "lvc-vault",
  "node-concat",
  "node-dola-video",
+ "node-frame-capture",
  "node-image-upload",
  "node-prompt",
  "node-save",
+ "node-trim",
  "serde",
  "serde_json",
  "tauri",
@@ -2600,6 +2602,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "node-frame-capture"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "node-image-upload"
 version = "0.1.0"
 dependencies = [
@@ -2639,6 +2654,19 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "node-trim"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

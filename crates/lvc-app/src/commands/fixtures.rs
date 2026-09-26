@@ -191,6 +191,17 @@ fn engine_events_fixture() -> Vec<EngineEvent> {
             total: 3,
             ok: 1,
             failed: 0,
+            error: None,
+        },
+        EngineEvent::NodeState {
+            run_id: "run_1".to_string(),
+            node_id: "n3".to_string(),
+            state: "failed".to_string(),
+            done: 1,
+            total: 1,
+            ok: 0,
+            failed: 1,
+            error: Some("node n3: canh 1 that bai".to_string()),
         },
         EngineEvent::RunDone {
             run_id: "run_1".to_string(),

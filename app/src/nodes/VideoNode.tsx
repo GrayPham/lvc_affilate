@@ -22,11 +22,24 @@ export type VideoRFNode = RFNodeBase<VideoKind, "dola_video">;
 
 export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>) {
   const errors = useGraphStore((s) => s.nodeErrors[id]);
+  const addNodeConnected = useGraphStore((s) => s.addNodeConnected);
+  const selfPos = useGraphStore((s) => s.nodes.find((n) => n.id === id)?.position);
   const runState = useRunStore((s) => s.nodes[id]);
   // Video HOAN TAT cua node nay (neu co) — preview mp4 ket qua (asset:// cua Tauri).
   const videoPath = useRunStore((s) => s.nodeVideos[id]);
   const videoSrc = assetUrl(videoPath);
   const [zoom, setZoom] = useState(false);
+
+  // Bam nut chuc nang -> sinh node MOI noi san tu cong ra `out` (video) cua node nay (kieu Lumina).
+  // Dat ben phai node, xep doc theo `slot` de khong chong len nhau.
+  function spawn(kind: "trim" | "frame_capture", slot: number): void {
+    const base = selfPos ?? { x: 0, y: 0 };
+    addNodeConnected(kind, { x: base.x + 340, y: base.y + slot * 150 }, {
+      nodeId: id,
+      handleId: "out",
+      handleType: "source",
+    });
+  }
 
   const actions: ToolbarAction[] = [
     {
@@ -37,6 +50,29 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+        </svg>
+      ),
+    },
+    {
+      key: "trim",
+      title: "Cắt video (thêm node nối sẵn)",
+      onClick: () => spawn("trim", 0),
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="6" r="3" />
+          <circle cx="6" cy="18" r="3" />
+          <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12" />
+        </svg>
+      ),
+    },
+    {
+      key: "frame",
+      title: "Chụp khung hình (thêm node nối sẵn)",
+      onClick: () => spawn("frame_capture", 1),
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
         </svg>
       ),
     },

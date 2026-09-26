@@ -13,6 +13,8 @@ const RUST_LABEL_VI: Record<string, string> = {
   dola_video: "Tạo video Dola",
   concat: "Ghép phân cảnh",
   save: "Lưu",
+  trim: "Cắt video",
+  frame_capture: "Chụp khung hình",
 };
 
 describe("NODE_LABEL_VI khop dung labelVi cua manifest node (Rust, P4a)", () => {

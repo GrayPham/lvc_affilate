@@ -28,6 +28,8 @@ export interface NodeRunState {
   total: number;
   ok: number;
   failed: number;
+  /** Thong diep loi cua node (nhat ky debug) — chi khac null khi `state === "failed"`. */
+  error: string | null;
 }
 
 export interface RunState {
@@ -149,6 +151,7 @@ export function applyEvent(state: RunState, event: EngineEvent): RunState {
         total: event.total,
         ok: event.ok,
         failed: event.failed,
+        error: event.error,
       };
       return {
         ...state,
@@ -194,10 +197,14 @@ export function reconcileFromRunRow(state: RunState, row: RunRow): RunState {
 export function reconcileTasksFromDb(state: RunState, dtos: readonly TaskDto[]): RunState {
   let tasks = state.tasks;
   let nodeVideos = state.nodeVideos;
+  // Dto (khop runId) + nodeId cua no — de sau khi cap nhat `tasks` xong con TONG HOP trang thai node
+  // theo trang thai task DA RECONCILE (uu tien su kien song), khong theo dto tho co the tre hon.
+  const matched: TaskDto[] = [];
   for (const dto of dtos) {
     if (dto.runId !== state.runId) {
       continue;
     }
+    matched.push(dto);
     // Video hoan tat -> nho path theo node de node video preview (dto co ca nodeId lan localPath).
     if (dto.status === "completed" && dto.localPath && dto.nodeId) {
       if (nodeVideos === state.nodeVideos) {
@@ -226,10 +233,58 @@ export function reconcileTasksFromDb(state: RunState, dtos: readonly TaskDto[]):
     }
     tasks[dto.id] = next;
   }
-  if (tasks === state.tasks && nodeVideos === state.nodeVideos) {
+
+  // Tong hop trang thai node tu cac dong `tasks` (node fan-out nhu video) — de sau khi mo lai trang
+  // (su kien `node_state` song da mat) node van hien vien do/xong va co nhat ky canh. Dung trang thai
+  // task DA RECONCILE (`tasks[dto.id]`), khong ghi de mot `node_state` KET THUC da toi qua su kien song.
+  const agg: Record<string, { ok: number; failed: number; running: number; error: string | null }> = {};
+  for (const dto of matched) {
+    if (!dto.nodeId) {
+      continue;
+    }
+    const t = tasks[dto.id];
+    const status = t?.status ?? "running";
+    const a = (agg[dto.nodeId] ??= { ok: 0, failed: 0, running: 0, error: null });
+    if (status === "done") {
+      a.ok += 1;
+    } else if (status === "failed") {
+      a.failed += 1;
+      const err = t?.error ?? dto.error;
+      if (!a.error && err) {
+        a.error = (dto.sceneIndex != null ? `cảnh ${dto.sceneIndex}: ` : "") + err;
+      }
+    } else {
+      a.running += 1;
+    }
+  }
+  let nodes = state.nodes;
+  for (const [nodeId, a] of Object.entries(agg)) {
+    const prev = state.nodes[nodeId];
+    // Giu nguyen neu su kien song da chot trang thai KET THUC cho node nay (chinh xac hon ban chup DB).
+    if (prev && (prev.state === "done" || prev.state === "failed" || prev.state === "cancelled")) {
+      continue;
+    }
+    const total = a.ok + a.failed + a.running;
+    const nodeState =
+      a.running > 0 ? "running" : a.failed > 0 ? "failed" : total > 0 ? "done" : "queued";
+    const next: NodeRunState = {
+      nodeId,
+      state: nodeState,
+      done: a.ok + a.failed,
+      total,
+      ok: a.ok,
+      failed: a.failed,
+      error: nodeState === "failed" ? a.error : null,
+    };
+    if (nodes === state.nodes) {
+      nodes = { ...state.nodes };
+    }
+    nodes[nodeId] = next;
+  }
+  if (tasks === state.tasks && nodeVideos === state.nodeVideos && nodes === state.nodes) {
     return state;
   }
-  return { ...state, tasks, nodeVideos };
+  return { ...state, tasks, nodeVideos, nodes };
 }
 
 interface RunStore extends RunState {

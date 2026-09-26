@@ -34,6 +34,21 @@
     ]
   },
   {
+    "kind": "frame_capture",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
     "kind": "image_upload",
     "inputs": [],
     "outputs": [
@@ -66,5 +81,20 @@
       }
     ],
     "outputs": []
+  },
+  {
+    "kind": "trim",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
   }
 ]

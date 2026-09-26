@@ -7,6 +7,7 @@ import NodeStatusBadge from "../components/NodeStatusBadge";
 import type { NodeRunState } from "../store/run";
 import type { GraphError } from "../ipc/types";
 import { formatGraphError } from "../graph/errors";
+import { nodeBorderClass } from "./nodeCardStyle";
 
 interface NodeShellProps {
   label: string;
@@ -21,12 +22,8 @@ export default function NodeShell({ label, selected, errors, runState, children 
   return (
     <div
       className={
-        "w-56 rounded-2xl border bg-[#17171a] p-2.5 text-slate-200 shadow-lg " +
-        (hasErrors
-          ? "border-red-500/80 ring-1 ring-red-500/40"
-          : selected
-            ? "border-sky-400/80 ring-1 ring-sky-400/40"
-            : "border-white/10")
+        "w-56 rounded-2xl border bg-[#17171a] p-2.5 text-slate-200 shadow-lg transition-colors " +
+        nodeBorderClass({ hasErrors, selected, runState })
       }
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">

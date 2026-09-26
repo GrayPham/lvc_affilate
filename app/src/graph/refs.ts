@@ -47,6 +47,10 @@ export function nodeChipLabel(data: NodeKind): string {
       return NODE_LABEL_VI.concat;
     case "save":
       return NODE_LABEL_VI.save;
+    case "trim":
+      return NODE_LABEL_VI.trim;
+    case "frame_capture":
+      return NODE_LABEL_VI.frame_capture;
   }
 }
 

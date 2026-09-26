@@ -3,6 +3,7 @@
 // Workflow.tsx doc `DRAG_KIND_MIME` tren `onDrop` cua `<ReactFlow>` de biet loai node vua tha.
 import type { AddableNodeKind } from "../graph/ports";
 import { NODE_KIND_ORDER, NODE_LABEL_VI, ADDABLE_KINDS } from "../graph/ports";
+import { connectionForNewNode, type PendingConnect } from "../graph/connect";
 import type { NodeKindTag } from "../ipc/types";
 import { useGraphStore } from "../store/graph";
 import { useWorkflowUi } from "../store/workflowUi";
@@ -13,13 +14,37 @@ export const DRAG_KIND_MIME = "application/lvc-node-kind";
 // P-lumina: Palette gio la mot POPUP toi noi ben canh thanh cong cu trai (khong con aside co dinh) —
 // bam "+" tren CanvasToolbar de mo. Keo-tha va nhap-de-them van hoat dong nhu cu.
 // `at` (toa do FLOW): khi mo bang CHUOT PHAI tren canvas, node moi dat DUNG cho con tro thay vi so le.
-export default function Palette({ at }: { at?: { x: number; y: number } }) {
+// `connectFrom`: khi menu mo do KEO MOT DAY ra cho trong — node moi se noi san voi handle nguon.
+export default function Palette({
+  at,
+  connectFrom,
+}: {
+  at?: { x: number; y: number };
+  connectFrom?: Omit<PendingConnect, "kind"> | null;
+}) {
+  const nodes = useGraphStore((s) => s.nodes);
+
+  // Khi menu mo do KEO MOT DAY: chi hien cac loai node NOI DUOC voi cong dang keo (yeu cau: "đâu ra
+  // các node có thể nối được"). Suy tu kind cua node nguon + khop cong theo kieu (connect.ts).
+  let kinds: readonly NodeKindTag[] = NODE_KIND_ORDER;
+  if (connectFrom) {
+    const fromNode = nodes.find((n) => n.id === connectFrom.nodeId);
+    if (fromNode) {
+      const from: PendingConnect = { ...connectFrom, kind: fromNode.data.kind };
+      kinds = NODE_KIND_ORDER.filter((k) => connectionForNewNode(from, "?", k) !== null);
+    }
+  }
+
   return (
     <div className="flex w-44 flex-col gap-1.5 rounded-2xl border border-white/10 bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
-      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Thêm node</h2>
-      {NODE_KIND_ORDER.map((kind) => (
-        <PaletteItem key={kind} kind={kind} at={at} />
-      ))}
+      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {connectFrom ? "Nối tới node" : "Thêm node"}
+      </h2>
+      {kinds.length === 0 ? (
+        <p className="px-1 py-1 text-[11px] text-slate-500">Không có node nào nối được cổng này.</p>
+      ) : (
+        kinds.map((kind) => <PaletteItem key={kind} kind={kind} at={at} connectFrom={connectFrom} />)
+      )}
     </div>
   );
 }
@@ -34,14 +59,28 @@ function nextClickPosition(count: number): { x: number; y: number } {
   return { x: 80 + (count % 8) * step, y: 80 + (count % 8) * step };
 }
 
-function PaletteItem({ kind, at }: { kind: NodeKindTag; at?: { x: number; y: number } }) {
+function PaletteItem({
+  kind,
+  at,
+  connectFrom,
+}: {
+  kind: NodeKindTag;
+  at?: { x: number; y: number };
+  connectFrom?: Omit<PendingConnect, "kind"> | null;
+}) {
   const enabled = ADDABLE_KINDS.has(kind);
   const addNode = useGraphStore((s) => s.addNode);
+  const addNodeConnected = useGraphStore((s) => s.addNodeConnected);
   const nodeCount = useGraphStore((s) => s.nodes.length);
   const closeAddMenu = useWorkflowUi((s) => s.closeAddMenu);
 
   function add(): void {
-    addNode(kind as AddableNodeKind, at ?? nextClickPosition(nodeCount));
+    const position = at ?? nextClickPosition(nodeCount);
+    if (connectFrom) {
+      addNodeConnected(kind as AddableNodeKind, position, connectFrom);
+    } else {
+      addNode(kind as AddableNodeKind, position);
+    }
     closeAddMenu();
   }
 

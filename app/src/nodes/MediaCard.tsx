@@ -7,6 +7,7 @@ import NodeStatusBadge from "../components/NodeStatusBadge";
 import type { NodeRunState } from "../store/run";
 import type { GraphError } from "../ipc/types";
 import { formatGraphError } from "../graph/errors";
+import { nodeBorderClass } from "./nodeCardStyle";
 
 interface MediaCardProps {
   label: string;
@@ -93,11 +94,7 @@ export default function MediaCard({ label, selected, errors, runState, wide, onR
         "relative overflow-hidden rounded-2xl border bg-[#17171a] shadow-lg transition-colors " +
         (wide ? "w-72" : "w-56") +
         " " +
-        (hasErrors
-          ? "border-red-500/80 ring-1 ring-red-500/40"
-          : selected
-            ? "border-sky-400/80 ring-1 ring-sky-400/40"
-            : "border-white/10")
+        nodeBorderClass({ hasErrors, selected, runState })
       }
     >
       {/* Than the = vung xem truoc */}

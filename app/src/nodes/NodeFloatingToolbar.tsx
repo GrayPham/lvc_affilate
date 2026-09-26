@@ -1,9 +1,11 @@
 // Thanh cong cu noi (P-lumina) hien ngay TREN node khi node duoc chon — dung `NodeToolbar` cua
 // @xyflow/react (tu an/hien theo `selected`, tu dinh vi tren node). Body node de KEO di chuyen;
-// moi HANH DONG (them/thay/xoa/phong to...) nam o thanh nay. Truyen `actions`; khong truyen ->
-// bo nut stub mac dinh (giu bo cuc tham chieu khi backend chua co lenh tuong ung).
+// moi HANH DONG (thay/xoa anh/phong to...) nam o thanh nay. Nut "Xoa node" LUON co o cuoi thanh cho
+// MOI node (khong node nao phai tu them) — truoc day khong co cach xoa node tren UI.
 import type { ReactNode } from "react";
 import { NodeToolbar, Position } from "@xyflow/react";
+
+import { useGraphStore } from "../store/graph";
 
 export interface ToolbarAction {
   key: string;
@@ -38,21 +40,12 @@ function ActionButton({ action }: { action: ToolbarAction }) {
   );
 }
 
-/** Bo nut stub mac dinh (chay lai / tai xuong / phong to) — chua noi backend. */
-const STUB_ACTIONS: ToolbarAction[] = [
-  {
-    key: "rerun",
-    title: "Chạy lại (sắp có)",
-    onClick: () => {},
-    disabled: true,
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-        <path d="M21 3v6h-6" />
-      </svg>
-    ),
-  },
-];
+const TrashIcon = (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
 
 export default function NodeFloatingToolbar({
   nodeId,
@@ -61,13 +54,24 @@ export default function NodeFloatingToolbar({
   nodeId: string;
   actions?: ToolbarAction[];
 }) {
-  const items = actions ?? STUB_ACTIONS;
+  const deleteNode = useGraphStore((s) => s.deleteNode);
+  const items = actions ?? [];
   return (
     <NodeToolbar nodeId={nodeId} position={Position.Top} offset={10}>
       <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1c1c22] px-1 py-0.5 shadow-lg">
         {items.map((a) => (
           <ActionButton key={a.key} action={a} />
         ))}
+        {items.length > 0 ? <span className="mx-0.5 h-5 w-px bg-white/10" /> : null}
+        <ActionButton
+          action={{
+            key: "delete-node",
+            title: "Xoá node",
+            danger: true,
+            onClick: () => deleteNode(nodeId),
+            icon: TrashIcon,
+          }}
+        />
       </div>
     </NodeToolbar>
   );

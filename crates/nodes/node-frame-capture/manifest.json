@@ -1,0 +1,37 @@
+{
+  "kind": "frame_capture",
+  "version": 1,
+  "category": "image",
+  "labelVi": "Chụp khung hình",
+  "inputs": [
+    {
+      "name": "in",
+      "type": "video",
+      "many": false,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "image",
+      "many": false,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "defaultParams": {
+    "time": 0.0
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "time": {
+        "type": "number",
+        "title": "Thời điểm (giây)",
+        "minimum": 0
+      }
+    }
+  }
+}

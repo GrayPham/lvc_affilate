@@ -134,6 +134,43 @@
     }
   },
   {
+    "kind": "frame_capture",
+    "version": 1,
+    "category": "image",
+    "labelVi": "Chụp khung hình",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video",
+        "many": false,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": false,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {
+      "time": 0.0
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "number",
+          "title": "Thời điểm (giây)",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  {
     "kind": "image_upload",
     "version": 1,
     "category": "input",
@@ -236,6 +273,49 @@
           "type": "string",
           "title": "Thư mục lưu",
           "format": "directory"
+        }
+      }
+    }
+  },
+  {
+    "kind": "trim",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Cắt video",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video",
+        "many": false,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": false,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {
+      "start": 0.0,
+      "end": 0.0
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "number",
+          "title": "Bắt đầu (giây)",
+          "minimum": 0
+        },
+        "end": {
+          "type": "number",
+          "title": "Kết thúc (giây, 0 = hết)",
+          "minimum": 0
         }
       }
     }

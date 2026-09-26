@@ -285,13 +285,16 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         }
     }
 
-    /// `counts = (done, total, ok, failed)`.
-    fn emit_node_state(
+    /// `counts = (done, total, ok, failed)`; `error` = thong diep loi cua node (chi khi
+    /// `state == NODE_FAILED`, dung cho nhat ky debug tung node) — [`emit_node_state`] cho cac buoc
+    /// khong loi.
+    fn emit_node_state_err(
         &self,
         run_id: &str,
         node_id: &str,
         state: &str,
         counts: (u32, u32, u32, u32),
+        error: Option<String>,
     ) {
         let (done, total, ok, failed) = counts;
         self.events().emit(EngineEvent::NodeState {
@@ -302,7 +305,78 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             total,
             ok,
             failed,
+            error,
         });
+    }
+
+    /// `counts = (done, total, ok, failed)` — buoc khong mang thong diep loi (`error: None`).
+    fn emit_node_state(
+        &self,
+        run_id: &str,
+        node_id: &str,
+        state: &str,
+        counts: (u32, u32, u32, u32),
+    ) {
+        self.emit_node_state_err(run_id, node_id, state, counts, None);
+    }
+
+    /// Khoi tao mot lan chay: phat `queued` cho MOI node (mang dung `total`), dung `Services` (co
+    /// dich vu `DolaVideoHost`) va clone `Limits`. Tach khoi [`Engine::run_steps`] cho gon.
+    fn start_run(
+        self: &Arc<Self>,
+        run_id: &str,
+        graph: &Graph,
+        prepared: &Prepared,
+        hooks_factory: HooksFactory,
+        tasks_ready_tx: &watch::Sender<Vec<TaskRef>>,
+    ) -> (Services, Arc<lvc_core::Limits>) {
+        for n in &graph.nodes {
+            let total = prepared.jobs.get(&n.id).copied().unwrap_or(1);
+            self.emit_node_state(run_id, &n.id, NODE_QUEUED, (0, total, 0, 0));
+        }
+        let mut services = Services::new();
+        services.insert::<Arc<dyn DolaVideoHost>>(Arc::new(RunDolaHost {
+            engine: Arc::clone(self),
+            hooks_factory,
+            tasks_ready_tx: tasks_ready_tx.clone(),
+        }));
+        (services, Arc::new(self.limits.clone()))
+    }
+
+    /// I2: phat trang thai CUOI cho cac node CHUA KIP CHAY khi run dung som (huy/`hard_stop`) —
+    /// `cancelled` (huy nguoi dung, khong loi) hoac `failed` (mot node khac loi nghiem trong, ghi ly
+    /// do vao nhat ky de giai thich vi sao node nay khong chay).
+    fn emit_pending_terminal(
+        &self,
+        run_id: &str,
+        graph: &Graph,
+        prepared: &Prepared,
+        touched: &HashSet<String>,
+        cancelled: bool,
+        hard_stop: Option<&str>,
+    ) {
+        let pending_state = if cancelled {
+            NODE_CANCELLED
+        } else {
+            NODE_FAILED
+        };
+        let pending_err = if cancelled {
+            None
+        } else {
+            hard_stop.map(|m| format!("run dung do loi nghiem trong o node khac: {m}"))
+        };
+        for n in &graph.nodes {
+            if !touched.contains(&n.id) {
+                let total = prepared.jobs.get(&n.id).copied().unwrap_or(1);
+                self.emit_node_state_err(
+                    run_id,
+                    &n.id,
+                    pending_state,
+                    (0, total, 0, total),
+                    pending_err.clone(),
+                );
+            }
+        }
     }
 
     /// Than vong chay nen cua [`Engine::run_graph`]. Fix round 1 (I3): than vong NODE chay trong
@@ -357,17 +431,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             tasks_ready_tx,
         } = job;
         let total_of = |id: &str| prepared.jobs.get(id).copied().unwrap_or(1);
-        for n in &graph.nodes {
-            self.emit_node_state(&run_id, &n.id, NODE_QUEUED, (0, total_of(&n.id), 0, 0));
-        }
-
-        let mut services = Services::new();
-        services.insert::<Arc<dyn DolaVideoHost>>(Arc::new(RunDolaHost {
-            engine: Arc::clone(&self),
-            hooks_factory,
-            tasks_ready_tx: tasks_ready_tx.clone(),
-        }));
-        let limits = Arc::new(self.limits.clone());
+        let (services, limits) =
+            self.start_run(&run_id, &graph, &prepared, hooks_factory, &tasks_ready_tx);
 
         let mut outputs: HashMap<String, Outputs> = HashMap::new();
         let mut touched: HashSet<String> = HashSet::new();
@@ -387,8 +452,15 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             let total = total_of(node_id);
             let Some(exec) = registry.get(&node.kind.kind) else {
                 // prepare() da chan kind la — chi phong thu.
-                self.emit_node_state(&run_id, node_id, NODE_FAILED, (total, total, 0, total));
-                failures.push(format!("node {node_id}: kind {} chua cai", node.kind.kind));
+                let msg = format!("node {node_id}: kind {} chua cai", node.kind.kind);
+                self.emit_node_state_err(
+                    &run_id,
+                    node_id,
+                    NODE_FAILED,
+                    (total, total, 0, total),
+                    Some(msg.clone()),
+                );
+                failures.push(msg);
                 continue;
             };
             self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
@@ -404,16 +476,17 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             match exec.run(&ctx, &node.kind.params, inputs).await {
                 Ok(res) => {
                     let c = res.counts;
-                    let state = if res.is_failed() {
-                        NODE_FAILED
-                    } else {
-                        NODE_DONE
-                    };
-                    self.emit_node_state(
+                    let failed = res.is_failed();
+                    let state = if failed { NODE_FAILED } else { NODE_DONE };
+                    // Node fan-out (vd video) da co dong `tasks` rieng cho tung canh; van dinh kem
+                    // `res.failure` (vd "canh 1,3 that bai") lam nhat ky cap node khi that bai.
+                    let node_err = if failed { res.failure.clone() } else { None };
+                    self.emit_node_state_err(
                         &run_id,
                         node_id,
                         state,
                         (c.done, c.total, c.ok, c.failed),
+                        node_err,
                     );
                     if let Some(f) = res.failure {
                         failures.push(f);
@@ -421,7 +494,13 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     outputs.insert(node_id.clone(), res.outputs);
                 }
                 Err(e) => {
-                    self.emit_node_state(&run_id, node_id, NODE_FAILED, (total, total, 0, total));
+                    self.emit_node_state_err(
+                        &run_id,
+                        node_id,
+                        NODE_FAILED,
+                        (total, total, 0, total),
+                        Some(e.message.clone()),
+                    );
                     if e.fatal {
                         hard_stop = Some(e.message);
                     } else {
@@ -432,17 +511,14 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         }
 
         if hard_stop.is_some() || token.is_cancelled() {
-            let pending_state = if token.is_cancelled() {
-                NODE_CANCELLED
-            } else {
-                NODE_FAILED
-            };
-            for n in &graph.nodes {
-                if !touched.contains(&n.id) {
-                    let total = total_of(&n.id);
-                    self.emit_node_state(&run_id, &n.id, pending_state, (0, total, 0, total));
-                }
-            }
+            self.emit_pending_terminal(
+                &run_id,
+                &graph,
+                &prepared,
+                &touched,
+                token.is_cancelled(),
+                hard_stop.as_deref(),
+            );
         }
 
         // I1: "chot" tasks_ready KHONG DIEU KIEN (xem doc `RunHandle::tasks_ready`).
@@ -858,6 +934,7 @@ mod tests {
             total,
             ok,
             failed,
+            error: None,
         }
     }
 

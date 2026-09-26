@@ -39,6 +39,8 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
     },
     concat: { kind: "concat" },
     save: { kind: "save", out_dir: "" },
+    trim: { kind: "trim", start: 0, end: 0 },
+    frame_capture: { kind: "frame_capture", time: 0 },
   };
 
   function node(id: string, kind: NodeKindTag): RFNode {

@@ -25,6 +25,8 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
   const runState = useRunStore((s) => s.nodes[id]);
   const [pickError, setPickError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
+  // Tang de "tai lai" anh tu dia (cung duong dan) — dung lam cache-buster + remount <img>.
+  const [reloadTick, setReloadTick] = useState(0);
 
   // Chon 1 anh (lay anh dau neu ho chon nhieu) — moi node chi giu DUNG mot anh.
   async function pick(): Promise<void> {
@@ -41,14 +43,31 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
   }
 
   const path = data.paths[0] ?? "";
-  const src = assetUrl(path);
+  const baseSrc = assetUrl(path);
+  // Tai lai: them tham so ?r= de bo qua cache WebView2 (asset:// tren Windows la http://asset.localhost).
+  const src = baseSrc && reloadTick > 0 ? `${baseSrc}${baseSrc.includes("?") ? "&" : "?"}r=${reloadTick}` : baseSrc;
   const label = (data.label ?? "").trim() || NODE_LABEL_VI.image_upload;
 
   const actions: ToolbarAction[] = [
     {
       key: "replace",
-      title: path ? "Thay ảnh khác" : "Chọn ảnh",
+      title: path ? "Thay ảnh (tải lên ảnh khác)" : "Chọn ảnh (tải lên)",
       onClick: () => void pick(),
+      // Icon UPLOAD (mui ten len khay) — thay anh bang anh moi tu may.
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <path d="M17 8l-5-5-5 5" />
+          <path d="M12 3v12" />
+        </svg>
+      ),
+    },
+    {
+      key: "reload",
+      title: "Tải lại ảnh theo đường dẫn (nếu file trên máy đã đổi)",
+      disabled: !path,
+      onClick: () => setReloadTick((t) => t + 1),
+      // Icon RELOAD (mui ten xoay) — doc lai file cu tren dia, khong doi duong dan.
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 2v6h-6" />
@@ -96,9 +115,15 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
         {path ? (
           // 1 anh — hien day khung (giu ti le, nen den); keo than de di chuyen node.
           <img
+            key={reloadTick}
             src={src}
             alt=""
-            className="block max-h-80 w-full bg-black object-contain"
+            title="Nhấp đúp để thay ảnh (tải lên ảnh khác)"
+            className="block max-h-80 w-full cursor-pointer bg-black object-contain"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              void pick();
+            }}
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
             }}

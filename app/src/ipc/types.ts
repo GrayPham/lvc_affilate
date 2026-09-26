@@ -40,7 +40,15 @@ export type PortType = z.infer<typeof PortTypeSchema>;
 // P4a: node thanh module doc lap — CHI con 4 kind (5 kind P4 cu `image_from_url`/`image_gen`/
 // `remove_logo`/`ensure_h264`/`concat` da bi xoa khoi backend; `video` doi ten `dola_video`, do thi
 // cu duoc migrate o `src/graph/adapter.ts::migrateGraphJson`).
-export const NodeKindTagSchema = z.enum(["prompt", "image_upload", "dola_video", "concat", "save"]);
+export const NodeKindTagSchema = z.enum([
+  "prompt",
+  "image_upload",
+  "dola_video",
+  "concat",
+  "save",
+  "trim",
+  "frame_capture",
+]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
 /** Danh sach `NodeKindTag` theo thu tu hien tren Palette (`fixtures/ports.json` xep theo ten kind,
@@ -65,6 +73,15 @@ const DolaVideoKindSchema = z.object({
 });
 const ConcatKindSchema = z.object({ kind: z.literal("concat") });
 const SaveKindSchema = z.object({ kind: z.literal("save"), out_dir: z.string() });
+const TrimKindSchema = z.object({
+  kind: z.literal("trim"),
+  start: z.number(),
+  end: z.number(),
+});
+const FrameCaptureKindSchema = z.object({
+  kind: z.literal("frame_capture"),
+  time: z.number(),
+});
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
@@ -72,6 +89,8 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   DolaVideoKindSchema,
   ConcatKindSchema,
   SaveKindSchema,
+  TrimKindSchema,
+  FrameCaptureKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 
@@ -201,6 +220,8 @@ const NodeStateEventSchema = z.object({
   total: z.number(),
   ok: z.number(),
   failed: z.number(),
+  // Thong diep loi cua node (nhat ky debug) — chi khac null khi state === "failed".
+  error: z.string().nullable(),
 });
 const RunDoneEventSchema = z.object({
   type: z.literal("run_done"),

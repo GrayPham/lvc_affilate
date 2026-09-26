@@ -27,6 +27,8 @@ node-image-upload.workspace = true
 node-save.workspace = true
 node-dola-video.workspace = true
 node-concat.workspace = true
+node-trim.workspace = true
+node-frame-capture.workspace = true
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"

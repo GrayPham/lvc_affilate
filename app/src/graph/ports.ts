@@ -32,6 +32,14 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     ],
     outputs: [],
   },
+  trim: {
+    inputs: [{ name: "in", type: "video" }],
+    outputs: [{ name: "out", type: "video" }],
+  },
+  frame_capture: {
+    inputs: [{ name: "in", type: "video" }],
+    outputs: [{ name: "out", type: "image" }],
+  },
 };
 
 /** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho moi kieu du lieu. */
@@ -53,6 +61,8 @@ export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   dola_video: "Tạo video Dola",
   concat: "Ghép phân cảnh",
   save: "Lưu",
+  trim: "Cắt video",
+  frame_capture: "Chụp khung hình",
 };
 
 /** `NodeKind` co the them vao canvas tu Palette — P4a: ca 4 kind con lai deu them duoc. */

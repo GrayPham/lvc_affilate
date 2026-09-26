@@ -9,6 +9,7 @@ import type { Connection, EdgeChange, NodeChange } from "@xyflow/react";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import { fromGraph, migrateGraphJson, toGraph } from "../graph/adapter";
 import { isValidConnection as checkValidConnection } from "../graph/rules";
+import { connectionForNewNode, type PendingConnect } from "../graph/connect";
 import type { AddableNodeKind } from "../graph/ports";
 import { GraphSchema, type Graph, type GraphError, type NodeKind } from "../ipc/types";
 
@@ -30,6 +31,8 @@ const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
   }),
   concat: () => ({ kind: "concat" }),
   save: () => ({ kind: "save", out_dir: "" }),
+  trim: () => ({ kind: "trim", start: 0, end: 0 }),
+  frame_capture: () => ({ kind: "frame_capture", time: 0 }),
 };
 
 function genId(prefix: string): string {
@@ -58,7 +61,19 @@ interface GraphStoreState {
   onEdgesChange: (changes: EdgeChange<RFEdge>[]) => void;
   onConnect: (connection: Connection) => void;
   addNode: (kind: AddableNodeKind, position: { x: number; y: number }) => void;
+  /**
+   * Them node MOI tai `position` va noi ngay voi handle dang keo (`from`) neu tim duoc cong khop
+   * kieu (kieu Lumina: keo "+" ra cho trong -> chon node -> da noi san). Neu khong khop kieu thi
+   * chi them node, khong tao canh.
+   */
+  addNodeConnected: (
+    kind: AddableNodeKind,
+    position: { x: number; y: number },
+    from: Omit<PendingConnect, "kind">,
+  ) => void;
   updateNodeData: (id: string, data: NodeKind) => void;
+  /** Xoa mot node + MOI canh noi toi/tu no; bo chon neu dang chon node do. */
+  deleteNode: (id: string) => void;
   setSelected: (id: string | null) => void;
   undo: () => void;
   loadGraph: (graph: Graph) => void;
@@ -173,12 +188,44 @@ export const useGraphStore = create<GraphStoreState>((set, get) => {
       set({ nodes: [...get().nodes, node], nodeErrors: {}, globalErrors: [] });
     },
 
+    addNodeConnected: (kind, position, from) => {
+      pushHistory();
+      const { nodes, edges } = get();
+      const fromNode = nodes.find((n) => n.id === from.nodeId);
+      const id = genId("n");
+      const node: RFNode = { id, type: kind, position, data: DEFAULT_DATA[kind]() };
+      const nextNodes = [...nodes, node];
+      let nextEdges = edges;
+      if (fromNode) {
+        const conn = connectionForNewNode(
+          { ...from, kind: fromNode.data.kind },
+          id,
+          kind,
+        );
+        if (conn && checkValidConnection(conn, nextNodes, edges)) {
+          nextEdges = addEdge({ ...conn, id: genId("e") }, edges);
+        }
+      }
+      set({ nodes: nextNodes, edges: nextEdges, nodeErrors: {}, globalErrors: [] });
+    },
+
     updateNodeData: (id, data) => {
       set({
         nodes: get().nodes.map((n) => (n.id === id ? { ...n, type: data.kind, data } : n)),
         nodeErrors: {},
         globalErrors: [],
       });
+    },
+
+    deleteNode: (id) => {
+      pushHistory();
+      set((s) => ({
+        nodes: s.nodes.filter((n) => n.id !== id),
+        edges: s.edges.filter((e) => e.source !== id && e.target !== id),
+        selectedNodeId: s.selectedNodeId === id ? null : s.selectedNodeId,
+        nodeErrors: {},
+        globalErrors: [],
+      }));
     },
 
     setSelected: (id) => set({ selectedNodeId: id }),

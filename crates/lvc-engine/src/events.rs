@@ -68,6 +68,10 @@ pub enum EngineEvent {
         total: u32,
         ok: u32,
         failed: u32,
+        /// Thong diep loi CUA NODE (nhat ky debug) — chi `Some` khi `state == "failed"` va node co
+        /// message (loi `NodeError`, hoac `NodeResult.failure`); `None` moi truong hop khac. Cho phep
+        /// UI hien "nhat ky chay" tung node ke ca node khong fan-out (khong co dong `tasks` rieng).
+        error: Option<String>,
     },
     /// Task 7: run ket thuc (`status` = `completed`/`failed`/`cancelled`).
     RunDone { run_id: String, status: String },
@@ -203,8 +207,22 @@ mod tests {
                     total: 3,
                     ok: 1,
                     failed: 0,
+                    error: None,
                 },
-                json!({"type":"node_state","runId":"r1","nodeId":"n1","state":"running","done":1,"total":3,"ok":1,"failed":0}),
+                json!({"type":"node_state","runId":"r1","nodeId":"n1","state":"running","done":1,"total":3,"ok":1,"failed":0,"error":null}),
+            ),
+            (
+                EngineEvent::NodeState {
+                    run_id: "r1".into(),
+                    node_id: "n1".into(),
+                    state: "failed".into(),
+                    done: 1,
+                    total: 1,
+                    ok: 0,
+                    failed: 1,
+                    error: Some("node n1: ffmpeg loi".into()),
+                },
+                json!({"type":"node_state","runId":"r1","nodeId":"n1","state":"failed","done":1,"total":1,"ok":0,"failed":1,"error":"node n1: ffmpeg loi"}),
             ),
             (
                 EngineEvent::RunDone {
@@ -214,7 +232,11 @@ mod tests {
                 json!({"type":"run_done","runId":"r1","status":"completed"}),
             ),
         ];
-        assert_eq!(cases.len(), 7, "5 bien the (+2 truong hop None)");
+        assert_eq!(
+            cases.len(),
+            8,
+            "5 bien the (+2 None + 1 node_state failed co error)"
+        );
         for (ev, want) in cases {
             assert_eq!(serde_json::to_value(&ev).unwrap(), want, "{ev:?}");
         }

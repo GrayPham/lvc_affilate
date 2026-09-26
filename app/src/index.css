@@ -1,1 +1,56 @@
 @import "tailwindcss";
+
+/* ------------------------------------------------------------------------------------------------
+   Canvas Workflow (P-lumina) — bổ trợ trực quan cho nối dây:
+   - Làm mờ node KHÔNG nối được trong lúc kéo: Workflow.tsx chèn <style> theo `data-id` (không đổi
+     object node để tránh kẹt kết nối của React Flow).
+   - Handle = nút tròn nối dây, rõ ràng; khi hover/chọn node phóng to thành vòng tròn có dấu "+".
+   ------------------------------------------------------------------------------------------------ */
+
+/* Nút cổng mặc định: vòng tròn nhỏ gọn, viền tối tách khỏi card, luôn thấy có cổng. */
+.react-flow__handle {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #0a0a0b;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+  transition: width 0.12s ease, height 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Ló ra ngoài cạnh card một chút (khoảng hở kiểu Lumina) — React Flow đã căn giữa bằng
+   translate(-50%,-50%) nên chỉ cần dịch mép trái/phải, tâm cổng vẫn đúng chiều dọc. */
+.react-flow__handle-left {
+  left: -5px;
+}
+.react-flow__handle-right {
+  right: -5px;
+}
+
+/* Hover/chọn node, hoặc đang kéo dây tới/từ cổng này -> phóng to thành nút tròn rõ, có vòng sáng. */
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle,
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectingto,
+.react-flow__handle.valid {
+  width: 24px;
+  height: 24px;
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+/* Dấu "+" trắng, đậm, có bóng để nổi trên nền màu cổng — gợi ý "kéo để nối". */
+.react-flow__node:hover .react-flow__handle::after,
+.react-flow__node.selected .react-flow__handle::after {
+  content: "+";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}

@@ -13,6 +13,8 @@ pub fn build_registry() -> Registry {
         .with(node_save::node())
         .with(node_dola_video::node())
         .with(node_concat::node())
+        .with(node_trim::node())
+        .with(node_frame_capture::node())
 }
 
 #[cfg(test)]
@@ -20,7 +22,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_du_4_node_p4a() {
+    fn registry_du_cac_node() {
         let kinds: Vec<String> = build_registry()
             .manifests()
             .into_iter()
@@ -28,7 +30,15 @@ mod tests {
             .collect();
         assert_eq!(
             kinds,
-            ["concat", "dola_video", "image_upload", "prompt", "save"]
+            [
+                "concat",
+                "dola_video",
+                "frame_capture",
+                "image_upload",
+                "prompt",
+                "save",
+                "trim"
+            ]
         );
     }
 }

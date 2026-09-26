@@ -103,9 +103,10 @@ describe("applyEvent — reducer thuan cho EngineEvent (store/run.ts)", () => {
       total: 3,
       ok: 0,
       failed: 0,
+      error: null,
     });
     expect(s1.runId).toBe("r1");
-    expect(s1.nodes["n1"]).toEqual({ nodeId: "n1", state: "queued", done: 0, total: 3, ok: 0, failed: 0 });
+    expect(s1.nodes["n1"]).toEqual({ nodeId: "n1", state: "queued", done: 0, total: 3, ok: 0, failed: 0, error: null });
 
     const s2 = applyEvent(s1, {
       type: "node_state",
@@ -116,8 +117,9 @@ describe("applyEvent — reducer thuan cho EngineEvent (store/run.ts)", () => {
       total: 3,
       ok: 1,
       failed: 1,
+      error: null,
     });
-    expect(s2.nodes["n1"]).toEqual({ nodeId: "n1", state: "running", done: 2, total: 3, ok: 1, failed: 1 });
+    expect(s2.nodes["n1"]).toEqual({ nodeId: "n1", state: "running", done: 2, total: 3, ok: 1, failed: 1, error: null });
   });
 
   it("run_done: ghi status ket thuc, la trang thai TERMINAL (khong bi su kien khac ghi de nguoc)", () => {
@@ -130,6 +132,7 @@ describe("applyEvent — reducer thuan cho EngineEvent (store/run.ts)", () => {
       total: 3,
       ok: 1,
       failed: 0,
+      error: null,
     });
     expect(running.status).toBeNull();
 
@@ -154,6 +157,7 @@ describe("applyEvent — reducer thuan cho EngineEvent (store/run.ts)", () => {
       total: 5,
       ok: 1,
       failed: 0,
+      error: null,
     });
     // Tra nguyen state — khong doi runId, khong them node "n9" vao map, khong ghi log su kien la.
     expect(foreign).toBe(tracking);
@@ -183,6 +187,7 @@ describe("applyEvent — reducer thuan cho EngineEvent (store/run.ts)", () => {
       total: 1,
       ok: 0,
       failed: 0,
+      error: null,
     });
     expect(s1.runId).toBe("r-moi");
   });
@@ -303,8 +308,12 @@ describe("reconcileTasksFromDb — dong bo tung task tu TaskDto (review C2)", ()
       },
     };
     const next = reconcileTasksFromDb(local, [taskDto("t1", "r1", { status: "completed" })]);
-    expect(next).toBe(local);
+    // Task terminal cuc bo KHONG bi ghi de (map `tasks` giu nguyen tham chieu — toi uu identity).
+    expect(next.tasks).toBe(local.tasks);
     expect(next.tasks["t1"]?.status).toBe("failed");
+    // Node-state tai dung theo task DA RECONCILE (failed), khong theo dto tho (completed).
+    const nodeId = taskDto("t1", "r1").nodeId;
+    expect(next.nodes[nodeId]?.state).toBe("failed");
   });
 
   it("dto thuoc run KHAC bi bo qua", () => {
