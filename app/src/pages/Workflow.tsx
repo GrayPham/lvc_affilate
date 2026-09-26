@@ -28,6 +28,7 @@ import Palette, { DRAG_KIND_MIME } from "../components/Palette";
 import CanvasToolbar from "../components/CanvasToolbar";
 import VideoParamsPanel from "../components/VideoParamsPanel";
 import NodeLogPanel from "../components/NodeLogPanel";
+import CaptureFramesPanel from "../components/CaptureFramesPanel";
 import RunBar from "../components/RunBar";
 import ProgressPanel from "../components/ProgressPanel";
 import PromptNode from "../nodes/PromptNode";
@@ -408,6 +409,7 @@ function WorkflowCanvas() {
 export default function Workflow() {
   return (
     <div className="flex h-full flex-col bg-[#0a0a0b]">
+      <CaptureFramesPanel />
       <RunBar />
       <div className="flex flex-1 overflow-hidden">
         <ReactFlowProvider>

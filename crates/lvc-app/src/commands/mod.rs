@@ -26,6 +26,7 @@
 
 pub mod accounts;
 pub mod credentials;
+pub mod media;
 pub mod scripts;
 pub mod settings;
 pub mod tasks;

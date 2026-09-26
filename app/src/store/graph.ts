@@ -75,6 +75,9 @@ interface GraphStoreState {
     from: Omit<PendingConnect, "kind">,
   ) => void;
   updateNodeData: (id: string, data: NodeKind) => void;
+  /** Thêm nhiều node "Tải ảnh lên" từ khung hình đã chụp (Lumina) — mỗi ảnh 1 node, xếp dọc cạnh
+   * `origin`; chọn các node vừa thêm. */
+  addImageNodes: (items: ReadonlyArray<{ path: string; label: string }>, origin: { x: number; y: number }) => void;
   /** Xoa mot node + MOI canh noi toi/tu no; bo chon neu dang chon node do. */
   deleteNode: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -227,6 +230,22 @@ export const useGraphStore = create<GraphStoreState>((set, get) => {
         nodeErrors: {},
         globalErrors: [],
       });
+    },
+
+    addImageNodes: (items, origin) => {
+      if (items.length === 0) {
+        return;
+      }
+      pushHistory();
+      const kept = get().nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
+      const created: RFNode[] = items.map((it, i) => ({
+        id: genId("n"),
+        type: "image_upload",
+        selected: true,
+        position: { x: origin.x + 340, y: origin.y + i * 300 },
+        data: { kind: "image_upload", paths: [it.path], label: it.label },
+      }));
+      set({ nodes: [...kept, ...created], nodeErrors: {}, globalErrors: [] });
     },
 
     deleteNode: (id) => {

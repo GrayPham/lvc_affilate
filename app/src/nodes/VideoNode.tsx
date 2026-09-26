@@ -12,6 +12,7 @@ import type { NodeKind } from "../ipc/types";
 import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
+import { useWorkflowUi } from "../store/workflowUi";
 import { assetUrl } from "../ipc/tauri";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
@@ -24,6 +25,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
   const errors = useGraphStore((s) => s.nodeErrors[id]);
   const addNodeConnected = useGraphStore((s) => s.addNodeConnected);
   const selfPos = useGraphStore((s) => s.nodes.find((n) => n.id === id)?.position);
+  const openCapture = useWorkflowUi((s) => s.openCapture);
   const runState = useRunStore((s) => s.nodes[id]);
   // Video HOAN TAT cua node nay (neu co) — preview mp4 ket qua (asset:// cua Tauri).
   const videoPath = useRunStore((s) => s.nodeVideos[id]);
@@ -67,8 +69,12 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
     },
     {
       key: "frame",
-      title: "Chụp khung hình (thêm node nối sẵn)",
-      onClick: () => spawn("frame_capture", 1),
+      title: videoSrc ? "Chụp khung hình (bắt khung → thêm ảnh vào canvas)" : "Chưa có video (chạy để tạo)",
+      disabled: !videoSrc,
+      onClick: () => {
+        const base = selfPos ?? { x: 0, y: 0 };
+        openCapture({ nodeId: id, src: videoSrc, label: NODE_LABEL_VI.dola_video, x: base.x, y: base.y });
+      },
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />

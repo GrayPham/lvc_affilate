@@ -43,6 +43,38 @@ export function credentialKindLabel(kind: CredentialKind): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Chế độ API (lưu trong `meta.mode`, khái niệm phía UI): official = key chính thức, custom =
+// endpoint bên thứ 3 (base_url riêng), sdk = dùng SDK chính chủ, cookie = đăng nhập/phiên.
+// ---------------------------------------------------------------------------------------------
+
+export type CredentialMode = "official" | "custom" | "sdk" | "cookie";
+
+export const CREDENTIAL_MODE_VI: Record<CredentialMode, string> = {
+  official: "Chính thức (API key)",
+  custom: "Endpoint tuỳ chỉnh",
+  sdk: "SDK",
+  cookie: "Đăng nhập/Cookie",
+};
+
+export function credentialModeLabel(mode: CredentialMode): string {
+  return CREDENTIAL_MODE_VI[mode];
+}
+
+/** Suy chế độ từ `meta.mode`; nếu thiếu thì đoán từ `kind` (api_key→official, còn lại→cookie). */
+export function rowMode(meta: Record<string, unknown>, kind: CredentialKind): CredentialMode {
+  const m = meta.mode;
+  if (m === "official" || m === "custom" || m === "sdk" || m === "cookie") {
+    return m;
+  }
+  return kind === "api_key" ? "official" : "cookie";
+}
+
+/** `base_url` (endpoint bên thứ 3) nếu có trong meta. */
+export function rowBaseUrl(meta: Record<string, unknown>): string {
+  return typeof meta.base_url === "string" ? meta.base_url : "";
+}
+
+// ---------------------------------------------------------------------------------------------
 // Nhan trang thai — khop dung 5 status cua `CredentialStatusSchema`.
 // ---------------------------------------------------------------------------------------------
 

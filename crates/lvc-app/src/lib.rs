@@ -86,6 +86,7 @@ pub fn run() {
             commands::settings::settings_set,
             commands::settings::pick_directory,
             commands::settings::pick_files,
+            commands::media::frame_save_png,
             commands::accounts::account_list,
             commands::accounts::account_import_cookies,
             commands::accounts::account_verify,

@@ -172,6 +172,12 @@ export async function pickFiles(images: boolean): Promise<string[]> {
   return z.array(z.string()).parse(res);
 }
 
+/** Luu MOT khung hinh (PNG base64/dataURL, UI chup tu <video>) thanh file that -> tra duong dan. */
+export async function frameSavePng(data: string, nameHint?: string): Promise<string> {
+  const res = await invoke<unknown>("frame_save_png", { data, nameHint: nameHint ?? null });
+  return z.string().parse(res);
+}
+
 // ---- accounts.rs (Task 10) -----------------------------------------------------------------
 // Xem task-10-report.md "Exact command list (Task 14 mirrors this)" cho bang doi chieu day du
 // ten lenh/tham so/ma loi. `proxy` trong `AccountStatus` tra ve tu `accountList` DA duoc Rust
