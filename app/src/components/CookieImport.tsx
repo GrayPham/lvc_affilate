@@ -10,6 +10,9 @@ import { useState, type FormEvent } from "react";
 
 import { describeAccountError, validateName, validateProxy } from "../format/account";
 import { useAccountsStore } from "../store/accounts";
+import { pickFiles } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
+import type { BulkCookieItem } from "../ipc/commands";
 import type { ImportCookiesReport } from "../ipc/types";
 
 interface CookieImportProps {
@@ -18,6 +21,7 @@ interface CookieImportProps {
 
 export default function CookieImport({ onClose }: CookieImportProps) {
   const importCookies = useAccountsStore((s) => s.importCookies);
+  const importCookieFiles = useAccountsStore((s) => s.importCookieFiles);
 
   const [name, setName] = useState("");
   const [cookieText, setCookieText] = useState("");
@@ -25,6 +29,30 @@ export default function CookieImport({ onClose }: CookieImportProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportCookiesReport | null>(null);
+  const [bulk, setBulk] = useState<BulkCookieItem[] | null>(null);
+
+  async function handleBulkFiles(): Promise<void> {
+    setError(null);
+    let paths: string[] = [];
+    try {
+      paths = await pickFiles(false);
+    } catch (e) {
+      setError(errorText(e));
+      return;
+    }
+    if (paths.length === 0) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const items = await importCookieFiles(paths, proxy);
+      setBulk(items);
+    } catch (e) {
+      setError(describeAccountError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const nameError = name === "" ? null : validateName(name);
   const proxyError = proxy === "" ? null : validateProxy(proxy);
@@ -81,8 +109,42 @@ export default function CookieImport({ onClose }: CookieImportProps) {
               Đóng
             </button>
           </div>
+        ) : bulk ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-slate-700">
+              Đã nạp {bulk.filter((b) => b.ok).length}/{bulk.length} file.
+            </p>
+            <div className="max-h-64 overflow-auto rounded border border-slate-200">
+              {bulk.map((b, i) => (
+                <div key={`${b.name}-${i}`} className="flex items-start gap-2 border-b border-slate-100 px-2 py-1 text-xs last:border-b-0">
+                  <span className={b.ok ? "text-emerald-600" : "text-red-600"}>{b.ok ? "✓" : "✗"}</span>
+                  <span className="font-medium text-slate-800">{b.name}</span>
+                  {b.error ? <span className="text-red-600">— {b.error}</span> : null}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="self-end rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
+              onClick={onClose}
+            >
+              Đóng
+            </button>
+          </div>
         ) : (
           <form className="flex flex-col gap-3" onSubmit={(e) => void handleSubmit(e)}>
+            {/* Nạp hàng loạt: chọn nhiều file cookies.txt cùng lúc; tên tài khoản = tên file. */}
+            <div className="flex items-center justify-between gap-2 rounded border border-dashed border-slate-300 bg-slate-50 px-2 py-2">
+              <span className="text-xs text-slate-500">Nạp nhiều tài khoản: chọn nhiều file cookies.txt (tên file = tên tài khoản).</span>
+              <button
+                type="button"
+                disabled={busy}
+                className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-50"
+                onClick={() => void handleBulkFiles()}
+              >
+                Chọn nhiều file…
+              </button>
+            </div>
             <label className="flex flex-col gap-1 text-xs">
               Tên tài khoản
               <input

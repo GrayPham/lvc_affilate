@@ -90,6 +90,7 @@ pub fn run() {
             commands::media::trim_video,
             commands::accounts::account_list,
             commands::accounts::account_import_cookies,
+            commands::accounts::account_import_cookie_files,
             commands::accounts::account_verify,
             commands::accounts::account_set_scheduling,
             commands::accounts::account_set_proxy,

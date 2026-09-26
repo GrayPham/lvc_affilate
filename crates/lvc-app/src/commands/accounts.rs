@@ -50,6 +50,90 @@ pub async fn account_import_cookies(
     account_import_cookies_impl(&state, &name, &cookie_text, &proxy).await
 }
 
+/// Kết quả nạp cookie MỘT file trong lô (nạp nhiều file cùng lúc).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkCookieItem {
+    /// Tên tài khoản (suy từ tên file).
+    pub name: String,
+    pub ok: bool,
+    /// Thông điệp lỗi nếu `ok == false` (một file lỗi KHÔNG dừng cả lô).
+    pub error: Option<String>,
+}
+
+/// Tên tài khoản an toàn từ tên file (bỏ đuôi, thay khoảng trắng/ký tự lạ bằng `_`).
+fn account_name_from_path(path: &str) -> String {
+    let stem = Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let cleaned: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let cleaned = cleaned.trim_matches('_').to_string();
+    if cleaned.is_empty() {
+        "acc".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Nạp cookie NHIỀU FILE cùng lúc: đọc từng file (server-side), tên tài khoản = tên file, nạp qua
+/// `import_cookies`. Một file lỗi KHÔNG dừng cả lô — trả danh sách kết quả từng file.
+///
+/// # Errors
+/// Không lỗi cả lô (mỗi file có `ok`/`error` riêng); chỉ trả `Err` nếu bất biến hệ thống hỏng (hiếm).
+pub async fn account_import_cookie_files_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    paths: &[String],
+    proxy: &str,
+) -> Result<Vec<BulkCookieItem>, IpcError> {
+    let mut out = Vec::with_capacity(paths.len());
+    for path in paths {
+        let name = account_name_from_path(path);
+        let content = match tokio::fs::read_to_string(path).await {
+            Ok(c) => c,
+            Err(e) => {
+                out.push(BulkCookieItem {
+                    name,
+                    ok: false,
+                    error: Some(format!("đọc file lỗi: {e}")),
+                });
+                continue;
+            }
+        };
+        match ctx.engine.import_cookies(&name, &content, proxy).await {
+            Ok(_) => out.push(BulkCookieItem {
+                name,
+                ok: true,
+                error: None,
+            }),
+            Err(e) => out.push(BulkCookieItem {
+                name,
+                ok: false,
+                error: Some(IpcError::from(e).message),
+            }),
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn account_import_cookie_files(
+    state: tauri::State<'_, AppState>,
+    paths: Vec<String>,
+    proxy: String,
+) -> Result<Vec<BulkCookieItem>, IpcError> {
+    account_import_cookie_files_impl(&state, &paths, &proxy).await
+}
+
 /// # Errors
 /// `IpcError` ma `INVALID_NAME`/`ACCOUNT_NOT_FOUND`/`INVALID_PROXY`/`PROFILE_BUSY`/`BROWSER`/`STORE`.
 pub async fn account_verify_impl<D: BrowserDriver + 'static>(

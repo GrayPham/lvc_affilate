@@ -12,11 +12,13 @@ import { create } from "zustand";
 
 import {
   accountDelete,
+  accountImportCookieFiles,
   accountImportCookies,
   accountList,
   accountSetProxy,
   accountSetScheduling,
   accountVerify,
+  type BulkCookieItem,
 } from "../ipc/commands";
 import { describeAccountError } from "../format/account";
 import type { AccountStatus, ImportCookiesReport, VerifyReport } from "../ipc/types";
@@ -50,6 +52,8 @@ interface AccountsState {
   /** Tai lai toan bo danh sach — goi sau MOI hanh dong ghi thanh cong (yeu cau brief). */
   load: () => Promise<void>;
   importCookies: (name: string, cookieText: string, proxy: string) => Promise<ImportCookiesReport>;
+  /** Nạp cookie nhiều file cùng lúc — trả kết quả từng file; tải lại danh sách sau khi xong. */
+  importCookieFiles: (paths: string[], proxy: string) => Promise<BulkCookieItem[]>;
   verify: (name: string) => Promise<VerifyReport>;
   /** Optimistic: lat `scheduling` ngay tai client, revert CHI DONG NAY neu server tu choi (khong
    * duoc ghi de toan bo `rows` bang mot snapshot cu — review task-14-review.md, Important #1). */
@@ -83,6 +87,17 @@ export const useAccountsStore = create<AccountsState>((set, get) => ({
       return report;
     } finally {
       set((s) => ({ busy: decBusy(s.busy, name) }));
+    }
+  },
+
+  importCookieFiles: async (paths, proxy) => {
+    set({ loading: true });
+    try {
+      const items = await accountImportCookieFiles(paths, proxy);
+      await get().load();
+      return items;
+    } finally {
+      set({ loading: false });
     }
   },
 

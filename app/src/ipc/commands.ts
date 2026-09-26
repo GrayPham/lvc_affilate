@@ -208,6 +208,23 @@ export async function accountImportCookies(
   return ImportCookiesReportSchema.parse(res);
 }
 
+/** Ket qua nap cookie MOT file trong lo (account_import_cookie_files). */
+export const BulkCookieItemSchema = z.object({
+  name: z.string(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+});
+export type BulkCookieItem = z.infer<typeof BulkCookieItemSchema>;
+
+/** Nap cookie NHIEU FILE cung luc — moi file 1 tai khoan (ten = ten file); mot file loi khong dung lo. */
+export async function accountImportCookieFiles(
+  paths: string[],
+  proxy: string,
+): Promise<BulkCookieItem[]> {
+  const res = await invoke<unknown>("account_import_cookie_files", { paths, proxy });
+  return z.array(BulkCookieItemSchema).parse(res);
+}
+
 export async function accountVerify(name: string): Promise<VerifyReport> {
   const res = await invoke<unknown>("account_verify", { name });
   return VerifyReportSchema.parse(res);

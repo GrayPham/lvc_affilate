@@ -37,6 +37,22 @@ Mỗi loại node = **một crate** `crates/nodes/node-<ten>/` (+ tuỳ chọn m
 - `kind` là khoá vĩnh viễn (lưu trong workflow/template của người dùng). Đổi tên = migrate trong
   `lvc_core::graph::migrate`.
 
+## Chia module bên TRONG (LUẬT — quan trọng để dễ debug)
+
+Mỗi crate/module lớn (node, provider, mảng tính năng như "đăng nhập") **KHÔNG dồn hết vào một
+`lib.rs`/một file khổng lồ**. Chia thành **thư mục nhiều file nhỏ, mỗi file MỘT trách nhiệm/kịch bản**
+(một "scenario"), đặt tên rõ, dễ đọc dễ debug:
+
+- `lib.rs`/`mod.rs` chỉ khai báo mod + ghép lại (composition), KHÔNG chứa logic dài.
+- Mỗi nền tảng/luồng là một module con RIÊNG (vd đăng nhập: `login/dola.rs`, `login/gmail.rs`,
+  `login/facebook.rs`, `login/apple.rs`, `login/gemini.rs`, `login/cookie.rs`), độc lập nhau — sửa/
+  hỏng một cái không lan sang cái khác; thêm nền tảng = thêm 1 file + 1 dòng đăng ký.
+- Ưu tiên "một tính năng/luồng = một file" thay vì một file gộp nhiều luồng. Hàm thuần tách riêng để
+  test độc lập.
+- Đặt `CLAUDE.md` + `MEMORY.md` cho module lớn; ghi quirk vào đúng `MEMORY.md` của module đó.
+- `scripts/check.ps1` đã ép **độc lập phụ thuộc** (`cargo tree -e normal`); giữ đúng danh sách phụ
+  thuộc cho phép. Nếu có "rust skill"/công cụ kiểm chia module thì chạy trước khi commit.
+
 ## Ghi nhớ khi làm việc
 
 - Học được quirk của một node/provider (mã lỗi lạ, giới hạn server, bẫy giao thức) → ghi vào
