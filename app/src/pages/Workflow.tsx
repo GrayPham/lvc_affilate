@@ -19,6 +19,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
   type Connection,
+  type EdgeTypes,
   type NodeTypes,
   type OnConnectStartParams,
 } from "@xyflow/react";
@@ -41,6 +42,7 @@ import ConcatNode from "../nodes/ConcatNode";
 import TrimNode from "../nodes/TrimNode";
 import FrameCaptureNode from "../nodes/FrameCaptureNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
+import FlowEdge from "../graph/FlowEdge";
 import { isValidConnection } from "../graph/rules";
 import { canConnectToNode, type PendingConnect } from "../graph/connect";
 import { ADDABLE_KINDS, type AddableNodeKind } from "../graph/ports";
@@ -68,6 +70,9 @@ const nodeTypes: NodeTypes = {
   trim: TrimNode,
   frame_capture: FrameCaptureNode,
 } as unknown as NodeTypes;
+
+// Dây "dòng chảy" (đốm sáng chạy theo hướng) — dùng cho mọi cạnh.
+const edgeTypes = { flow: FlowEdge } as unknown as EdgeTypes;
 
 function isAddableKind(value: string): value is AddableNodeKind {
   return (ADDABLE_KINDS as ReadonlySet<string>).has(value);
@@ -356,6 +361,7 @@ function WorkflowCanvas() {
         onPaneContextMenu={onPaneContextMenu}
         onEdgeDoubleClick={onEdgeDoubleClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         isValidConnection={handleIsValidConnection}
         zoomOnDoubleClick={false}
         deleteKeyCode={["Delete", "Backspace"]}
@@ -365,7 +371,7 @@ function WorkflowCanvas() {
         panActivationKeyCode={["Space", "Control", "Meta"]}
         selectionKeyCode={null}
         colorMode="dark"
-        defaultEdgeOptions={{ type: "default", style: { stroke: "#8b8b93", strokeWidth: 1.5 } }}
+        defaultEdgeOptions={{ type: "flow", style: { stroke: "#6b6b74", strokeWidth: 1.5 } }}
         fitView
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#2b2b32" bgColor="#0a0a0b" />
