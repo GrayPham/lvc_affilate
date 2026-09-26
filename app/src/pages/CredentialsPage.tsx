@@ -1,10 +1,10 @@
-// Man "Tài khoản AI" (P4c + mở rộng chế độ API) — quản lý kho credentials qua 5 lệnh `credential_*`.
-// Chia HAI KHU: "Kho API (khoá/endpoint)" cho entry dùng key (openai/gemini), và "Kho đăng nhập /
-// Cookie" cho phiên/đăng nhập (dola/google/chatgpt). Mỗi entry có CHẾ ĐỘ (meta.mode): chính thức
-// (key) / endpoint tuỳ chỉnh (base_url bên thứ 3) / SDK / cookie.
+// Kho tài khoản AI (P4c + mở rộng). Gộp UI theo yêu cầu người dùng:
+// - `LoginCookieManager`: mọi tài khoản ĐĂNG NHẬP/COOKIE (mọi nền tảng) — nhúng vào tab "Tài khoản"
+//   (cùng chỗ tài khoản Dola) qua `AccountsPage`.
+// - `ApiKeyManager` (default export của trang này): chỉ API KEY (OpenAI/Gemini, key chính thức/
+//   endpoint tuỳ chỉnh/SDK) — là tab "API key".
 //
-// AN TOAN BI MAT: ô nhập bí mật GHI-MỘT-CHIỀU — không điền sẵn / hiện lại; xoá NGAY khi bấm "Thêm".
-// UI chỉ nhận `secretHint` đã che, không bao giờ nhận bí mật nguyên văn.
+// AN TOAN BI MAT: ô nhập bí mật GHI-MỘT-CHIỀU — không điền sẵn/hiện lại; xoá NGAY khi bấm "Thêm".
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { validateProxy } from "../format/account";
@@ -23,7 +23,7 @@ import { loginImportCookieFiles, pickFiles, type LoginImportItem } from "../ipc/
 import { errorText } from "../ipc/error_text";
 import type { CredentialKind, CredentialProvider, CredentialView } from "../ipc/types";
 
-// Loai bi mat cho phep theo provider (P4c contract) — dung suy `kind` tu che do "cookie".
+// Loai bi mat cho phep theo provider (P4c contract) — dung suy `kind` tu che do.
 const KINDS_BY_PROVIDER: Record<CredentialProvider, readonly CredentialKind[]> = {
   dola: ["session"],
   openai: ["api_key"],
@@ -45,17 +45,10 @@ const MODES_BY_PROVIDER: Record<CredentialProvider, readonly CredentialMode[]> =
   apple: ["cookie"],
 };
 
-const PROVIDER_ORDER: readonly CredentialProvider[] = [
-  "dola",
-  "google",
-  "gemini",
-  "facebook",
-  "apple",
-  "chatgpt_web",
-  "openai",
-];
+/** Nền tảng có API key (tab "API key"). */
+const API_PROVIDERS: readonly CredentialProvider[] = ["openai", "gemini"];
 
-/** Nền tảng dùng cookie/đăng nhập (cho nạp cookie hàng loạt). */
+/** Nền tảng dùng cookie/đăng nhập (tab "Tài khoản"). */
 const COOKIE_PROVIDERS: readonly CredentialProvider[] = [
   "dola",
   "google",
@@ -70,7 +63,11 @@ function modeToKind(provider: CredentialProvider, mode: CredentialMode): Credent
   return mode === "cookie" ? KINDS_BY_PROVIDER[provider][0]! : "api_key";
 }
 
-export default function CredentialsPage() {
+// ---------------------------------------------------------------------------------------------
+// Tab "API key" (default export) — chỉ entry api_key.
+// ---------------------------------------------------------------------------------------------
+
+export default function ApiKeyManager() {
   const rows = useCredentialsStore((s) => s.rows);
   const loading = useCredentialsStore((s) => s.loading);
   const error = useCredentialsStore((s) => s.error);
@@ -85,12 +82,11 @@ export default function CredentialsPage() {
   }, [load]);
 
   const apiRows = rows.filter((r) => r.kind === "api_key");
-  const loginRows = rows.filter((r) => r.kind !== "api_key");
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-auto p-3">
       <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-slate-800">Tài khoản AI</h2>
+        <h2 className="text-sm font-semibold text-slate-800">API key</h2>
         <button
           type="button"
           disabled={loading}
@@ -101,44 +97,64 @@ export default function CredentialsPage() {
         </button>
         {loading ? <span className="text-xs text-slate-400">Đang tải…</span> : null}
       </div>
-
-      {error ? (
-        <p className="text-xs text-red-600">Không tải được danh sách tài khoản AI: {error}</p>
-      ) : null}
-
-      <BulkCookieLogin onDone={() => void load()} />
-
-      {rows.length === 0 && !loading ? (
-        <p className="text-sm text-slate-400">Chưa có tài khoản AI nào — thêm ở form bên dưới.</p>
-      ) : null}
+      {error ? <p className="text-xs text-red-600">Không tải được: {error}</p> : null}
 
       <CredentialArea
         title="Kho API (khoá / endpoint)"
-        hint="Tài khoản dùng API key: OpenAI, Gemini (kể cả endpoint bên thứ 3)."
+        hint="OpenAI, Gemini — key chính thức, endpoint bên thứ 3, hoặc SDK."
         rows={apiRows}
         busy={busy}
         onVerify={verify}
         onToggle={(id, enabled) => update(id, { enabled })}
         onDelete={remove}
       />
+      {apiRows.length === 0 && !loading ? (
+        <p className="text-sm text-slate-400">Chưa có API key nào — thêm ở form bên dưới.</p>
+      ) : null}
 
+      <AddCredentialForm scope="api" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Quản lý tài khoản ĐĂNG NHẬP/COOKIE — nhúng vào tab "Tài khoản" (AccountsPage).
+// ---------------------------------------------------------------------------------------------
+
+export function LoginCookieManager() {
+  const rows = useCredentialsStore((s) => s.rows);
+  const busy = useCredentialsStore((s) => s.busy);
+  const load = useCredentialsStore((s) => s.load);
+  const verify = useCredentialsStore((s) => s.verify);
+  const update = useCredentialsStore((s) => s.update);
+  const remove = useCredentialsStore((s) => s.remove);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const loginRows = rows.filter((r) => r.kind !== "api_key");
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-slate-800">Tài khoản đăng nhập / Cookie (nền tảng khác)</h2>
+      <BulkCookieLogin onDone={() => void load()} />
       <CredentialArea
         title="Kho đăng nhập / Cookie"
-        hint="Phiên đăng nhập/cookie: Dola, Google, ChatGPT — dùng cho các node kênh trình duyệt."
+        hint="Dola, Google, Gemini, Facebook, Apple, ChatGPT — phiên/đăng nhập (cookie)."
         rows={loginRows}
         busy={busy}
         onVerify={verify}
         onToggle={(id, enabled) => update(id, { enabled })}
         onDelete={remove}
       />
-
-      <AddCredentialForm />
+      <AddCredentialForm scope="cookie" />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------------------------
-// (A) Nạp cookie HÀNG LOẠT: chọn nền tảng + chọn nhiều file cookies.txt cùng lúc -> kho.
+// (A) Nạp cookie HÀNG LOẠT.
 // ---------------------------------------------------------------------------------------------
 
 function BulkCookieLogin({ onDone }: { onDone: () => void }) {
@@ -213,8 +229,8 @@ function BulkCookieLogin({ onDone }: { onDone: () => void }) {
         </button>
       </div>
       <p className="mt-1 text-[11px] text-slate-400">
-        Mỗi file = một tài khoản (tên = tên file), lưu dạng phiên (cookie) cho nền tảng đã chọn. Đường
-        hợp lệ — bạn tự xuất cookie đã đăng nhập.
+        Mỗi file = một tài khoản (tên = tên file), lưu dạng phiên (cookie). Đường hợp lệ — bạn tự xuất
+        cookie đã đăng nhập.
       </p>
       {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
       {items ? (
@@ -233,7 +249,7 @@ function BulkCookieLogin({ onDone }: { onDone: () => void }) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Mot KHU (Kho API / Kho dang nhap) — nhom theo provider.
+// Một khu bảng — nhóm theo provider.
 // ---------------------------------------------------------------------------------------------
 
 interface AreaProps {
@@ -250,7 +266,9 @@ function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete 
   if (rows.length === 0) {
     return null;
   }
-  const providers = PROVIDER_ORDER.filter((p) => rows.some((r) => r.provider === p));
+  const providers = COOKIE_PROVIDERS.concat(API_PROVIDERS).filter(
+    (p, i, a) => a.indexOf(p) === i && rows.some((r) => r.provider === p),
+  );
   return (
     <section className="flex flex-col gap-1">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
@@ -260,7 +278,7 @@ function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete 
           <thead className="bg-slate-50 text-xs text-slate-500">
             <tr>
               <th className="px-2 py-1.5 font-medium">Nhãn</th>
-              <th className="px-2 py-1.5 font-medium">Nhà cung cấp</th>
+              <th className="px-2 py-1.5 font-medium">Nền tảng</th>
               <th className="px-2 py-1.5 font-medium">Chế độ</th>
               <th className="px-2 py-1.5 font-medium">Bí mật (đã che)</th>
               <th className="px-2 py-1.5 font-medium">Trạng thái</th>
@@ -292,7 +310,7 @@ function CredentialArea({ title, hint, rows, busy, onVerify, onToggle, onDelete 
 }
 
 // ---------------------------------------------------------------------------------------------
-// Mot dong tai khoan AI.
+// Một dòng.
 // ---------------------------------------------------------------------------------------------
 
 interface CredentialRowProps {
@@ -355,9 +373,7 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
       </td>
       <td className="px-2 py-1.5 font-mono text-xs text-slate-600">{row.secretHint}</td>
       <td className="px-2 py-1.5">
-        <span
-          className={`rounded px-1.5 py-0.5 text-xs font-medium ${CREDENTIAL_STATUS_BADGE_CLASS[row.status]}`}
-        >
+        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${CREDENTIAL_STATUS_BADGE_CLASS[row.status]}`}>
           {credentialStatusLabel(row.status)}
         </span>
         {verifyMsg ? <p className="mt-0.5 text-xs text-slate-500">{verifyMsg}</p> : null}
@@ -387,30 +403,15 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
           {confirmingDelete ? (
             <span className="flex items-center gap-1 text-xs">
               Xoá thật?
-              <button
-                type="button"
-                disabled={busy}
-                className="rounded border border-red-300 px-1.5 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50"
-                onClick={() => void handleDeleteConfirmed()}
-              >
+              <button type="button" disabled={busy} className="rounded border border-red-300 px-1.5 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50" onClick={() => void handleDeleteConfirmed()}>
                 Có
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                className="rounded border border-slate-300 px-1.5 py-0.5 hover:bg-slate-50 disabled:opacity-50"
-                onClick={() => setConfirmingDelete(false)}
-              >
+              <button type="button" disabled={busy} className="rounded border border-slate-300 px-1.5 py-0.5 hover:bg-slate-50 disabled:opacity-50" onClick={() => setConfirmingDelete(false)}>
                 Không
               </button>
             </span>
           ) : (
-            <button
-              type="button"
-              disabled={busy}
-              className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-              onClick={() => setConfirmingDelete(true)}
-            >
+            <button type="button" disabled={busy} className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50" onClick={() => setConfirmingDelete(true)}>
               Xoá
             </button>
           )}
@@ -422,15 +423,17 @@ function CredentialRow({ row, busy, onVerify, onToggleEnabled, onDelete }: Crede
 }
 
 // ---------------------------------------------------------------------------------------------
-// Form "Thêm tài khoản AI".
+// Form "Thêm" — `scope` quyết định danh sách nền tảng + chế độ.
 // ---------------------------------------------------------------------------------------------
 
-function AddCredentialForm() {
+function AddCredentialForm({ scope }: { scope: "api" | "cookie" }) {
   const add = useCredentialsStore((s) => s.add);
+  const providers = scope === "api" ? API_PROVIDERS : COOKIE_PROVIDERS;
 
-  const [provider, setProvider] = useState<CredentialProvider>("gemini");
-  const allowedModes = MODES_BY_PROVIDER[provider];
-  const [mode, setMode] = useState<CredentialMode>(allowedModes[0]!);
+  const [provider, setProvider] = useState<CredentialProvider>(providers[0]!);
+  const modesFor = (p: CredentialProvider): readonly CredentialMode[] =>
+    MODES_BY_PROVIDER[p].filter((m) => (scope === "api" ? m !== "cookie" : m === "cookie"));
+  const [mode, setMode] = useState<CredentialMode>(modesFor(providers[0]!)[0] ?? "cookie");
   const [label, setLabel] = useState("");
   const [secret, setSecret] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -439,13 +442,14 @@ function AddCredentialForm() {
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
+  const allowedModes = modesFor(provider);
   const isCookie = mode === "cookie";
   const needsBaseUrl = mode === "custom";
   const proxyError = useMemo(() => (proxy === "" ? null : validateProxy(proxy)), [proxy]);
 
   function handleProviderChange(next: CredentialProvider): void {
     setProvider(next);
-    setMode(MODES_BY_PROVIDER[next][0]!);
+    setMode(modesFor(next)[0] ?? "cookie");
   }
 
   const canSubmit =
@@ -492,34 +496,23 @@ function AddCredentialForm() {
   return (
     <section className="mt-2 rounded border border-slate-200 p-3">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Thêm tài khoản AI
+        {scope === "api" ? "Thêm API key" : "Thêm tài khoản đăng nhập / cookie"}
       </h3>
       <form className="flex flex-col gap-3" onSubmit={(e) => void handleSubmit(e)}>
         <div className="flex flex-wrap gap-3">
           <label className="flex flex-col gap-1 text-xs">
-            Nhà cung cấp
-            <select
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
-              value={provider}
-              disabled={busy}
-              onChange={(e) => handleProviderChange(e.target.value as CredentialProvider)}
-            >
-              {PROVIDER_ORDER.map((p) => (
+            Nền tảng
+            <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={provider} disabled={busy} onChange={(e) => handleProviderChange(e.target.value as CredentialProvider)}>
+              {providers.map((p) => (
                 <option key={p} value={p}>
                   {credentialProviderLabel(p)}
                 </option>
               ))}
             </select>
           </label>
-
           <label className="flex flex-col gap-1 text-xs">
             Chế độ
-            <select
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
-              value={mode}
-              disabled={busy || allowedModes.length === 1}
-              onChange={(e) => setMode(e.target.value as CredentialMode)}
-            >
+            <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={mode} disabled={busy || allowedModes.length <= 1} onChange={(e) => setMode(e.target.value as CredentialMode)}>
               {allowedModes.map((m) => (
                 <option key={m} value={m}>
                   {credentialModeLabel(m)}
@@ -527,67 +520,32 @@ function AddCredentialForm() {
               ))}
             </select>
           </label>
-
           <label className="flex flex-1 flex-col gap-1 text-xs">
             Nhãn
-            <input
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
-              value={label}
-              disabled={busy}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="vd Gemini chính chủ"
-            />
+            <input className="rounded border border-slate-300 px-2 py-1 text-sm" value={label} disabled={busy} onChange={(e) => setLabel(e.target.value)} placeholder={scope === "api" ? "vd Gemini chính chủ" : "vd Gmail acc1"} />
           </label>
         </div>
 
         <label className="flex flex-col gap-1 text-xs">
           {isCookie ? "Bí mật (cookie/đăng nhập)" : "API key"}
           {isCookie ? (
-            <textarea
-              className="h-28 resize-none rounded border border-slate-300 px-2 py-1 font-mono text-xs"
-              value={secret}
-              disabled={busy}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="Dán cookie/nội dung đăng nhập vào đây"
-            />
+            <textarea className="h-28 resize-none rounded border border-slate-300 px-2 py-1 font-mono text-xs" value={secret} disabled={busy} onChange={(e) => setSecret(e.target.value)} placeholder="Dán cookie/nội dung đăng nhập vào đây" />
           ) : (
-            <input
-              type="password"
-              autoComplete="off"
-              className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
-              value={secret}
-              disabled={busy}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="sk-… / API key"
-            />
+            <input type="password" autoComplete="off" className="rounded border border-slate-300 px-2 py-1 font-mono text-sm" value={secret} disabled={busy} onChange={(e) => setSecret(e.target.value)} placeholder="sk-… / API key" />
           )}
-          <span className="text-slate-400">
-            Bí mật chỉ ghi một chiều — không hiển thị lại, xoá ngay khi bấm "Thêm".
-          </span>
+          <span className="text-slate-400">Bí mật chỉ ghi một chiều — không hiển thị lại, xoá ngay khi bấm "Thêm".</span>
         </label>
 
         {mode === "custom" || mode === "sdk" ? (
           <label className="flex flex-col gap-1 text-xs">
             Base URL {mode === "custom" ? "(bắt buộc — endpoint bên thứ 3)" : "(tuỳ chọn)"}
-            <input
-              className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
-              value={baseUrl}
-              disabled={busy}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="vd https://api.nhacungcap-thu-3.com/v1"
-            />
+            <input className="rounded border border-slate-300 px-2 py-1 font-mono text-sm" value={baseUrl} disabled={busy} onChange={(e) => setBaseUrl(e.target.value)} placeholder="vd https://api.nhacungcap-thu-3.com/v1" />
           </label>
         ) : null}
 
         <label className="flex flex-col gap-1 text-xs">
           Proxy (tuỳ chọn)
-          <input
-            className="rounded border border-slate-300 px-2 py-1 font-mono text-sm"
-            value={proxy}
-            disabled={busy}
-            onChange={(e) => setProxy(e.target.value)}
-            placeholder="để trống, hoặc ip:port, hoặc direct"
-          />
+          <input className="rounded border border-slate-300 px-2 py-1 font-mono text-sm" value={proxy} disabled={busy} onChange={(e) => setProxy(e.target.value)} placeholder="để trống, hoặc ip:port, hoặc direct" />
           {proxyError ? <span className="text-red-600">{proxyError}</span> : null}
         </label>
 
@@ -595,11 +553,7 @@ function AddCredentialForm() {
         {okMsg ? <p className="text-xs text-emerald-700">{okMsg}</p> : null}
 
         <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700 disabled:opacity-50"
-          >
+          <button type="submit" disabled={!canSubmit} className="rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700 disabled:opacity-50">
             {busy ? "Đang thêm…" : "Thêm"}
           </button>
         </div>

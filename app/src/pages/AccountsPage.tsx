@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import AccountRow from "../components/AccountRow";
 import CookieImport from "../components/CookieImport";
+import { LoginCookieManager } from "./CredentialsPage";
 import { useAccountsStore } from "../store/accounts";
 
 const NOW_REFRESH_MS = 30_000;
@@ -93,6 +94,12 @@ export default function AccountsPage() {
           </table>
         </div>
       )}
+
+      {/* Gộp: tài khoản đăng nhập/cookie các nền tảng khác (Google/Facebook/Apple/Gemini/ChatGPT)
+          vào CÙNG tab "Tài khoản" — API key ở tab riêng. */}
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        <LoginCookieManager />
+      </div>
 
       {showImport ? <CookieImport onClose={() => setShowImport(false)} /> : null}
     </div>

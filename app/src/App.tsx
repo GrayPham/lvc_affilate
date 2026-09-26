@@ -16,7 +16,7 @@ const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "tasks", label: "Tác vụ" },
   { id: "settings", label: "Cài đặt" },
   { id: "accounts", label: "Tài khoản" },
-  { id: "credentials", label: "Tài khoản AI" },
+  { id: "credentials", label: "API key" },
 ];
 
 const PAGES: Record<TabId, () => JSX.Element> = {
