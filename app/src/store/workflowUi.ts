@@ -13,6 +13,16 @@ export interface CaptureTarget {
   y: number;
 }
 
+/** Muc tieu cho bang "Cắt video" (Lumina): `src` de hien <video>, `path` (duong dan that) de ffmpeg. */
+export interface TrimTarget {
+  nodeId: string;
+  src: string;
+  path: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
 interface WorkflowUiState {
   /** "Kho mau" (TemplateGallery) dang mo — RunBar render, CanvasToolbar mo. */
   templatesOpen: boolean;
@@ -20,6 +30,8 @@ interface WorkflowUiState {
   addMenuOpen: boolean;
   /** Bang chup khung hinh dang mo cho node nao (null = dong). */
   captureTarget: CaptureTarget | null;
+  /** Bang cat video dang mo (null = dong). */
+  trimTarget: TrimTarget | null;
   openTemplates: () => void;
   closeTemplates: () => void;
   toggleAddMenu: () => void;
@@ -27,12 +39,15 @@ interface WorkflowUiState {
   closeAddMenu: () => void;
   openCapture: (t: CaptureTarget) => void;
   closeCapture: () => void;
+  openTrim: (t: TrimTarget) => void;
+  closeTrim: () => void;
 }
 
 export const useWorkflowUi = create<WorkflowUiState>((set) => ({
   templatesOpen: false,
   addMenuOpen: false,
   captureTarget: null,
+  trimTarget: null,
   openTemplates: () => set({ templatesOpen: true }),
   closeTemplates: () => set({ templatesOpen: false }),
   toggleAddMenu: () => set((s) => ({ addMenuOpen: !s.addMenuOpen })),
@@ -40,4 +55,6 @@ export const useWorkflowUi = create<WorkflowUiState>((set) => ({
   closeAddMenu: () => set({ addMenuOpen: false }),
   openCapture: (t) => set({ captureTarget: t }),
   closeCapture: () => set({ captureTarget: null }),
+  openTrim: (t) => set({ trimTarget: t }),
+  closeTrim: () => set({ trimTarget: null }),
 }));

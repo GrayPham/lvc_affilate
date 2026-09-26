@@ -178,6 +178,17 @@ export async function frameSavePng(data: string, nameHint?: string): Promise<str
   return z.string().parse(res);
 }
 
+/** Cat video `path` theo [start, end] giay -> file moi (ffmpeg), tra duong dan. end<=start = toi het. */
+export async function trimVideo(
+  path: string,
+  start: number,
+  end: number,
+  nameHint?: string,
+): Promise<string> {
+  const res = await invoke<unknown>("trim_video", { path, start, end, nameHint: nameHint ?? null });
+  return z.string().parse(res);
+}
+
 // ---- accounts.rs (Task 10) -----------------------------------------------------------------
 // Xem task-10-report.md "Exact command list (Task 14 mirrors this)" cho bang doi chieu day du
 // ten lenh/tham so/ma loi. `proxy` trong `AccountStatus` tra ve tu `accountList` DA duoc Rust

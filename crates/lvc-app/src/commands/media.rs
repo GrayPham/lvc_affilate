@@ -57,9 +57,108 @@ pub async fn frame_save_png(data: String, name_hint: Option<String>) -> Result<S
     Ok(path.to_string_lossy().to_string())
 }
 
+// ---------------------------------------------------------------------------------------------
+// Cắt video tương tác (trim) — UI chọn đoạn [start, end] trên timeline rồi xác nhận; ghi file mới.
+// ---------------------------------------------------------------------------------------------
+
+fn ffmpeg_bin() -> String {
+    std::env::var("LVC_FFMPEG").unwrap_or_else(|_| "ffmpeg".to_string())
+}
+
+/// `[start, end]` -> tham số thời gian ffmpeg (đặt SAU `-i`). `end <= start` -> chỉ `-ss`.
+fn time_args(start: f64, end: f64) -> Vec<String> {
+    let mut v = Vec::new();
+    if start > 0.0 {
+        v.push("-ss".to_string());
+        v.push(format!("{start}"));
+    }
+    if end > start {
+        v.push("-to".to_string());
+        v.push(format!("{end}"));
+    }
+    v
+}
+
+async fn run_ffmpeg(args: &[&str]) -> Result<(), String> {
+    let out = tokio::process::Command::new(ffmpeg_bin())
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| format!("khong chay duoc ffmpeg: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let err = String::from_utf8_lossy(&out.stderr);
+    Err(err.lines().rev().take(3).collect::<Vec<_>>().join(" | "))
+}
+
+/// Cắt `path` theo `[start, end]` giây -> file MP4 mới trong `lvc_trims`, trả đường dẫn. Thử `-c copy`
+/// (nhanh) trước, lỗi thì re-encode. `end <= start` (hoặc 0) = tới hết video.
+///
+/// # Errors
+/// `TRIM_INPUT` (thiếu file vào), `TRIM_FAIL` (ffmpeg lỗi / không ghi được).
+#[tauri::command]
+pub async fn trim_video(
+    path: String,
+    start: f64,
+    end: f64,
+    name_hint: Option<String>,
+) -> Result<String, IpcError> {
+    if tokio::fs::metadata(&path).await.is_err() {
+        return Err(IpcError::new(
+            "TRIM_INPUT",
+            format!("khong tim thay video: {path}"),
+        ));
+    }
+    let dir = std::env::temp_dir().join("lvc_trims");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| IpcError::new("TRIM_FAIL", format!("tao thu muc loi: {e}")))?;
+    let stem = safe_stem(name_hint.as_deref().unwrap_or("trim"));
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let out = dir.join(format!("{stem}_{ts}.mp4"));
+    let out_s = out.to_string_lossy().to_string();
+    let t = time_args(start, end);
+    let t_ref: Vec<&str> = t.iter().map(String::as_str).collect();
+
+    let mut copy_args = vec!["-y", "-i", &path];
+    copy_args.extend_from_slice(&t_ref);
+    copy_args.extend_from_slice(&["-c", "copy", &out_s]);
+    if run_ffmpeg(&copy_args).await.is_ok() {
+        return Ok(out_s);
+    }
+    let mut enc = vec!["-y", "-i", &path];
+    enc.extend_from_slice(&t_ref);
+    enc.extend_from_slice(&[
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        &out_s,
+    ]);
+    run_ffmpeg(&enc)
+        .await
+        .map_err(|e| IpcError::new("TRIM_FAIL", format!("cat video loi: {e}")))?;
+    Ok(out_s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn time_args_dung() {
+        assert_eq!(time_args(0.0, 0.0), Vec::<String>::new());
+        assert_eq!(time_args(0.0, 5.0), vec!["-to", "5"]);
+        assert_eq!(time_args(2.0, 7.0), vec!["-ss", "2", "-to", "7"]);
+        assert_eq!(time_args(5.0, 3.0), vec!["-ss", "5"]);
+    }
 
     #[test]
     fn safe_stem_loc_ky_tu() {

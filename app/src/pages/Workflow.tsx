@@ -29,6 +29,7 @@ import CanvasToolbar from "../components/CanvasToolbar";
 import VideoParamsPanel from "../components/VideoParamsPanel";
 import NodeLogPanel from "../components/NodeLogPanel";
 import CaptureFramesPanel from "../components/CaptureFramesPanel";
+import TrimPanel from "../components/TrimPanel";
 import RunBar from "../components/RunBar";
 import ProgressPanel from "../components/ProgressPanel";
 import PromptNode from "../nodes/PromptNode";
@@ -410,6 +411,7 @@ export default function Workflow() {
   return (
     <div className="flex h-full flex-col bg-[#0a0a0b]">
       <CaptureFramesPanel />
+      <TrimPanel />
       <RunBar />
       <div className="flex flex-1 overflow-hidden">
         <ReactFlowProvider>

@@ -23,24 +23,14 @@ export type LoadVideoRFNode = RFNodeBase<LoadVideoKind, "load_video">;
 
 export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVideoRFNode>) {
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
-  const addNodeConnected = useGraphStore((s) => s.addNodeConnected);
   const selfPos = useGraphStore((s) => s.nodes.find((n) => n.id === id)?.position);
   const openCapture = useWorkflowUi((s) => s.openCapture);
+  const openTrim = useWorkflowUi((s) => s.openTrim);
   const errors = useGraphStore((s) => s.nodeErrors[id]);
   const runState = useRunStore((s) => s.nodes[id]);
   const [pickError, setPickError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
   const hp = useHoverPlay();
-
-  // Bam -> sinh node MOI noi san tu cong ra `out` (video) cua node nay (kieu Lumina).
-  function spawn(kind: "trim" | "frame_capture", slot: number): void {
-    const base = selfPos ?? { x: 0, y: 0 };
-    addNodeConnected(kind, { x: base.x + 340, y: base.y + slot * 150 }, {
-      nodeId: id,
-      handleId: "out",
-      handleType: "source",
-    });
-  }
 
   async function pick(): Promise<void> {
     setPickError(null);
@@ -85,9 +75,12 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
     },
     {
       key: "trim",
-      title: "Cắt video (thêm node nối sẵn)",
+      title: "Cắt video (chọn đoạn → thêm vào canvas)",
       disabled: !path,
-      onClick: () => spawn("trim", 0),
+      onClick: () => {
+        const base = selfPos ?? { x: 0, y: 0 };
+        openTrim({ nodeId: id, src, path, label, x: base.x, y: base.y });
+      },
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="6" cy="6" r="3" />

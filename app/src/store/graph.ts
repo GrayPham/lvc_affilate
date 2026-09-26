@@ -78,6 +78,8 @@ interface GraphStoreState {
   /** Thêm nhiều node "Tải ảnh lên" từ khung hình đã chụp (Lumina) — mỗi ảnh 1 node, xếp dọc cạnh
    * `origin`; chọn các node vừa thêm. */
   addImageNodes: (items: ReadonlyArray<{ path: string; label: string }>, origin: { x: number; y: number }) => void;
+  /** Thêm 1 node "Tải video lên" từ video đã cắt (Lumina trim) cạnh `origin`; chọn node vừa thêm. */
+  addVideoNode: (path: string, label: string, origin: { x: number; y: number }) => void;
   /** Xoa mot node + MOI canh noi toi/tu no; bo chon neu dang chon node do. */
   deleteNode: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -246,6 +248,19 @@ export const useGraphStore = create<GraphStoreState>((set, get) => {
         data: { kind: "image_upload", paths: [it.path], label: it.label },
       }));
       set({ nodes: [...kept, ...created], nodeErrors: {}, globalErrors: [] });
+    },
+
+    addVideoNode: (path, label, origin) => {
+      pushHistory();
+      const kept = get().nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
+      const node: RFNode = {
+        id: genId("n"),
+        type: "load_video",
+        selected: true,
+        position: { x: origin.x + 340, y: origin.y + 40 },
+        data: { kind: "load_video", paths: [path], label },
+      };
+      set({ nodes: [...kept, node], nodeErrors: {}, globalErrors: [] });
     },
 
     deleteNode: (id) => {

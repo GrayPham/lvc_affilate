@@ -47,7 +47,7 @@ tracing.workspace = true
 # sync: Ctx.settings dung tokio::sync::RwLock (giu qua diem await trong Tauri command Task 9/10);
 # rt: commands/*.rs goi `tokio::spawn`/`#[tokio::test]` — ghi tuong minh thay vi trong cay vao hop
 # nhat tinh nang tu workspace (M7, fix-round 1 review).
-tokio = { workspace = true, features = ["sync", "rt", "fs"] }
+tokio = { workspace = true, features = ["sync", "rt", "fs", "process"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # commands/workflow.rs (Task 9): id workflow moi khi workflow_save khong truyen id (uuid v4).
 uuid.workspace = true

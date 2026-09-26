@@ -24,26 +24,15 @@ export type VideoRFNode = RFNodeBase<VideoKind, "dola_video">;
 
 export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>) {
   const errors = useGraphStore((s) => s.nodeErrors[id]);
-  const addNodeConnected = useGraphStore((s) => s.addNodeConnected);
   const selfPos = useGraphStore((s) => s.nodes.find((n) => n.id === id)?.position);
   const openCapture = useWorkflowUi((s) => s.openCapture);
+  const openTrim = useWorkflowUi((s) => s.openTrim);
   const runState = useRunStore((s) => s.nodes[id]);
   // Video HOAN TAT cua node nay (neu co) — preview mp4 ket qua (asset:// cua Tauri).
   const videoPath = useRunStore((s) => s.nodeVideos[id]);
   const videoSrc = assetUrl(videoPath);
   const [zoom, setZoom] = useState(false);
   const hp = useHoverPlay();
-
-  // Bam nut chuc nang -> sinh node MOI noi san tu cong ra `out` (video) cua node nay (kieu Lumina).
-  // Dat ben phai node, xep doc theo `slot` de khong chong len nhau.
-  function spawn(kind: "trim" | "frame_capture", slot: number): void {
-    const base = selfPos ?? { x: 0, y: 0 };
-    addNodeConnected(kind, { x: base.x + 340, y: base.y + slot * 150 }, {
-      nodeId: id,
-      handleId: "out",
-      handleType: "source",
-    });
-  }
 
   const actions: ToolbarAction[] = [
     {
@@ -59,8 +48,12 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
     },
     {
       key: "trim",
-      title: "Cắt video (thêm node nối sẵn)",
-      onClick: () => spawn("trim", 0),
+      title: videoSrc ? "Cắt video (chọn đoạn → thêm vào canvas)" : "Chưa có video (chạy để tạo)",
+      disabled: !videoSrc,
+      onClick: () => {
+        const base = selfPos ?? { x: 0, y: 0 };
+        openTrim({ nodeId: id, src: videoSrc, path: videoPath ?? "", label: NODE_LABEL_VI.dola_video, x: base.x, y: base.y });
+      },
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="6" cy="6" r="3" />
