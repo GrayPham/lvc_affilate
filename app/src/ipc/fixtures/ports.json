@@ -59,6 +59,16 @@
     ]
   },
   {
+    "kind": "load_video",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
     "kind": "prompt",
     "inputs": [],
     "outputs": [

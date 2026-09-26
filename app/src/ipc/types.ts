@@ -43,6 +43,7 @@ export type PortType = z.infer<typeof PortTypeSchema>;
 export const NodeKindTagSchema = z.enum([
   "prompt",
   "image_upload",
+  "load_video",
   "dola_video",
   "concat",
   "save",
@@ -60,6 +61,11 @@ const ImageUploadKindSchema = z.object({
   kind: z.literal("image_upload"),
   paths: z.array(z.string()),
   // P4a: nhan tuy chon (paramsSchema cua catalog.json) — UI chua dung.
+  label: z.string().optional(),
+});
+const LoadVideoKindSchema = z.object({
+  kind: z.literal("load_video"),
+  paths: z.array(z.string()),
   label: z.string().optional(),
 });
 const DolaVideoKindSchema = z.object({
@@ -86,6 +92,7 @@ const FrameCaptureKindSchema = z.object({
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
   ImageUploadKindSchema,
+  LoadVideoKindSchema,
   DolaVideoKindSchema,
   ConcatKindSchema,
   SaveKindSchema,

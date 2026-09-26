@@ -9,6 +9,7 @@ import type { NodeKind, NodeKindTag } from "../src/ipc/types";
 const DATA: Record<NodeKindTag, NodeKind> = {
   prompt: { kind: "prompt", text: "" },
   image_upload: { kind: "image_upload", paths: [] },
+  load_video: { kind: "load_video", paths: [] },
   dola_video: { kind: "dola_video", mode: "fast", model: "seedance-2.0", ratio: "9:16", duration: 10, logo: "off", account: "" },
   concat: { kind: "concat" },
   save: { kind: "save", out_dir: "" },

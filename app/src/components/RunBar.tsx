@@ -1,7 +1,7 @@
 // Thanh dieu khien run (Task 12 brief): Kiểm tra (`workflow_validate`), Chạy (`run_start`), Huỷ
 // (`run_cancel`), Lưu/Mở/Mới (`workflow_save`/`workflow_list`+`workflow_get`/canvas trống). Nam
 // gon logic goi IPC + orchestrator trang thai run o day thay vi rai ra Workflow.tsx.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 import { useGraphStore } from "../store/graph";
@@ -147,6 +147,15 @@ export default function RunBar() {
       setBusy(false);
     }
   }
+
+  // Ctrl+S (Workflow.tsx phat CustomEvent "lvc:save") -> luu workflow. Dung ref de tranh closure cu.
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  useEffect(() => {
+    const h = (): void => void handleSaveRef.current();
+    window.addEventListener("lvc:save", h);
+    return () => window.removeEventListener("lvc:save", h);
+  }, []);
 
   /** "Lưu thành mẫu" — hoi ten (+ mo ta tuy chon) roi luu canvas hien tai thanh mau private moi.
    * `thumbnail` de rong ("") — chua chup anh canvas. Dung cung `toGraph` nhu duong luu workflow. */

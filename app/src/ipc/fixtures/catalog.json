@@ -207,6 +207,42 @@
     }
   },
   {
+    "kind": "load_video",
+    "version": 1,
+    "category": "input",
+    "labelVi": "Tải video lên",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {
+      "paths": []
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "Video",
+          "format": "video-files"
+        },
+        "label": {
+          "type": "string",
+          "title": "Nhãn"
+        }
+      }
+    }
+  },
+  {
     "kind": "prompt",
     "version": 1,
     "category": "text",

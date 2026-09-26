@@ -20,6 +20,7 @@ const STORAGE_KEY = "lvc.workflow.canvas.v1";
 const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
   prompt: () => ({ kind: "prompt", text: "" }),
   image_upload: () => ({ kind: "image_upload", paths: [] }),
+  load_video: () => ({ kind: "load_video", paths: [] }),
   dola_video: () => ({
     kind: "dola_video",
     mode: "fast",
@@ -52,6 +53,8 @@ interface GraphStoreState {
   edges: RFEdge[];
   selectedNodeId: string | null;
   history: HistoryEntry[];
+  /** Bộ nhớ tạm cho copy/paste (node + cạnh NỘI BỘ giữa chúng); không lưu ra localStorage. */
+  clipboard: { nodes: RFNode[]; edges: RFEdge[] } | null;
   /** Loi `workflow_validate` gan nhat, gom theo nodeId (xem `Workflow.tsx`/`RunBar.tsx`). */
   nodeErrors: Record<string, GraphError[]>;
   /** Loi khong gan duoc voi node nao (vd `empty`) — hien nguyen dang trong RunBar. */
@@ -75,6 +78,14 @@ interface GraphStoreState {
   /** Xoa mot node + MOI canh noi toi/tu no; bo chon neu dang chon node do. */
   deleteNode: (id: string) => void;
   setSelected: (id: string | null) => void;
+  /** Chọn tất cả node (Ctrl+A). */
+  selectAll: () => void;
+  /** Chép các node đang chọn (+ cạnh nội bộ) vào clipboard (Ctrl+C). */
+  copySelection: () => void;
+  /** Dán clipboard: tạo node id mới, lệch vị trí, chọn các node vừa dán (Ctrl+V). */
+  paste: () => void;
+  /** Xoá mọi node đang chọn (+ cạnh liên quan) (Delete khi chọn nhiều / sau Ctrl+X). */
+  deleteSelection: () => void;
   undo: () => void;
   loadGraph: (graph: Graph) => void;
   resetGraph: () => void;
@@ -140,6 +151,7 @@ export const useGraphStore = create<GraphStoreState>((set, get) => {
     edges: [],
     selectedNodeId: null,
     history: [],
+    clipboard: null,
     nodeErrors: {},
     globalErrors: [],
 
@@ -229,6 +241,71 @@ export const useGraphStore = create<GraphStoreState>((set, get) => {
     },
 
     setSelected: (id) => set({ selectedNodeId: id }),
+
+    selectAll: () => {
+      set({ nodes: get().nodes.map((n) => ({ ...n, selected: true })) });
+    },
+
+    copySelection: () => {
+      const { nodes, edges } = get();
+      const picked = nodes.filter((n) => n.selected);
+      if (picked.length === 0) {
+        return;
+      }
+      const ids = new Set(picked.map((n) => n.id));
+      const inner = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+      set({ clipboard: { nodes: picked, edges: inner } });
+    },
+
+    paste: () => {
+      const { clipboard, nodes, edges } = get();
+      if (!clipboard || clipboard.nodes.length === 0) {
+        return;
+      }
+      pushHistory();
+      const OFF = 48;
+      const idMap = new Map<string, string>();
+      const newNodes: RFNode[] = clipboard.nodes.map((n) => {
+        const id = genId("n");
+        idMap.set(n.id, id);
+        return {
+          ...n,
+          id,
+          selected: true,
+          position: { x: n.position.x + OFF, y: n.position.y + OFF },
+        };
+      });
+      const newEdges: RFEdge[] = clipboard.edges.map((e) => ({
+        ...e,
+        id: genId("e"),
+        source: idMap.get(e.source) ?? e.source,
+        target: idMap.get(e.target) ?? e.target,
+      }));
+      // Bỏ chọn node cũ để chỉ còn node vừa dán được chọn.
+      const kept = nodes.map((n) => (n.selected ? { ...n, selected: false } : n));
+      set({
+        nodes: [...kept, ...newNodes],
+        edges: [...edges, ...newEdges],
+        nodeErrors: {},
+        globalErrors: [],
+      });
+    },
+
+    deleteSelection: () => {
+      const { nodes, edges } = get();
+      const ids = new Set(nodes.filter((n) => n.selected).map((n) => n.id));
+      if (ids.size === 0) {
+        return;
+      }
+      pushHistory();
+      set({
+        nodes: nodes.filter((n) => !ids.has(n.id)),
+        edges: edges.filter((e) => !ids.has(e.source) && !ids.has(e.target)),
+        selectedNodeId: null,
+        nodeErrors: {},
+        globalErrors: [],
+      });
+    },
 
     undo: () => {
       const { history } = get();

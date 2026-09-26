@@ -28,6 +28,7 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
   const DUMMY_DATA: Record<NodeKindTag, NodeKind> = {
     prompt: { kind: "prompt", text: "canh 1" },
     image_upload: { kind: "image_upload", paths: [] },
+    load_video: { kind: "load_video", paths: [] },
     dola_video: {
       kind: "dola_video",
       mode: "fast",

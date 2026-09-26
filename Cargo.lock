@@ -2282,6 +2282,7 @@ dependencies = [
  "node-dola-video",
  "node-frame-capture",
  "node-image-upload",
+ "node-load-video",
  "node-prompt",
  "node-save",
  "node-trim",
@@ -2624,6 +2625,19 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "node-load-video"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-util",
 ]

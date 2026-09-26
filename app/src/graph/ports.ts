@@ -14,6 +14,10 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [],
     outputs: [{ name: "out", type: "image" }],
   },
+  load_video: {
+    inputs: [],
+    outputs: [{ name: "out", type: "video" }],
+  },
   dola_video: {
     inputs: [
       { name: "prompt", type: "text" },
@@ -58,6 +62,7 @@ export const PORT_TYPE_COLOR: Record<PortType, string> = {
 export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   prompt: "Prompt",
   image_upload: "Tải ảnh lên",
+  load_video: "Tải video lên",
   dola_video: "Tạo video Dola",
   concat: "Ghép phân cảnh",
   save: "Lưu",

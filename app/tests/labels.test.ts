@@ -10,6 +10,7 @@ import { NODE_KIND_ORDER } from "../src/ipc/types";
 const RUST_LABEL_VI: Record<string, string> = {
   prompt: "Prompt",
   image_upload: "Tải ảnh lên",
+  load_video: "Tải video lên",
   dola_video: "Tạo video Dola",
   concat: "Ghép phân cảnh",
   save: "Lưu",

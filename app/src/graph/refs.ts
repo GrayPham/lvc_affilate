@@ -41,6 +41,18 @@ export function nodeChipLabel(data: NodeKind): string {
       }
       return first.length > 24 ? `${first.slice(0, 24)}…` : first;
     }
+    case "load_video": {
+      const custom = (data.label ?? "").trim();
+      if (custom.length > 0) {
+        return custom;
+      }
+      const n = data.paths.length;
+      if (n === 0) {
+        return NODE_LABEL_VI.load_video;
+      }
+      const first = baseName(data.paths[0]!);
+      return n === 1 ? first : `${first} +${n - 1}`;
+    }
     case "dola_video":
       return NODE_LABEL_VI.dola_video;
     case "concat":

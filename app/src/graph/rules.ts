@@ -34,6 +34,7 @@ export function allowedDurations(mode: Mode, model: Model): readonly number[] {
 const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   prompt: {},
   image_upload: {},
+  load_video: {},
   dola_video: { prompt: true, refs: true },
   concat: { in: true },
   save: { video: true, image: true },

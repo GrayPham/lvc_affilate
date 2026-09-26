@@ -15,6 +15,7 @@ pub fn build_registry() -> Registry {
         .with(node_concat::node())
         .with(node_trim::node())
         .with(node_frame_capture::node())
+        .with(node_load_video::node())
 }
 
 #[cfg(test)]
@@ -35,6 +36,7 @@ mod tests {
                 "dola_video",
                 "frame_capture",
                 "image_upload",
+                "load_video",
                 "prompt",
                 "save",
                 "trim"

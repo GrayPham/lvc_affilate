@@ -32,6 +32,7 @@ import RunBar from "../components/RunBar";
 import ProgressPanel from "../components/ProgressPanel";
 import PromptNode from "../nodes/PromptNode";
 import ImageUploadNode from "../nodes/ImageUploadNode";
+import LoadVideoNode from "../nodes/LoadVideoNode";
 import VideoNode from "../nodes/VideoNode";
 import SaveNode from "../nodes/SaveNode";
 import ConcatNode from "../nodes/ConcatNode";
@@ -58,6 +59,7 @@ import { errorText } from "../ipc/error_text";
 const nodeTypes: NodeTypes = {
   prompt: PromptNode,
   image_upload: ImageUploadNode,
+  load_video: LoadVideoNode,
   dola_video: VideoNode,
   concat: ConcatNode,
   save: SaveNode,
@@ -166,6 +168,55 @@ function WorkflowCanvas() {
       setConnectMenuFrom(null);
     }
   }, [addMenuOpen]);
+
+  // Phim tat tien thao tac: Ctrl/Cmd + Z (hoan tac) / A (chon tat) / C (chep) / X (cat) / V (dan) /
+  // S (luu). Bo qua khi con tro dang trong o nhap (INPUT/TEXTAREA/contenteditable) de khong pha
+  // copy/paste/undo cua van ban. Delete/Backspace do React Flow xu ly (deleteKeyCode).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) {
+        return;
+      }
+      const t = e.target as HTMLElement | null;
+      const inField =
+        !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      const k = e.key.toLowerCase();
+      if (inField && ["a", "c", "x", "v", "z"].includes(k)) {
+        return; // de o nhap tu xu ly
+      }
+      const g = useGraphStore.getState();
+      switch (k) {
+        case "z":
+          e.preventDefault();
+          g.undo();
+          break;
+        case "a":
+          e.preventDefault();
+          g.selectAll();
+          break;
+        case "c":
+          g.copySelection();
+          break;
+        case "x":
+          e.preventDefault();
+          g.copySelection();
+          g.deleteSelection();
+          break;
+        case "v":
+          e.preventDefault();
+          g.paste();
+          break;
+        case "s":
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("lvc:save"));
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes(DRAG_KIND_MIME)) {
@@ -306,6 +357,11 @@ function WorkflowCanvas() {
         isValidConnection={handleIsValidConnection}
         zoomOnDoubleClick={false}
         deleteKeyCode={["Delete", "Backspace"]}
+        multiSelectionKeyCode={["Control", "Meta", "Shift"]}
+        selectionOnDrag
+        panOnDrag={[1, 2]}
+        panActivationKeyCode="Space"
+        selectionKeyCode={null}
         colorMode="dark"
         defaultEdgeOptions={{ type: "default", style: { stroke: "#8b8b93", strokeWidth: 1.5 } }}
         fitView
