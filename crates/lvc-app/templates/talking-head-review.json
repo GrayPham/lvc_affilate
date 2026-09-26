@@ -1,5 +1,6 @@
 {
   "name": "Talking-head review",
+  "category": "Bán hàng/Sản phẩm",
   "description": "Một ảnh nhân vật + prompt kịch bản review → video người thật nói trước camera, lưu ra thư mục.",
   "graph": {
     "version": 2,

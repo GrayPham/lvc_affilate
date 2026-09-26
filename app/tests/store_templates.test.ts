@@ -23,6 +23,7 @@ function makeMeta(overrides: Partial<TemplateMeta> = {}): TemplateMeta {
     name: "Mau cua toi",
     description: "",
     scope: "private",
+    category: "Cơ bản",
     thumbnail: "",
     updatedAt: 1700000000,
     ...overrides,

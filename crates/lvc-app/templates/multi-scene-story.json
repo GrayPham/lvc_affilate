@@ -1,5 +1,6 @@
 {
   "name": "Kịch bản nhiều cảnh → nhiều video",
+  "category": "Storyboard",
   "description": "Mỗi dòng prompt là một cảnh; tạo hàng loạt video rồi lưu tất cả (dựng story/storyboard).",
   "graph": {
     "version": 2,

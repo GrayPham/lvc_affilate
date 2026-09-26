@@ -28,6 +28,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
 
   const [scope, setScope] = useState<TemplateScope>("public");
   const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -36,17 +37,40 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
   useEffect(() => {
     void load(scope);
     setConfirmDeleteId(null);
+    setCategory("all");
   }, [scope, load]);
+
+  // Danh sach nhom (giu thu tu xuat hien) — dung dung chip loc.
+  const categories = useMemo(() => {
+    const seen: string[] = [];
+    for (const t of items) {
+      if (!seen.includes(t.category)) {
+        seen.push(t.category);
+      }
+    }
+    return seen;
+  }, [items]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (q === "") {
-      return items;
-    }
-    return items.filter(
-      (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
-    );
-  }, [items, query]);
+    return items.filter((t) => {
+      if (category !== "all" && t.category !== category) {
+        return false;
+      }
+      if (q === "") {
+        return true;
+      }
+      return t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q);
+    });
+  }, [items, query, category]);
+
+  // Gom the theo nhom de hien tieu de nhom (giu thu tu `categories`).
+  const groups = useMemo(() => {
+    const order = category === "all" ? categories : [category];
+    return order
+      .map((c) => ({ category: c, rows: filtered.filter((t) => t.category === c) }))
+      .filter((g) => g.rows.length > 0);
+  }, [filtered, categories, category]);
 
   async function handleUse(meta: TemplateMeta): Promise<void> {
     setBusyId(meta.id);
@@ -123,6 +147,28 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
           />
         </div>
 
+        {categories.length > 1 ? (
+          <div className="mb-2 flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === "all" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"}`}
+              onClick={() => setCategory("all")}
+            >
+              Tất cả
+            </button>
+            {categories.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"}`}
+                onClick={() => setCategory(c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {error ? <p className="mb-2 text-xs text-red-600">{error}</p> : null}
 
         <div className="flex-1 overflow-y-auto">
@@ -133,15 +179,21 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
               {query.trim() !== "" ? "Không có mẫu nào khớp." : "Chưa có mẫu nào."}
             </p>
           ) : (
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {filtered.map((meta) => {
-                const canDelete = meta.scope === "private" && meta.id.startsWith("tpl_");
-                const busy = busyId !== null;
-                return (
-                  <li
-                    key={meta.id}
-                    className="flex flex-col overflow-hidden rounded border border-slate-200"
-                  >
+            <div className="flex flex-col gap-3">
+              {groups.map((group) => (
+                <section key={group.category} className="flex flex-col gap-1.5">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    {group.category}
+                  </h3>
+                  <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {group.rows.map((meta) => {
+                      const canDelete = meta.scope === "private" && meta.id.startsWith("tpl_");
+                      const busy = busyId !== null;
+                      return (
+                        <li
+                          key={meta.id}
+                          className="flex flex-col overflow-hidden rounded border border-slate-200"
+                        >
                     <div className="flex aspect-video items-center justify-center bg-slate-50 p-2 text-center">
                       {meta.thumbnail ? (
                         <img
@@ -185,10 +237,13 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                         ) : null}
                       </div>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
           )}
         </div>
       </div>

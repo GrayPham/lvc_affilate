@@ -1,5 +1,6 @@
 {
   "name": "Ảnh tham chiếu → Video",
+  "category": "Cơ bản",
   "description": "Một bộ ảnh tham chiếu gắn vào mọi cảnh của video (giữ nhân vật/bối cảnh nhất quán).",
   "graph": {
     "version": 2,

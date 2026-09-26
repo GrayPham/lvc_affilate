@@ -1,5 +1,6 @@
 {
   "name": "Prompt → Video Dola → Lưu",
+  "category": "Cơ bản",
   "description": "Mẫu cơ bản: mỗi dòng prompt thành một video Seedance rồi lưu ra thư mục.",
   "graph": {
     "version": 2,

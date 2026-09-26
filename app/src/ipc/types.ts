@@ -732,6 +732,8 @@ export const TemplateMetaSchema = z.object({
   name: z.string(),
   description: z.string(),
   scope: TemplateScopeSchema,
+  /** Nhom de loc/gom trong gallery. Mau/fixture cu thieu -> "Cơ bản" (tuong thich nguoc). */
+  category: z.string().default("Cơ bản"),
   thumbnail: z.string(),
   updatedAt: z.number(),
 });

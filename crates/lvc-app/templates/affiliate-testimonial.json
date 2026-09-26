@@ -1,0 +1,23 @@
+{
+  "name": "Affiliate: Testimonial khách hàng",
+  "category": "Affiliate",
+  "description": "Lời chứng thực chân thật của khách hàng: hook cảm xúc → kể trải nghiệm trước đây → khoảnh khắc dùng sản phẩm → kết quả hài lòng và lời khuyên → CTA. Ảnh khách hàng + ảnh sản phẩm tham chiếu, tạo nhiều cảnh rồi ghép.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "customer", "kind": { "kind": "image_upload", "paths": [], "label": "khách hàng" }, "x": 60, "y": 80 },
+      { "id": "product", "kind": { "kind": "image_upload", "paths": [], "label": "sản phẩm" }, "x": 60, "y": 300 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "cảnh 1 (hook 1-2s): khách hàng nói thẳng vào camera bằng giọng chân thành mở đầu câu chuyện, quay dọc 9:16 selfie điện thoại chân thực, ánh sáng phòng khách ấm, rung tay nhẹ, chỉ tiếng động môi trường, không nhạc nền, không chữ overlay\ncảnh 2 (trải nghiệm cũ): khách hàng kể lại vấn đề từng gặp, biểu cảm đồng cảm, khẩu hình tự nhiên như đang tâm sự\ncảnh 3 (dùng sản phẩm): khách hàng cầm và sử dụng sản phẩm hằng ngày, động tác đời thường, cận cảnh sản phẩm xen kẽ\ncảnh 4 (kết quả): khách hàng mỉm cười hài lòng chia sẻ thay đổi tích cực, ánh mắt tin tưởng, khoe sản phẩm bên cạnh\ncảnh 5 (CTA): khách hàng khuyên người xem thử ngay, chỉ tay xuống giỏ hàng, khẩu hình kêu gọi, kết bằng cái gật đầu chân thành" }, "x": 60, "y": 520 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.5", "ratio": "9:16", "duration": 10, "logo": "off", "account": "" }, "x": 470, "y": 240 },
+      { "id": "concat", "kind": { "kind": "concat" }, "x": 840, "y": 240 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 1180, "y": 240 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "customer", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "product", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e3", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e4", "from": "video", "from_port": "out", "to": "concat", "to_port": "in" },
+      { "id": "e5", "from": "concat", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

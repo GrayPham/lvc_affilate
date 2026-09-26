@@ -1,0 +1,20 @@
+{
+  "name": "Từ video có sẵn: cắt + chụp khung",
+  "description": "Không tốn credit Dola: nạp video có sẵn, CẮT một đoạn (trim) lưu ra video, đồng thời CHỤP một khung hình (frame) lưu ra ảnh.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "src", "kind": { "kind": "load_video", "paths": ["chon-video-cua-ban.mp4"], "label": "video nguồn" }, "x": 60, "y": 200 },
+      { "id": "trim", "kind": { "kind": "trim", "start": 0.0, "end": 10.0 }, "x": 440, "y": 80 },
+      { "id": "frame", "kind": { "kind": "frame_capture", "time": 1.0 }, "x": 440, "y": 320 },
+      { "id": "save_video", "kind": { "kind": "save", "out_dir": "" }, "x": 820, "y": 80 },
+      { "id": "save_frame", "kind": { "kind": "save", "out_dir": "" }, "x": 820, "y": 320 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "src", "from_port": "out", "to": "trim", "to_port": "in" },
+      { "id": "e2", "from": "src", "from_port": "out", "to": "frame", "to_port": "in" },
+      { "id": "e3", "from": "trim", "from_port": "out", "to": "save_video", "to_port": "video" },
+      { "id": "e4", "from": "frame", "from_port": "out", "to": "save_frame", "to_port": "image" }
+    ]
+  }
+}

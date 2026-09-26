@@ -1,0 +1,25 @@
+{
+  "name": "Storyboard: upload ảnh từng cảnh → ghép",
+  "category": "Storyboard",
+  "description": "Khách tự upload ảnh phân cảnh: mỗi cảnh một ảnh (nhân vật, bối cảnh, sản phẩm...) làm tham chiếu chung; prompt mô tả diễn biến từng cảnh → tạo hàng loạt video theo storyboard → ghép phân cảnh thành một clip → lưu.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "scene1", "kind": { "kind": "image_upload", "paths": [], "label": "cảnh 1" }, "x": 60, "y": 60 },
+      { "id": "scene2", "kind": { "kind": "image_upload", "paths": [], "label": "cảnh 2" }, "x": 60, "y": 240 },
+      { "id": "scene3", "kind": { "kind": "image_upload", "paths": [], "label": "cảnh 3" }, "x": 60, "y": 420 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "cảnh 1: giới thiệu bối cảnh và nhân vật theo ảnh tham chiếu, máy quay từ từ tiến vào, không khí mở đầu\ncảnh 2: nhân vật hành động chính giữa bối cảnh, giữ nguyên trang phục và nhận diện theo ảnh, nhịp cắt vừa phải\ncảnh 3: khoảnh khắc cao trào/kết, máy quay lướt nhẹ, ánh sáng nhấn mạnh cảm xúc, giữ nhất quán màu sắc với các cảnh trước" }, "x": 60, "y": 600 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.5", "ratio": "16:9", "duration": 10, "logo": "off", "account": "" }, "x": 470, "y": 280 },
+      { "id": "concat", "kind": { "kind": "concat" }, "x": 840, "y": 280 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 1180, "y": 280 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "scene1", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "scene2", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e3", "from": "scene3", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e4", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e5", "from": "video", "from_port": "out", "to": "concat", "to_port": "in" },
+      { "id": "e6", "from": "concat", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

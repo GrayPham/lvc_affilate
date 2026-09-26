@@ -1,5 +1,6 @@
 {
   "name": "Nhiều cảnh → ghép thành 1 video",
+  "category": "Cơ bản",
   "description": "Mỗi dòng prompt là một short; tạo hàng loạt rồi GHÉP PHÂN CẢNH thành một video liền mạch, lưu ra thư mục.",
   "graph": {
     "version": 2,

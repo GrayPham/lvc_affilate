@@ -4,6 +4,7 @@
     "name": "Prompt -> Video -> Luu",
     "description": "Mau co ban",
     "scope": "public",
+    "category": "Cơ bản",
     "thumbnail": "",
     "updatedAt": 0.0
   },
@@ -12,6 +13,7 @@
     "name": "Mau cua toi",
     "description": "",
     "scope": "private",
+    "category": "Cơ bản",
     "thumbnail": "",
     "updatedAt": 1700000000.0
   }

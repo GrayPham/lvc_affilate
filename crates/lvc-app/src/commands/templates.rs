@@ -19,9 +19,18 @@ pub struct TemplateMeta {
     pub name: String,
     pub description: String,
     pub scope: String,
+    /// Nhóm để lọc/gom trong gallery (vd "Affiliate", "Storyboard"). Mẫu/fixture cũ thiếu →
+    /// mặc định "Cơ bản" (tương thích ngược).
+    #[serde(default = "default_category")]
+    pub category: String,
     /// data URL PNG hoặc rỗng (Public không có).
     pub thumbnail: String,
     pub updated_at: f64,
+}
+
+/// Nhóm mặc định khi mẫu/fixture cũ không khai `category`.
+fn default_category() -> String {
+    "Cơ bản".to_string()
 }
 
 /// Template đầy đủ (kèm graph đã migrate) — cho "Dùng mẫu".
@@ -37,11 +46,13 @@ pub struct TemplateDoc {
 struct PublicTemplate {
     name: String,
     description: String,
+    #[serde(default = "default_category")]
+    category: String,
     graph: Graph,
 }
 
 /// `(id, raw json)` mỗi mẫu Public. id ổn định `public:<tên file>` (lưu trong workflow người dùng).
-const PUBLIC: [(&str, &str); 8] = [
+const PUBLIC: [(&str, &str); 14] = [
     (
         "public:affiliate-review",
         include_str!("../../templates/affiliate-review.json"),
@@ -51,12 +62,32 @@ const PUBLIC: [(&str, &str); 8] = [
         include_str!("../../templates/affiliate-multi-scene.json"),
     ),
     (
+        "public:affiliate-concat",
+        include_str!("../../templates/affiliate-concat.json"),
+    ),
+    (
+        "public:affiliate-before-after",
+        include_str!("../../templates/affiliate-before-after.json"),
+    ),
+    (
+        "public:affiliate-feature-demo",
+        include_str!("../../templates/affiliate-feature-demo.json"),
+    ),
+    (
+        "public:affiliate-testimonial",
+        include_str!("../../templates/affiliate-testimonial.json"),
+    ),
+    (
         "public:product-unboxing",
         include_str!("../../templates/product-unboxing.json"),
     ),
     (
         "public:talking-head-review",
         include_str!("../../templates/talking-head-review.json"),
+    ),
+    (
+        "public:storyboard-scenes",
+        include_str!("../../templates/storyboard-scenes.json"),
     ),
     (
         "public:multi-scene-story",
@@ -74,6 +105,10 @@ const PUBLIC: [(&str, &str); 8] = [
         "public:prompt-video-save",
         include_str!("../../templates/prompt-video-save.json"),
     ),
+    (
+        "public:video-trim-frame",
+        include_str!("../../templates/video-trim-frame.json"),
+    ),
 ];
 
 fn public_doc(id: &str, raw: &str) -> Option<TemplateDoc> {
@@ -84,6 +119,7 @@ fn public_doc(id: &str, raw: &str) -> Option<TemplateDoc> {
             name: t.name,
             description: t.description,
             scope: "public".to_string(),
+            category: t.category,
             thumbnail: String::new(),
             updated_at: 0.0,
         },
@@ -115,6 +151,7 @@ pub async fn template_list_impl<D: BrowserDriver + 'static>(
                 name: row.name,
                 description: row.description,
                 scope: "private".to_string(),
+                category: default_category(),
                 thumbnail: row.thumbnail,
                 #[allow(clippy::cast_precision_loss)]
                 updated_at: row.updated_at as f64,
@@ -156,6 +193,7 @@ pub async fn template_get_impl<D: BrowserDriver + 'static>(
             name: row.name,
             description: row.description,
             scope: "private".to_string(),
+            category: default_category(),
             thumbnail: row.thumbnail,
             #[allow(clippy::cast_precision_loss)]
             updated_at: row.updated_at as f64,
@@ -206,6 +244,7 @@ pub async fn template_save_private_impl<D: BrowserDriver + 'static>(
         name: row.name,
         description: row.description,
         scope: "private".to_string(),
+        category: default_category(),
         thumbnail: row.thumbnail,
         #[allow(clippy::cast_precision_loss)]
         updated_at: row.updated_at as f64,
@@ -286,8 +325,17 @@ mod tests {
         let only_public = template_list_impl(&ctx, Some("public".into()))
             .await
             .unwrap();
-        assert_eq!(only_public.len(), 8);
+        assert_eq!(only_public.len(), 14);
         assert!(only_public.iter().all(|t| t.scope == "public"));
+        // Nhóm được khai đúng: có ít nhất một mẫu mỗi nhóm chính.
+        assert!(only_public.iter().any(|t| t.category == "Affiliate"));
+        assert!(only_public.iter().any(|t| t.category == "Storyboard"));
+        assert!(
+            only_public
+                .iter()
+                .any(|t| t.category == "Bán hàng/Sản phẩm")
+        );
+        assert!(only_public.iter().any(|t| t.category == "Cơ bản"));
 
         let g = template_get_impl(&ctx, "public:product-unboxing")
             .await
@@ -297,9 +345,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(meta.scope, "private");
+        // Mẫu riêng chưa có nhóm -> mặc định "Cơ bản" (tương thích ngược).
+        assert_eq!(meta.category, "Cơ bản");
 
         let all = template_list_impl(&ctx, None).await.unwrap();
-        assert_eq!(all.len(), 9);
+        assert_eq!(all.len(), 15);
         let priv_only = template_list_impl(&ctx, Some("private".into()))
             .await
             .unwrap();

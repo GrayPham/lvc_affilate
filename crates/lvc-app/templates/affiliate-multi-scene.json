@@ -1,5 +1,6 @@
 {
   "name": "Affiliate nhiều cảnh (hook → demo → CTA)",
+  "category": "Affiliate",
   "description": "Một bộ ảnh tham chiếu (người mẫu + sản phẩm) dùng chung; mỗi dòng là một cảnh affiliate: hook, cận cảnh sản phẩm, dùng thử, chốt đơn → tạo hàng loạt video → lưu.",
   "graph": {
     "version": 2,

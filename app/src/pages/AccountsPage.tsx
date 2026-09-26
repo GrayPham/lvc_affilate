@@ -26,6 +26,11 @@ export default function AccountsPage() {
   // dong ho khong dung im, khong can chinh xac tung giay cho muc dich nay.
   const [now, setNow] = useState(() => Date.now() / 1000);
 
+  // Chon nhieu dong theo `row.name` + menu chuot phai (theo mau CredentialArea).
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -34,6 +39,71 @@ export default function AccountsPage() {
     const id = setInterval(() => setNow(Date.now() / 1000), NOW_REFRESH_MS);
     return () => clearInterval(id);
   }, []);
+
+  // Bo chon nhung ten khong con trong danh sach (vd sau khi xoa/lam moi).
+  useEffect(() => {
+    setSelected((prev) => {
+      const names = new Set(rows.map((r) => r.name));
+      const next = new Set([...prev].filter((n) => names.has(n)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
+
+  // Dong menu chuot phai khi bam ra ngoai / cuon.
+  useEffect(() => {
+    if (!menu) {
+      return;
+    }
+    const close = (): void => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
+  const selCount = rows.filter((r) => selected.has(r.name)).length;
+  const allSel = selCount === rows.length && rows.length > 0;
+
+  function toggleOne(name: string, on: boolean): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) {
+        next.add(name);
+      } else {
+        next.delete(name);
+      }
+      return next;
+    });
+  }
+  function toggleAll(on: boolean): void {
+    setSelected(on ? new Set(rows.map((r) => r.name)) : new Set());
+  }
+
+  async function bulkSchedule(on: boolean): Promise<void> {
+    setBulkBusy(true);
+    try {
+      for (const r of rows.filter((x) => selected.has(x.name))) {
+        await setScheduling(r.name, on);
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  async function bulkDelete(): Promise<void> {
+    setBulkBusy(true);
+    try {
+      for (const r of rows.filter((x) => selected.has(x.name))) {
+        await remove(r.name);
+      }
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const menuRow = menu ? rows.find((r) => r.name === menu.name) : undefined;
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-auto p-3">
@@ -61,6 +131,43 @@ export default function AccountsPage() {
         <p className="text-xs text-red-600">Không tải được danh sách tài khoản: {error}</p>
       ) : null}
 
+      {selCount > 0 ? (
+        <div className="flex items-center gap-2 rounded bg-slate-100 px-2 py-1 text-xs">
+          <span className="text-slate-600">Đã chọn {selCount}</span>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50"
+            onClick={() => void bulkSchedule(true)}
+          >
+            Bật lịch
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50"
+            onClick={() => void bulkSchedule(false)}
+          >
+            Tắt lịch
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            className="rounded border border-red-300 bg-white px-2 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50"
+            onClick={() => void bulkDelete()}
+          >
+            {bulkBusy ? "Đang xoá…" : "Xoá đã chọn"}
+          </button>
+          <button
+            type="button"
+            className="ml-auto text-slate-400 hover:text-slate-700"
+            onClick={() => setSelected(new Set())}
+          >
+            Bỏ chọn
+          </button>
+        </div>
+      ) : null}
+
       {rows.length === 0 && !loading ? (
         <p className="text-sm text-slate-400">Chưa có tài khoản nào — bấm "Nạp cookie" để thêm.</p>
       ) : (
@@ -68,6 +175,14 @@ export default function AccountsPage() {
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
               <tr>
+                <th className="w-8 px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={allSel}
+                    onChange={(e) => toggleAll(e.target.checked)}
+                    aria-label="Chọn tất cả"
+                  />
+                </th>
                 <th className="px-2 py-1.5 font-medium">Tên</th>
                 <th className="px-2 py-1.5 font-medium">Đăng nhập</th>
                 <th className="px-2 py-1.5 font-medium">Lịch</th>
@@ -84,6 +199,9 @@ export default function AccountsPage() {
                   row={row}
                   busy={(busy[row.name] ?? 0) > 0}
                   now={now}
+                  selected={selected.has(row.name)}
+                  onSelect={toggleOne}
+                  onContext={(name, x, y) => setMenu({ name, x, y })}
                   onVerify={verify}
                   onToggleScheduling={setScheduling}
                   onSaveProxy={setProxy}
@@ -94,6 +212,46 @@ export default function AccountsPage() {
           </table>
         </div>
       )}
+
+      {/* Menu chuot phai cho mot dong Dola */}
+      {menu && menuRow ? (
+        <div
+          className="fixed z-50 min-w-[140px] rounded-md border border-slate-200 bg-white py-1 text-xs shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+            onClick={() => {
+              setMenu(null);
+              void verify(menuRow.name);
+            }}
+          >
+            Kiểm tra
+          </button>
+          <button
+            type="button"
+            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+            onClick={() => {
+              setMenu(null);
+              void setScheduling(menuRow.name, !menuRow.scheduling);
+            }}
+          >
+            {menuRow.scheduling ? "Tắt lịch" : "Bật lịch"}
+          </button>
+          <button
+            type="button"
+            className="block w-full px-3 py-1.5 text-left text-red-700 hover:bg-red-50"
+            onClick={() => {
+              setMenu(null);
+              void remove(menuRow.name);
+            }}
+          >
+            Xoá
+          </button>
+        </div>
+      ) : null}
 
       {/* Gộp: tài khoản đăng nhập/cookie các nền tảng khác (Google/Facebook/Apple/Gemini/ChatGPT)
           vào CÙNG tab "Tài khoản" — API key ở tab riêng. */}

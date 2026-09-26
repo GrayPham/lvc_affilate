@@ -1,5 +1,6 @@
 {
   "name": "Video affiliate (review sản phẩm)",
+  "category": "Affiliate",
   "description": "Mẫu affiliate/TikTok: ảnh người mẫu (KOL) + ảnh sản phẩm + prompt review bán hàng → video dọc 9:16 kèm CTA, lưu ra thư mục.",
   "graph": {
     "version": 2,

@@ -20,6 +20,12 @@ interface AccountRowProps {
   busy: boolean;
   /** Epoch giay dung chung cho ca bang — tranh moi dong tinh "bay gio" khac nhau chut it. */
   now: number;
+  /** Dong dang duoc chon (checkbox) — to nen sang. */
+  selected: boolean;
+  /** Bat/tat chon dong theo `row.name`. */
+  onSelect: (name: string, on: boolean) => void;
+  /** Chuot phai -> mo menu tai (x, y). */
+  onContext: (name: string, x: number, y: number) => void;
   onVerify: (name: string) => Promise<unknown>;
   onToggleScheduling: (name: string, on: boolean) => Promise<void>;
   onSaveProxy: (name: string, proxy: string) => Promise<void>;
@@ -36,6 +42,9 @@ export default function AccountRow({
   row,
   busy,
   now,
+  selected,
+  onSelect,
+  onContext,
   onVerify,
   onToggleScheduling,
   onSaveProxy,
@@ -78,7 +87,21 @@ export default function AccountRow({
   }
 
   return (
-    <tr className="border-b border-slate-100 align-top">
+    <tr
+      className={"border-b border-slate-100 align-top " + (selected ? "bg-sky-50" : "")}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContext(row.name, e.clientX, e.clientY);
+      }}
+    >
+      <td className="px-2 py-1.5">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(e) => onSelect(row.name, e.target.checked)}
+          aria-label={`Chọn ${row.name}`}
+        />
+      </td>
       <td className="px-2 py-1.5 font-medium text-slate-800">{row.name}</td>
       <td className="px-2 py-1.5">
         <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${LOGIN_BADGE_CLASS[loginLabel]}`}>
