@@ -2,9 +2,13 @@
 //! (`ChromiumDriver` — TỐN CREDIT Dola). Điền `out_dir` (node Lưu) + `account` (node dola_video) rồi
 //! chạy DAG end-to-end; kiểm file lưu ra.
 //!
-//! Chạy: cargo run -p lvc-app --example run_workflow -- <template.json> <account> <accounts_dir> \
-//!       <out_dir> <db> <downloads_dir>
+//! Chạy: `cargo run -p lvc-app --example run_workflow -- <template.json> <account> <accounts_dir>
+//! <out_dir> <db> <downloads_dir>`
 //! stderr = log; stdout = tóm tắt.
+#![allow(
+    clippy::doc_markdown,
+    reason = "doc tiếng Việt nhắc tên tham số dòng lệnh, không phải mã"
+)]
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,7 +21,9 @@ use lvc_store::{AccountRepo, Db};
 use tracing_subscriber::EnvFilter;
 
 fn arg(i: usize, default: &str) -> String {
-    std::env::args().nth(i).unwrap_or_else(|| default.to_string())
+    std::env::args()
+        .nth(i)
+        .unwrap_or_else(|| default.to_string())
 }
 
 #[tokio::main]
@@ -44,7 +50,9 @@ async fn main() {
     let mut graph_val = graph_val;
     if let Some(nodes) = graph_val.get_mut("nodes").and_then(|n| n.as_array_mut()) {
         for node in nodes.iter_mut() {
-            let Some(kind) = node.get_mut("kind") else { continue };
+            let Some(kind) = node.get_mut("kind") else {
+                continue;
+            };
             match kind.get("kind").and_then(|k| k.as_str()) {
                 Some("save") => {
                     kind["out_dir"] = serde_json::Value::String(out_dir.clone());
@@ -71,9 +79,15 @@ async fn main() {
     }
 
     let cfg = EngineConfig::new(&accounts_dir, &downloads_dir);
-    let (engine, _handle) = Engine::new(Arc::new(ChromiumDriver), db.clone(), Limits::default(), cfg, 1)
-        .await
-        .expect("Engine::new");
+    let (engine, _handle) = Engine::new(
+        Arc::new(ChromiumDriver),
+        db.clone(),
+        Limits::default(),
+        cfg,
+        1,
+    )
+    .await
+    .expect("Engine::new");
     let engine = Arc::new(engine);
     engine.set_registry(Arc::new(lvc_app_lib::registry::build_registry()));
 
@@ -88,7 +102,7 @@ async fn main() {
     // Kết quả: liệt kê file trong out_dir.
     let files: Vec<String> = std::fs::read_dir(&out_dir)
         .map(|rd| {
-            rd.filter_map(|e| e.ok())
+            rd.filter_map(std::result::Result::ok)
                 .map(|e| e.path().display().to_string())
                 .collect()
         })
