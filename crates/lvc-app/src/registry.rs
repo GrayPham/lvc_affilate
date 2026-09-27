@@ -16,6 +16,8 @@ pub fn build_registry() -> Registry {
         .with(node_trim::node())
         .with(node_frame_capture::node())
         .with(node_load_video::node())
+        .with(node_audio_extract::node())
+        .with(node_audio_split::node())
 }
 
 #[cfg(test)]
@@ -32,6 +34,8 @@ mod tests {
         assert_eq!(
             kinds,
             [
+                "audio_extract",
+                "audio_split",
                 "concat",
                 "dola_video",
                 "frame_capture",

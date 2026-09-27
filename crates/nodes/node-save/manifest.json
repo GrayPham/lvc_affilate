@@ -17,13 +17,21 @@
       "many": true,
       "required": false,
       "collect": false
+    },
+    {
+      "name": "audio",
+      "type": "audio",
+      "many": true,
+      "required": false,
+      "collect": false
     }
   ],
   "outputs": [],
   "requireAny": [
     [
       "video",
-      "image"
+      "image",
+      "audio"
     ]
   ],
   "defaultParams": {

@@ -1,5 +1,82 @@
 [
   {
+    "kind": "audio_extract",
+    "version": 1,
+    "category": "audio",
+    "labelVi": "Tách audio",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video",
+        "many": false,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "audio",
+        "many": false,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {
+      "format": "mp3"
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "title": "Định dạng",
+          "enum": [
+            "mp3",
+            "aac",
+            "wav"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "kind": "audio_split",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Tách audio↔video",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video",
+        "many": false,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "video",
+        "type": "video",
+        "many": false,
+        "required": false,
+        "collect": false
+      },
+      {
+        "name": "audio",
+        "type": "audio",
+        "many": false,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "defaultParams": {},
+    "paramsSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
     "kind": "concat",
     "version": 1,
     "category": "video",
@@ -290,13 +367,21 @@
         "many": true,
         "required": false,
         "collect": false
+      },
+      {
+        "name": "audio",
+        "type": "audio",
+        "many": true,
+        "required": false,
+        "collect": false
       }
     ],
     "outputs": [],
     "requireAny": [
       [
         "video",
-        "image"
+        "image",
+        "audio"
       ]
     ],
     "defaultParams": {

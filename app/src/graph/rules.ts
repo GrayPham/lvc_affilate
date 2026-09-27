@@ -37,9 +37,11 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   load_video: {},
   dola_video: { prompt: true, refs: true },
   concat: { in: true },
-  save: { video: true, image: true },
+  save: { video: true, image: true, audio: true },
   trim: {},
   frame_capture: {},
+  audio_extract: {},
+  audio_split: {},
 };
 
 /**

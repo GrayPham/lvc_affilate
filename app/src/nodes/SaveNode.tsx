@@ -1,7 +1,7 @@
 // Node "Lưu" (NodeKind::Save) — nut "Chọn thư mục…" mo dialog he thong qua `pickDirectory()`
-// (crates/lvc-app pick_directory). Nhan ca hai cong vao (`video`, `image`, deu many=true) — server
-// (`validate.rs::check_missing_required`) doi it nhat MOT trong hai co canh noi toi, khong bat
-// buoc ca hai.
+// (crates/lvc-app pick_directory). Nhan ca ba cong vao (`video`, `image`, `audio`, deu many=true) —
+// server (`validate.rs::check_missing_required`) doi it nhat MOT trong ba co canh noi toi, khong
+// bat buoc ca ba.
 import { useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { Node as RFNodeBase } from "@xyflow/react";
@@ -44,13 +44,19 @@ export default function SaveNode({ id, data, selected }: NodeProps<SaveRFNode>) 
         type="target"
         position={Position.Left}
         id="video"
-        style={{ top: "35%", background: PORT_TYPE_COLOR.video }}
+        style={{ top: "25%", background: PORT_TYPE_COLOR.video }}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="image"
-        style={{ top: "65%", background: PORT_TYPE_COLOR.image }}
+        style={{ top: "50%", background: PORT_TYPE_COLOR.image }}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="audio"
+        style={{ top: "75%", background: PORT_TYPE_COLOR.audio }}
       />
       <NodeShell label={NODE_LABEL_VI.save} selected={selected} errors={errors} runState={runState}>
         <button

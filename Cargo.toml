@@ -17,6 +17,8 @@ members = [
     "crates/nodes/node-trim",
     "crates/nodes/node-frame-capture",
     "crates/nodes/node-load-video",
+    "crates/nodes/node-audio-extract",
+    "crates/nodes/node-audio-split",
 ]
 
 [workspace.package]
@@ -46,6 +48,8 @@ lvc-browser = { path = "crates/lvc-browser" }
 lvc-node-api = { path = "crates/lvc-node-api" }
 lvc-vault = { path = "crates/lvc-vault" }
 lvc-dola = { path = "crates/providers/lvc-dola" }
+node-audio-split = { path = "crates/nodes/node-audio-split" }
+node-audio-extract = { path = "crates/nodes/node-audio-extract" }
 node-load-video = { path = "crates/nodes/node-load-video" }
 node-frame-capture = { path = "crates/nodes/node-frame-capture" }
 node-trim = { path = "crates/nodes/node-trim" }
