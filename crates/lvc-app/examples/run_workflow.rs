@@ -48,7 +48,25 @@ async fn main() {
     let mut doc: serde_json::Value = serde_json::from_str(&raw).expect("parse template json");
     let graph_val = doc.get_mut("graph").cloned().unwrap_or(doc.clone());
     let mut graph_val = graph_val;
+    // Anh tham chieu: env LVC_REFS = danh sach duong dan, ngan cach bang ';'. Gan LAN LUOT cho tung
+    // node image_upload (node 1 -> anh 1, node 2 -> anh 2, ...). Cho phep test luong affiliate co
+    // anh nguoi mau / san pham that.
+    let refs: Vec<String> = std::env::var("LVC_REFS")
+        .ok()
+        .map(|s| {
+            s.split(';')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    // Gioi han thoi luong (tiet kiem credit) qua env LVC_DURATION (giay).
+    let duration_override: Option<u64> = std::env::var("LVC_DURATION")
+        .ok()
+        .and_then(|s| s.parse().ok());
     if let Some(nodes) = graph_val.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+        let mut img_idx = 0usize;
         for node in nodes.iter_mut() {
             let Some(kind) = node.get_mut("kind") else {
                 continue;
@@ -59,6 +77,16 @@ async fn main() {
                 }
                 Some("dola_video") => {
                     kind["account"] = serde_json::Value::String(account.clone());
+                    if let Some(d) = duration_override {
+                        kind["duration"] = serde_json::Value::from(d);
+                    }
+                }
+                Some("image_upload") => {
+                    if !refs.is_empty() {
+                        let p = refs[img_idx % refs.len()].clone();
+                        img_idx += 1;
+                        kind["paths"] = serde_json::Value::Array(vec![serde_json::Value::String(p)]);
+                    }
                 }
                 _ => {}
             }
