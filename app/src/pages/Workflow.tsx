@@ -41,6 +41,8 @@ import SaveNode from "../nodes/SaveNode";
 import ConcatNode from "../nodes/ConcatNode";
 import TrimNode from "../nodes/TrimNode";
 import FrameCaptureNode from "../nodes/FrameCaptureNode";
+import AudioExtractNode from "../nodes/AudioExtractNode";
+import AudioSplitNode from "../nodes/AudioSplitNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import FlowEdge from "../graph/FlowEdge";
 import { isValidConnection } from "../graph/rules";
@@ -69,6 +71,8 @@ const nodeTypes: NodeTypes = {
   save: SaveNode,
   trim: TrimNode,
   frame_capture: FrameCaptureNode,
+  audio_extract: AudioExtractNode,
+  audio_split: AudioSplitNode,
 } as unknown as NodeTypes;
 
 // Dây "dòng chảy" (đốm sáng chạy theo hướng) — dùng cho mọi cạnh.

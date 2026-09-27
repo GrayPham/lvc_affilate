@@ -1,0 +1,36 @@
+{
+  "kind": "audio_split",
+  "version": 1,
+  "category": "video",
+  "labelVi": "Tách audio↔video",
+  "inputs": [
+    {
+      "name": "in",
+      "type": "video",
+      "many": false,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "video",
+      "type": "video",
+      "many": false,
+      "required": false,
+      "collect": false
+    },
+    {
+      "name": "audio",
+      "type": "audio",
+      "many": false,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "defaultParams": {},
+  "paramsSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

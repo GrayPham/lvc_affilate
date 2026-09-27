@@ -1,5 +1,39 @@
 [
   {
+    "kind": "audio_extract",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "audio"
+      }
+    ]
+  },
+  {
+    "kind": "audio_split",
+    "inputs": [
+      {
+        "name": "in",
+        "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "video",
+        "type": "video"
+      },
+      {
+        "name": "audio",
+        "type": "audio"
+      }
+    ]
+  },
+  {
     "kind": "concat",
     "inputs": [
       {
@@ -88,6 +122,10 @@
       {
         "name": "image",
         "type": "image"
+      },
+      {
+        "name": "audio",
+        "type": "audio"
       }
     ],
     "outputs": []

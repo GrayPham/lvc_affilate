@@ -40,6 +40,8 @@ export type PortType = z.infer<typeof PortTypeSchema>;
 // P4a: node thanh module doc lap — CHI con 4 kind (5 kind P4 cu `image_from_url`/`image_gen`/
 // `remove_logo`/`ensure_h264`/`concat` da bi xoa khoi backend; `video` doi ten `dola_video`, do thi
 // cu duoc migrate o `src/graph/adapter.ts::migrateGraphJson`).
+// `audio_extract`/`audio_split` (nut "Tách audio"/"Tách audio↔video" tren node video, kieu Lumina):
+// `crates/nodes/node-audio-extract`/`node-audio-split`.
 export const NodeKindTagSchema = z.enum([
   "prompt",
   "image_upload",
@@ -49,6 +51,8 @@ export const NodeKindTagSchema = z.enum([
   "save",
   "trim",
   "frame_capture",
+  "audio_extract",
+  "audio_split",
 ]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
@@ -88,6 +92,13 @@ const FrameCaptureKindSchema = z.object({
   kind: z.literal("frame_capture"),
   time: z.number(),
 });
+const AudioFormatSchema = z.enum(["mp3", "aac", "wav"]);
+export type AudioFormat = z.infer<typeof AudioFormatSchema>;
+const AudioExtractKindSchema = z.object({
+  kind: z.literal("audio_extract"),
+  format: AudioFormatSchema,
+});
+const AudioSplitKindSchema = z.object({ kind: z.literal("audio_split") });
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
@@ -98,6 +109,8 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   SaveKindSchema,
   TrimKindSchema,
   FrameCaptureKindSchema,
+  AudioExtractKindSchema,
+  AudioSplitKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 

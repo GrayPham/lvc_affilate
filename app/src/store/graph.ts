@@ -34,6 +34,8 @@ const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
   save: () => ({ kind: "save", out_dir: "" }),
   trim: () => ({ kind: "trim", start: 0, end: 0 }),
   frame_capture: () => ({ kind: "frame_capture", time: 0 }),
+  audio_extract: () => ({ kind: "audio_extract", format: "mp3" }),
+  audio_split: () => ({ kind: "audio_split" }),
 };
 
 function genId(prefix: string): string {

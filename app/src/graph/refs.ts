@@ -63,6 +63,10 @@ export function nodeChipLabel(data: NodeKind): string {
       return NODE_LABEL_VI.trim;
     case "frame_capture":
       return NODE_LABEL_VI.frame_capture;
+    case "audio_extract":
+      return NODE_LABEL_VI.audio_extract;
+    case "audio_split":
+      return NODE_LABEL_VI.audio_split;
   }
 }
 

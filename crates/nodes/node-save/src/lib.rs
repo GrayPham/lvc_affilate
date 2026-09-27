@@ -1,5 +1,7 @@
 //! Node `save` — copy (không di chuyển) video tới `out_dir/<run_id>_<node_nguon>_<index>.mp4`.
-//! Nhận `video` HOẶC `image` (`require_any`). Ảnh: P4a chưa copy (giữ hành vi P3 — no-op).
+//! Nhận `video` HOẶC `image` HOẶC `audio` (`require_any`). Ảnh: P4a chưa copy (giữ hành vi P3 —
+//! no-op). Audio: copy giữ NGUYÊN đuôi gốc của asset (mp3/aac/wav/m4a…) — khác video (luôn ép
+//! `.mp4`) vì audio có thể tới từ nhiều định dạng khác nhau (node `audio_extract`/`audio_split`).
 //! Cạnh mà node nguồn không có đầu ra (bị bỏ qua/lỗi) → lỗi "khong co dau ra de luu".
 //!
 //! Tên file dùng id NODE NGUỒN (không phải id node Lưu): một node Lưu nhận từ nhiều node video,
@@ -34,9 +36,14 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
     inputs: vec![
         PortSpec::new("video", PortType::Video).many(),
         PortSpec::new("image", PortType::Image).many(),
+        PortSpec::new("audio", PortType::Audio).many(),
     ],
     outputs: vec![],
-    require_any: vec![vec!["video".to_string(), "image".to_string()]],
+    require_any: vec![vec![
+        "video".to_string(),
+        "image".to_string(),
+        "audio".to_string(),
+    ]],
     credential: None,
     default_params: json!({ "out_dir": "" }),
     params_schema: json!({
@@ -64,6 +71,27 @@ async fn copy_videos(
             .get(meta::INDEX)
             .map_or_else(|| (i + 1).to_string(), str::to_string);
         let dest = out_dir.join(format!("{run_id}_{}_{idx}.mp4", edge.from_node));
+        tokio::fs::copy(&a.path, &dest).await?;
+    }
+    Ok(())
+}
+
+/// Copy audio GIỮ NGUYÊN đuôi gốc của asset (mp3/aac/wav/m4a…) — khác `copy_videos` (luôn ép
+/// `.mp4`) vì nguồn audio có thể là nhiều định dạng khác nhau tuỳ tham số node tạo ra nó. Đuôi
+/// thiếu (hiếm, không nên xảy ra) -> mặc định `bin` (giữ file dùng được, chỉ tên khác thường).
+async fn copy_audios(
+    run_id: &str,
+    edge: &EdgeInput,
+    audios: &[&Asset],
+    out_dir: &Path,
+) -> std::io::Result<()> {
+    tokio::fs::create_dir_all(out_dir).await?;
+    for (i, a) in audios.iter().enumerate() {
+        let idx = a
+            .get(meta::INDEX)
+            .map_or_else(|| (i + 1).to_string(), str::to_string);
+        let ext = a.path.extension().and_then(|e| e.to_str()).unwrap_or("bin");
+        let dest = out_dir.join(format!("{run_id}_{}_{idx}.{ext}", edge.from_node));
         tokio::fs::copy(&a.path, &dest).await?;
     }
     Ok(())
@@ -117,6 +145,24 @@ impl NodeExecutor for SaveNode {
             // P4a: chua copy anh (giu hanh vi P3) — chi kiem nguon co dau ra.
             if edge.values.is_none() {
                 warn!(run_id = ctx.run_id, node_id, from = %edge.from_node, "khong co dau ra de luu");
+                ok = false;
+            }
+        }
+        for edge in inputs.edges("audio") {
+            let Some(values) = &edge.values else {
+                warn!(run_id = ctx.run_id, node_id, from = %edge.from_node, "khong co dau ra de luu");
+                ok = false;
+                continue;
+            };
+            let audios: Vec<&Asset> = values
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Audio(a) => Some(a),
+                    _ => None,
+                })
+                .collect();
+            if let Err(e) = copy_audios(&ctx.run_id, edge, &audios, Path::new(&p.out_dir)).await {
+                warn!(run_id = ctx.run_id, node_id, from = %edge.from_node, error = %e, "khong luu duoc audio");
                 ok = false;
             }
         }
@@ -177,6 +223,33 @@ mod tests {
             .unwrap();
         assert!(!r.is_failed());
         assert!(out.path().join("run1_vid_3.mp4").exists());
+        assert!(f.exists(), "copy, khong di chuyen");
+    }
+
+    #[tokio::test]
+    async fn copy_audio_giu_nguyen_duoi_goc() {
+        let src = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let f = src.path().join("x.wav");
+        std::fs::write(&f, b"a").unwrap();
+        let mut inputs = Inputs::new();
+        inputs.push(
+            "audio",
+            EdgeInput {
+                from_node: "ax".into(),
+                from_port: "out".into(),
+                values: Some(vec![Value::Audio(Asset::new(&f).with(meta::INDEX, 2))]),
+            },
+        );
+        let r = node()
+            .run(&ctx(), &params(out.path()), inputs)
+            .await
+            .unwrap();
+        assert!(!r.is_failed());
+        assert!(
+            out.path().join("run1_ax_2.wav").exists(),
+            "giu duoi .wav goc"
+        );
         assert!(f.exists(), "copy, khong di chuyen");
     }
 

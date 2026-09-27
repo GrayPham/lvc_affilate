@@ -33,6 +33,7 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [
       { name: "video", type: "video" },
       { name: "image", type: "image" },
+      { name: "audio", type: "audio" },
     ],
     outputs: [],
   },
@@ -44,6 +45,17 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [{ name: "in", type: "video" }],
     outputs: [{ name: "out", type: "image" }],
   },
+  audio_extract: {
+    inputs: [{ name: "in", type: "video" }],
+    outputs: [{ name: "out", type: "audio" }],
+  },
+  audio_split: {
+    inputs: [{ name: "in", type: "video" }],
+    outputs: [
+      { name: "video", type: "video" },
+      { name: "audio", type: "audio" },
+    ],
+  },
 };
 
 /** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho moi kieu du lieu. */
@@ -51,7 +63,7 @@ export const PORT_TYPE_COLOR: Record<PortType, string> = {
   text: "#0ea5e9", // sky-500 — Text
   image: "#a855f7", // purple-500 — Image
   video: "#f97316", // orange-500 — Video
-  audio: "#22c55e", // green-500 — Audio (P4a, chua node nao dung)
+  audio: "#22c55e", // green-500 — Audio (audio_extract/audio_split/save)
 };
 
 /**
@@ -68,6 +80,8 @@ export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   save: "Lưu",
   trim: "Cắt video",
   frame_capture: "Chụp khung hình",
+  audio_extract: "Tách audio",
+  audio_split: "Tách audio↔video",
 };
 
 /** `NodeKind` co the them vao canvas tu Palette — P4a: ca 4 kind con lai deu them duoc. */
