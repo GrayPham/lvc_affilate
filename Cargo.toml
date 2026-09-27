@@ -9,6 +9,7 @@ members = [
     "crates/lvc-node-api",
     "crates/lvc-vault",
     "crates/providers/lvc-dola",
+    "crates/providers/lvc-genai",
     "crates/nodes/node-prompt",
     "crates/nodes/node-image-upload",
     "crates/nodes/node-save",
@@ -19,6 +20,7 @@ members = [
     "crates/nodes/node-load-video",
     "crates/nodes/node-audio-extract",
     "crates/nodes/node-audio-split",
+    "crates/nodes/node-script-gen",
 ]
 
 [workspace.package]
@@ -50,6 +52,8 @@ lvc-vault = { path = "crates/lvc-vault" }
 lvc-dola = { path = "crates/providers/lvc-dola" }
 node-audio-split = { path = "crates/nodes/node-audio-split" }
 node-audio-extract = { path = "crates/nodes/node-audio-extract" }
+lvc-genai = { path = "crates/providers/lvc-genai" }
+node-script-gen = { path = "crates/nodes/node-script-gen" }
 node-load-video = { path = "crates/nodes/node-load-video" }
 node-frame-capture = { path = "crates/nodes/node-frame-capture" }
 node-trim = { path = "crates/nodes/node-trim" }

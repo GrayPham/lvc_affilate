@@ -41,6 +41,7 @@ pub mod session_cache;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub mod textgen;
 
 pub use accounts::{
     AccountError, AccountStatus, ImportCookiesReport, LegacyImportReport, VerifyReport,
@@ -55,3 +56,4 @@ pub use pool::{AccountPool, Lease};
 pub use resume::RequeueReport;
 pub use scripts::{ScriptError, ScriptRunError, ScriptRunReport, ScriptRunTask};
 pub use session_cache::SessionCache;
+pub use textgen::{ResolvedSecret, TextSecretResolver};

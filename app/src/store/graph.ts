@@ -36,6 +36,16 @@ const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
   frame_capture: () => ({ kind: "frame_capture", time: 0 }),
   audio_extract: () => ({ kind: "audio_extract", format: "mp3" }),
   audio_split: () => ({ kind: "audio_split" }),
+  script_gen: () => ({
+    kind: "script_gen",
+    topic: "",
+    num_scenes: 3,
+    language: "vi",
+    style: "",
+    system: "",
+    credential: "",
+    provider: "gemini",
+  }),
 };
 
 function genId(prefix: string): string {

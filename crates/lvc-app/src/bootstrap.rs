@@ -158,6 +158,11 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
     );
 
     let vault = Arc::new(lvc_vault::Vault::new(&db, lvc_vault::default_box()));
+    // P4d (ADR-R014): cap nguon API key cho dich vu sinh text cua engine (node script_gen) — engine
+    // resolve TEN credential -> key qua Vault. Bi mat KHONG bao gio ra event/log/UI.
+    engine.set_text_secret_resolver(Arc::new(crate::textgen::VaultTextResolver::new(
+        Arc::clone(&vault),
+    )));
     app.manage(AppState {
         engine,
         vault,

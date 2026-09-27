@@ -18,6 +18,7 @@ const RUST_LABEL_VI: Record<string, string> = {
   frame_capture: "Chụp khung hình",
   audio_extract: "Tách audio",
   audio_split: "Tách audio↔video",
+  script_gen: "Kịch bản AI",
 };
 
 describe("NODE_LABEL_VI khop dung labelVi cua manifest node (Rust, P4a)", () => {

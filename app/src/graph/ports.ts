@@ -56,6 +56,10 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
       { name: "audio", type: "audio" },
     ],
   },
+  script_gen: {
+    inputs: [{ name: "brief", type: "text" }],
+    outputs: [{ name: "out", type: "text" }],
+  },
 };
 
 /** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho moi kieu du lieu. */
@@ -82,6 +86,7 @@ export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   frame_capture: "Chụp khung hình",
   audio_extract: "Tách audio",
   audio_split: "Tách audio↔video",
+  script_gen: "Kịch bản AI",
 };
 
 /** `NodeKind` co the them vao canvas tu Palette — P4a: ca 4 kind con lai deu them duoc. */

@@ -53,6 +53,7 @@ export const NodeKindTagSchema = z.enum([
   "frame_capture",
   "audio_extract",
   "audio_split",
+  "script_gen",
 ]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
@@ -99,6 +100,16 @@ const AudioExtractKindSchema = z.object({
   format: AudioFormatSchema,
 });
 const AudioSplitKindSchema = z.object({ kind: z.literal("audio_split") });
+const ScriptGenKindSchema = z.object({
+  kind: z.literal("script_gen"),
+  topic: z.string(),
+  num_scenes: z.number(),
+  language: z.string(),
+  style: z.string(),
+  system: z.string(),
+  credential: z.string(),
+  provider: z.enum(["gemini", "openai"]),
+});
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
@@ -111,6 +122,7 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   FrameCaptureKindSchema,
   AudioExtractKindSchema,
   AudioSplitKindSchema,
+  ScriptGenKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 

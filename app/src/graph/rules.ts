@@ -42,6 +42,7 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   frame_capture: {},
   audio_extract: {},
   audio_split: {},
+  script_gen: { brief: true },
 };
 
 /**

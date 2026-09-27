@@ -18,6 +18,7 @@ pub fn build_registry() -> Registry {
         .with(node_load_video::node())
         .with(node_audio_extract::node())
         .with(node_audio_split::node())
+        .with(node_script_gen::node())
 }
 
 #[cfg(test)]
@@ -43,6 +44,7 @@ mod tests {
                 "load_video",
                 "prompt",
                 "save",
+                "script_gen",
                 "trim"
             ]
         );

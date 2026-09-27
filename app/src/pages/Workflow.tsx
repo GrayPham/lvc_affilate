@@ -43,6 +43,7 @@ import TrimNode from "../nodes/TrimNode";
 import FrameCaptureNode from "../nodes/FrameCaptureNode";
 import AudioExtractNode from "../nodes/AudioExtractNode";
 import AudioSplitNode from "../nodes/AudioSplitNode";
+import ScriptGenNode from "../nodes/ScriptGenNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import FlowEdge from "../graph/FlowEdge";
 import { isValidConnection } from "../graph/rules";
@@ -73,6 +74,7 @@ const nodeTypes: NodeTypes = {
   frame_capture: FrameCaptureNode,
   audio_extract: AudioExtractNode,
   audio_split: AudioSplitNode,
+  script_gen: ScriptGenNode,
 } as unknown as NodeTypes;
 
 // Dây "dòng chảy" (đốm sáng chạy theo hướng) — dùng cho mọi cạnh.
