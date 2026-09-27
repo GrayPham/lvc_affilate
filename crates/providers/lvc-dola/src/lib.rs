@@ -64,8 +64,12 @@ pub trait DolaVideoHost: Send + Sync {
 // QUYẾT ĐỊNH RÀNG BUỘC (giữ nguyên qua mọi thay đổi): node ảnh Dola chỉ chạy qua PHIÊN ĐĂNG NHẬP
 // THẬT trên dola.com — trang tự ký request của nó — GIỐNG HỆT cách `DolaVideoHost` chạy video.
 // Đường app Android (`Up1080pDoLa/module/dola_image.py` → `dola_client` → `x_signatures/`) dựng lại
-// chữ ký chống bot ByteDance (X-Gorgon/X-Argus/X-Ladon) + đăng ký/giả thiết bị: KHÔNG dùng ở đây.
-// `sign/` và `device/` trong crate này là stub và phải giữ nguyên stub (xem MEMORY.md).
+// chữ ký chống bot ByteDance (X-Gorgon/X-Argus/X-Ladon) + đăng ký/giả thiết bị: KHÔNG dùng cho
+// node ảnh/video (vẫn đi qua backend trình duyệt).
+//
+// CẬP NHẬT (P4b-sign, 2026-09-27): `sign/` nay ĐÃ port lõi ký (X-Gorgon/X-Ladon/X-Argus) sang Rust
+// thuần, khớp golden vector từng byte — nhưng CHỈ là hàm thuần + `RealSigner` độc lập, CHƯA nối vào
+// engine/node/settings. `device/` (TTEncrypt + đăng ký/giả thiết bị) vẫn giữ stub. Xem MEMORY.md.
 // ---------------------------------------------------------------------------------------------
 
 /// Một yêu cầu tạo ảnh (một prompt → `count` ảnh cùng model/tỉ lệ). `job_index` 1-based, liên tục
