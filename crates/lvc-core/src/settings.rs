@@ -29,6 +29,42 @@ const MODE_FALLBACK_DEFAULT: bool = true;
 const ACCOUNTS_DIR_DEFAULT: &str = "";
 const OUTPUT_DIR_DEFAULT: &str = "downloads";
 
+/// Kenh chay Dola (P4b): `Api` = goi API app truc tiep (ky X-Gorgon/Ladon/Argus, KHONG trinh duyet);
+/// `Browser` = backend trinh duyet headless (P2/P3). Mac dinh `Api`; loi ky → engine tu fallback
+/// sang `Browser`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DolaChannel {
+    /// Goi API app Android truc tiep (nhanh, khong Chromium).
+    #[default]
+    Api,
+    /// Trinh duyet headless dung phien dang nhap that.
+    Browser,
+}
+
+impl DolaChannel {
+    /// Chuoi wire (`"api"`/`"browser"`) — dung cho bang `settings` + hop dong UI.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Api => "api",
+            Self::Browser => "browser",
+        }
+    }
+
+    /// Parse tu chuoi (khong phan biet hoa/thuong). Sai → `Err`.
+    ///
+    /// # Errors
+    /// Chuoi khong phai `"api"`/`"browser"`.
+    pub fn parse(s: &str) -> Result<Self, ()> {
+        match s.trim().to_lowercase().as_str() {
+            "api" => Ok(Self::Api),
+            "browser" => Ok(Self::Browser),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Cai dat toan cuc, go tu bang `settings` — xem tai lieu module.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +88,8 @@ pub struct AppSettings {
     pub default_ratio: Ratio,
     /// Khoa `default_duration`.
     pub default_duration: u16,
+    /// Khoa `dola_channel` — kenh chay Dola (`api`/`browser`), mac dinh `api` (P4b).
+    pub dola_channel: DolaChannel,
 }
 
 impl Default for AppSettings {
@@ -66,6 +104,7 @@ impl Default for AppSettings {
             default_model: Model::default(),
             default_ratio: Ratio::default(),
             default_duration: DEFAULT_DURATION,
+            dola_channel: DolaChannel::default(),
         }
     }
 }
@@ -149,6 +188,16 @@ fn parse_ratio(map: &HashMap<String, String>, warnings: &mut Vec<String>) -> Rat
     }
 }
 
+fn parse_dola_channel(map: &HashMap<String, String>, warnings: &mut Vec<String>) -> DolaChannel {
+    match map.get("dola_channel") {
+        None => DolaChannel::default(),
+        Some(raw) => DolaChannel::parse(raw).unwrap_or_else(|()| {
+            invalid(warnings, "dola_channel", raw, DolaChannel::default().as_str());
+            DolaChannel::default()
+        }),
+    }
+}
+
 fn parse_duration(map: &HashMap<String, String>, warnings: &mut Vec<String>) -> u16 {
     match map.get("default_duration") {
         None => DEFAULT_DURATION,
@@ -197,6 +246,7 @@ impl AppSettings {
             default_model: parse_model(map, &mut warnings),
             default_ratio: parse_ratio(map, &mut warnings),
             default_duration: parse_duration(map, &mut warnings),
+            dola_channel: parse_dola_channel(map, &mut warnings),
         };
         (settings, warnings)
     }
@@ -237,6 +287,10 @@ impl AppSettings {
                 "default_duration".to_string(),
                 self.default_duration.to_string(),
             ),
+            (
+                "dola_channel".to_string(),
+                self.dola_channel.as_str().to_string(),
+            ),
         ])
     }
 }
@@ -264,6 +318,22 @@ mod tests {
         assert_eq!(d.default_model, Model::Seedance20);
         assert_eq!(d.default_ratio, Ratio::R9x16);
         assert_eq!(d.default_duration, 10);
+        assert_eq!(d.dola_channel, DolaChannel::Api);
+    }
+
+    #[test]
+    fn dola_channel_parse_va_sai_ve_mac_dinh() {
+        for (raw, want) in [("api", DolaChannel::Api), ("browser", DolaChannel::Browser),
+                            ("API", DolaChannel::Api), ("Browser", DolaChannel::Browser)] {
+            let m = map(&[("dola_channel", raw)]);
+            let (s, warnings) = AppSettings::from_map(&m);
+            assert_eq!(s.dola_channel, want, "raw={raw}");
+            assert!(warnings.is_empty(), "raw={raw} {warnings:?}");
+        }
+        let (s, warnings) = AppSettings::from_map(&map(&[("dola_channel", "xyz")]));
+        assert_eq!(s.dola_channel, DolaChannel::Api);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("dola_channel"), "{warnings:?}");
     }
 
     #[test]
@@ -454,6 +524,7 @@ mod tests {
             default_model: Model::Seedance25,
             default_ratio: Ratio::R1x1,
             default_duration: 30,
+            dola_channel: DolaChannel::Browser,
         };
         let m = original.to_map();
         let (roundtripped, warnings) = AppSettings::from_map(&m);
@@ -481,6 +552,7 @@ mod tests {
         assert_eq!(v["defaultModel"], serde_json::json!("seedance-2.0"));
         assert_eq!(v["defaultRatio"], serde_json::json!("9:16"));
         assert_eq!(v["defaultDuration"], serde_json::json!(10));
+        assert_eq!(v["dolaChannel"], serde_json::json!("api"));
     }
 
     #[test]

@@ -353,8 +353,10 @@ export const AppSettingsSchema = z.object({
   defaultModel: ModelSchema,
   defaultRatio: RatioSchema,
   defaultDuration: z.number(),
+  dolaChannel: z.enum(["api", "browser"]),
 });
 export type AppSettings = z.infer<typeof AppSettingsSchema>;
+export type DolaChannel = AppSettings["dolaChannel"];
 
 export const RequeueReportSchema = z.object({
   requeued: z.array(z.string()),

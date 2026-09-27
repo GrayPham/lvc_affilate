@@ -20,6 +20,7 @@ function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultModel: "seedance-2.0",
     defaultRatio: "9:16",
     defaultDuration: 10,
+    dolaChannel: "api",
     ...overrides,
   };
 }

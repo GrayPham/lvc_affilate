@@ -170,6 +170,23 @@ export default function SettingsForm() {
             onChange={(e) => setDraft({ modeFallback: e.target.checked })}
           />
         </label>
+
+        <label className="flex items-center justify-between gap-2 text-sm">
+          <span>
+            Kênh chạy Dola
+            <span className="ml-1 text-[10px] text-slate-400">
+              (API nhanh hơn, không mở trình duyệt; lỗi ký sẽ tự lùi về trình duyệt)
+            </span>
+          </span>
+          <select
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            value={draft.dolaChannel}
+            onChange={(e) => setDraft({ dolaChannel: e.target.value as AppSettings["dolaChannel"] })}
+          >
+            <option value="api">API (mặc định)</option>
+            <option value="browser">Trình duyệt</option>
+          </select>
+        </label>
       </section>
 
       <section className="flex flex-col gap-2">

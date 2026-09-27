@@ -7,5 +7,6 @@
   "defaultMode": "fast",
   "defaultModel": "seedance-2.0",
   "defaultRatio": "9:16",
-  "defaultDuration": 10
+  "defaultDuration": 10,
+  "dolaChannel": "api"
 }
