@@ -26,6 +26,67 @@ fn arg(i: usize, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+fn init_tracing() {
+    let policy = "chromiumoxide=warn,chromiumoxide::handler=error";
+    let user = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_new(format!("{user},{policy}")).unwrap())
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .init();
+}
+
+/// Ảnh tham chiếu từ env `LVC_REFS` (danh sách đường dẫn ngăn cách `;`).
+fn env_refs() -> Vec<String> {
+    std::env::var("LVC_REFS")
+        .ok()
+        .map(|s| {
+            s.split(';')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Đọc template → graph, điền `out_dir` (node Lưu), `account` + `LVC_DURATION` (node dola_video), và
+/// gán lần lượt `LVC_REFS` cho từng node `image_upload` (node 1 → ảnh 1, ...) để test luồng affiliate.
+fn load_graph(template: &str, account: &str, out_dir: &str) -> Graph {
+    let refs = env_refs();
+    let duration_override: Option<u64> = std::env::var("LVC_DURATION")
+        .ok()
+        .and_then(|s| s.parse().ok());
+
+    let raw = std::fs::read_to_string(template).expect("đọc template");
+    let mut doc: serde_json::Value = serde_json::from_str(&raw).expect("parse template json");
+    let mut graph_val = doc.get_mut("graph").cloned().unwrap_or(doc.clone());
+    if let Some(nodes) = graph_val.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+        let mut img_idx = 0usize;
+        for node in nodes.iter_mut() {
+            let Some(kind) = node.get_mut("kind") else {
+                continue;
+            };
+            match kind.get("kind").and_then(|k| k.as_str()) {
+                Some("save") => kind["out_dir"] = serde_json::Value::String(out_dir.to_string()),
+                Some("dola_video") => {
+                    kind["account"] = serde_json::Value::String(account.to_string());
+                    if let Some(d) = duration_override {
+                        kind["duration"] = serde_json::Value::from(d);
+                    }
+                }
+                Some("image_upload") if !refs.is_empty() => {
+                    let p = refs[img_idx % refs.len()].clone();
+                    img_idx += 1;
+                    kind["paths"] = serde_json::Value::Array(vec![serde_json::Value::String(p)]);
+                }
+                _ => {}
+            }
+        }
+    }
+    serde_json::from_value(graph_val).expect("graph hợp lệ")
+}
+
 #[tokio::main]
 async fn main() {
     let template = arg(1, "crates/lvc-app/templates/prompt-video-save.json");
@@ -35,64 +96,8 @@ async fn main() {
     let db_path = PathBuf::from(arg(5, "lvc.db"));
     let downloads_dir = PathBuf::from(arg(6, "downloads"));
 
-    let policy = "chromiumoxide=warn,chromiumoxide::handler=error";
-    let user = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_new(format!("{user},{policy}")).unwrap())
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .init();
-
-    // Đọc template -> lấy graph -> điền out_dir (node Lưu) + account (node dola_video).
-    let raw = std::fs::read_to_string(&template).expect("đọc template");
-    let mut doc: serde_json::Value = serde_json::from_str(&raw).expect("parse template json");
-    let graph_val = doc.get_mut("graph").cloned().unwrap_or(doc.clone());
-    let mut graph_val = graph_val;
-    // Anh tham chieu: env LVC_REFS = danh sach duong dan, ngan cach bang ';'. Gan LAN LUOT cho tung
-    // node image_upload (node 1 -> anh 1, node 2 -> anh 2, ...). Cho phep test luong affiliate co
-    // anh nguoi mau / san pham that.
-    let refs: Vec<String> = std::env::var("LVC_REFS")
-        .ok()
-        .map(|s| {
-            s.split(';')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    // Gioi han thoi luong (tiet kiem credit) qua env LVC_DURATION (giay).
-    let duration_override: Option<u64> = std::env::var("LVC_DURATION")
-        .ok()
-        .and_then(|s| s.parse().ok());
-    if let Some(nodes) = graph_val.get_mut("nodes").and_then(|n| n.as_array_mut()) {
-        let mut img_idx = 0usize;
-        for node in nodes.iter_mut() {
-            let Some(kind) = node.get_mut("kind") else {
-                continue;
-            };
-            match kind.get("kind").and_then(|k| k.as_str()) {
-                Some("save") => {
-                    kind["out_dir"] = serde_json::Value::String(out_dir.clone());
-                }
-                Some("dola_video") => {
-                    kind["account"] = serde_json::Value::String(account.clone());
-                    if let Some(d) = duration_override {
-                        kind["duration"] = serde_json::Value::from(d);
-                    }
-                }
-                Some("image_upload") => {
-                    if !refs.is_empty() {
-                        let p = refs[img_idx % refs.len()].clone();
-                        img_idx += 1;
-                        kind["paths"] = serde_json::Value::Array(vec![serde_json::Value::String(p)]);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    let graph: Graph = serde_json::from_value(graph_val).expect("graph hợp lệ");
+    init_tracing();
+    let graph = load_graph(&template, &account, &out_dir);
 
     std::fs::create_dir_all(&out_dir).ok();
     std::fs::create_dir_all(&downloads_dir).ok();
