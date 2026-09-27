@@ -47,3 +47,31 @@
 - Edition 2024: `rng.gen()` -> `rng.r#gen()` (gen la keyword).
 - RealSigner runtime KHONG khop vector (random4 + rand field3 + time that); tra
   [X-Gorgon, X-Khronos, X-Ladon, X-Argus]. x-ss-stub = md5(body) HEX HOA khi co body.
+
+## P4b-orchestration (2026-09-27): upload anh (AWS4) + tao video (SSE/poll)
+- Files: `aws4.rs` (ky AWS4), `datetime.rs` (amz/http date THUAN, khong them chrono/time),
+  `dims.rs` (doc W/H PNG+JPEG THUAN, khong them crate anh), `upload.rs`, `generate.rs`.
+- QUIRK AWS4 (ImageX, `_aws4_sign` dola_client.py:418-452): BIEN THE ByteDance — canonical
+  querystring KHONG url-encode gia tri (`f"{k}={v}"` tho); tham so `host` co trong chu ky Python
+  NHUNG khong duoc dua vao canonical_request (bo qua) -> wiremock host khac van khop. region-aws
+  = "sdwdmwlll", service = "imagex". Golden vector sinh tu .venv Python (2 case trong aws4.rs).
+- QUIRK upload 3 buoc: (1) POST alice/resource/prepare_upload ky X-Gorgon, body JSON KHONG vao
+  chu ky (Python `_sign_request(url)` khong truyen body -> session.post truyen None body: KHOP).
+  (2) GET /top/v1 ky AWS4 (khong cookie/X-Gorgon). (3) POST {UploadHosts[0]}/upload/v1/{StoreUri}
+  (Auth cua CDN, code==2000), roi POST alice/resource/register body GZIP + header
+  `x-bd-content-encoding: gzip` + `Content-Type: application/json; charset=UTF-8`, code==0.
+- AccessKeyId nam trong session_token: bo 4 ky tu dau, base64-decode phan con lai, doc JSON
+  ["AccessKeyId"]. secret_key = upload_auth_token.secret_key (KHAC AccessKeyId). BI MAT — khong log.
+- SUY LUAN (Python mo ho): dung `session.params_im` (co `flow_im_arch=v2&`) cho alice/resource,
+  con Python dung base_params (KHONG co flow_im_arch). Vo hai vi server tu dung canonical tu query
+  DA GUI (== query da ky). Neu server that tu choi, thu bo flow_im_arch cho 2 call nay.
+- CDN scheme suy tu `base_url` (https that / http wiremock) vi Python hardcode https.
+- width/height=0 chap nhan (Dola tu do); dims.rs chi co-gang doc PNG/JPEG.
+- generate_video: video_payload -> POST chat/completion (params_chat, SSE_TIMEOUT) doc SSE
+  (SseParser+ChatStream) -> neu chua co video thi poll im/chain/single (params_im, POLL_TIMEOUT,
+  moi 10s) toi khi status==3 & co URL, hoac het `video_timeout(mode,dur,has_refs)`. Uu tien
+  nowm_url (video_model giai base64), roi fallback im/conversation/batch_get (walk_video_models)
+  neu thieu ban sach, cuoi cung download_url (watermarked=true). Ton trong CancellationToken.
+- `generate_video_with(..., poll_interval)`: ban noi bo cho test dat khoang poll ngan (wiremock).
+- Test wiremock (`tests/orchestration_wiremock.rs`): AppSession.base_url tro server gia + NoSign;
+  KHONG goi Dola that.
