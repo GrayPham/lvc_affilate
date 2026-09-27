@@ -1,0 +1,24 @@
+[package]
+name = "node-script-gen"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Node "script_gen" - xem CLAUDE.md cung thu muc. Chi duoc phu thuoc lvc-node-api, lvc-core,
+# crates/providers/*. KHONG node khac / lvc-engine / lvc-store / lvc-browser / tauri.
+[dependencies]
+lvc-node-api.workspace = true
+# Provider sinh text dùng chung (trait `TextGenHost` + kiểu `TextGenReq`); host do engine cấp.
+lvc-genai.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+lvc-core.workspace = true
+tokio = { workspace = true }
+tokio-util.workspace = true
+
+[lints]
+workspace = true

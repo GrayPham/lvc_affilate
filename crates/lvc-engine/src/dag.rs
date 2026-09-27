@@ -105,6 +105,7 @@ use lvc_browser::dola::{NoopHooks, PollHooks};
 use lvc_core::graph::{Graph, migrate};
 use lvc_core::{FailureCode, Scene, TaskStatus};
 use lvc_dola::{DolaVideoHost, JobsReport, SceneJob, VideoDone};
+use lvc_genai::TextGenHost;
 use lvc_node_api::{NodeCtx, Outputs, Prepared, Registry, Services, gather_inputs};
 use lvc_store::{BatchRef, RunStatus};
 use tokio::sync::watch;
@@ -116,6 +117,7 @@ use crate::error::EngineError;
 use crate::events::EngineEvent;
 use crate::generate::{Engine, GenerateOutcome};
 use crate::now_unix;
+use crate::textgen::EngineTextGenHost;
 
 /// Tu vung trang thai node phat qua `EngineEvent::NodeState::state` (khop doc cua bien the do).
 pub const NODE_QUEUED: &str = "queued";
@@ -340,6 +342,13 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             hooks_factory,
             tasks_ready_tx: tasks_ready_tx.clone(),
         }));
+        // P4d (ADR-R014): chen dich vu sinh text VO DIEU KIEN (engine KHONG `match` theo kind).
+        // Resolver mac dinh la NoResolver neu `lvc-app` chua cap (node bao loi ro rang thay vi thieu
+        // service). Bi mat resolve NOI BO, KHONG ra event/log.
+        services.insert::<Arc<dyn TextGenHost>>(Arc::new(EngineTextGenHost::new(
+            Arc::clone(&self.text_client),
+            self.text_resolver(),
+        )));
         (services, Arc::new(self.limits.clone()))
     }
 

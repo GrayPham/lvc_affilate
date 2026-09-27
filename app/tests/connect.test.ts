@@ -15,6 +15,7 @@ const DATA: Record<NodeKindTag, NodeKind> = {
   save: { kind: "save", out_dir: "" },
   trim: { kind: "trim", start: 0, end: 0 },
   frame_capture: { kind: "frame_capture", time: 0 },
+  script_gen: { kind: "script_gen", topic: "", num_scenes: 3, language: "vi", style: "", system: "", credential: "", provider: "gemini" },
 };
 
 function node(id: string, kind: NodeKindTag): RFNode {

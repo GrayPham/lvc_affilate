@@ -49,6 +49,7 @@ export const NodeKindTagSchema = z.enum([
   "save",
   "trim",
   "frame_capture",
+  "script_gen",
 ]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
@@ -88,6 +89,16 @@ const FrameCaptureKindSchema = z.object({
   kind: z.literal("frame_capture"),
   time: z.number(),
 });
+const ScriptGenKindSchema = z.object({
+  kind: z.literal("script_gen"),
+  topic: z.string(),
+  num_scenes: z.number(),
+  language: z.string(),
+  style: z.string(),
+  system: z.string(),
+  credential: z.string(),
+  provider: z.enum(["gemini", "openai"]),
+});
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
@@ -98,6 +109,7 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   SaveKindSchema,
   TrimKindSchema,
   FrameCaptureKindSchema,
+  ScriptGenKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 

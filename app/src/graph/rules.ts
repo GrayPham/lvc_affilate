@@ -40,6 +40,7 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   save: { video: true, image: true },
   trim: {},
   frame_capture: {},
+  script_gen: { brief: true },
 };
 
 /**

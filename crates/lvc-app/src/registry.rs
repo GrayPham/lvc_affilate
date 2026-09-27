@@ -16,6 +16,7 @@ pub fn build_registry() -> Registry {
         .with(node_trim::node())
         .with(node_frame_capture::node())
         .with(node_load_video::node())
+        .with(node_script_gen::node())
 }
 
 #[cfg(test)]
@@ -39,6 +40,7 @@ mod tests {
                 "load_video",
                 "prompt",
                 "save",
+                "script_gen",
                 "trim"
             ]
         );

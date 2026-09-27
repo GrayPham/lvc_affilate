@@ -22,6 +22,7 @@ mod log;
 mod paths;
 pub mod registry;
 mod state;
+mod textgen;
 
 use tauri::Manager;
 

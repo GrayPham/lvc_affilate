@@ -30,6 +30,9 @@ node-concat.workspace = true
 node-trim.workspace = true
 node-frame-capture.workspace = true
 node-load-video.workspace = true
+node-script-gen.workspace = true
+# textgen.rs (P4d): impl `lvc_engine::TextSecretResolver` (trait #[async_trait]) bang Vault.
+async-trait.workspace = true
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"

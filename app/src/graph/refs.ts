@@ -63,6 +63,8 @@ export function nodeChipLabel(data: NodeKind): string {
       return NODE_LABEL_VI.trim;
     case "frame_capture":
       return NODE_LABEL_VI.frame_capture;
+    case "script_gen":
+      return NODE_LABEL_VI.script_gen;
   }
 }
 

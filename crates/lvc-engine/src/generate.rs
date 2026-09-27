@@ -56,6 +56,8 @@ use crate::events::{EngineEvent, EngineEvents};
 use crate::limiter::{DynamicLimiter, LimiterHandle};
 use crate::pool::{AccountPool, COOLDOWN_PROFILE_BUSY, COOLDOWN_RISK_CONTROL, Lease};
 use crate::session_cache::SessionCache;
+use crate::textgen::{NoResolver, TextSecretResolver};
+use lvc_genai::GenAiClient;
 
 /// config.py:115 `WARM_SESSION_IDLE_TIMEOUT` — 15 phut khong dung moi tat Chrome.
 pub const DEFAULT_WARM_IDLE: Duration = Duration::from_secs(900);
@@ -180,6 +182,13 @@ pub struct Engine<D: BrowserDriver + 'static> {
     /// P4a (ADR-R014): moi loai node da cai — `lvc-app` dat MOT LAN qua [`Engine::set_registry`]
     /// (composition root). Chua dat = registry rong (moi do thi bao `Unsupported`).
     registry: OnceLock<Arc<Registry>>,
+    /// P4d: client HTTP sinh text (Gemini/OpenAI) — dung chung cho dich vu `TextGenHost`.
+    /// `pub(crate)`: `dag.rs` (module anh em) chen dich vu trong `start_run`.
+    pub(crate) text_client: Arc<GenAiClient>,
+    /// P4d: nguon API key cho `TextGenHost` — `lvc-app` dat MOT LAN qua
+    /// [`Engine::set_text_secret_resolver`] (backed by Vault). Chua dat = [`NoResolver`] (node bao
+    /// loi ro rang). Bi mat KHONG bao gio ra event/log/UI.
+    text_resolver: OnceLock<Arc<dyn TextSecretResolver>>,
 }
 
 /// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
@@ -356,6 +365,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             run_tokens: DashMap::new(),
             db,
             registry: OnceLock::new(),
+            text_client: Arc::new(GenAiClient::new()),
+            text_resolver: OnceLock::new(),
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))
@@ -373,6 +384,21 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .get()
             .cloned()
             .unwrap_or_else(|| Arc::new(Registry::new()))
+    }
+
+    /// P4d: dat nguon API key cho dich vu sinh text (MOT LAN; lan sau bi bo qua, tra `false`).
+    /// `lvc-app` cap resolver backed by `Vault`. Chua dat = [`NoResolver`].
+    pub fn set_text_secret_resolver(&self, resolver: Arc<dyn TextSecretResolver>) -> bool {
+        self.text_resolver.set(resolver).is_ok()
+    }
+
+    /// Resolver hien tai (hoac [`NoResolver`] neu chua dat) + client sinh text — dung khi chen dich
+    /// vu `TextGenHost` vao `Services`.
+    pub(crate) fn text_resolver(&self) -> Arc<dyn TextSecretResolver> {
+        self.text_resolver
+            .get()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(NoResolver))
     }
 
     /// P3 Task 4 (R5): kenh su kien — Tauri bridge `subscribe()`.

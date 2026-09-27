@@ -1,0 +1,24 @@
+[package]
+name = "lvc-genai"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Provider sinh TEXT dùng chung (Gemini / OpenAI) cho các node text (vd node-script-gen). Chứa
+# client HTTP thật (reqwest) + hợp đồng dịch vụ host `TextGenHost` mà node lấy qua `ctx.services`.
+# LUAT (ADR-R014): KHONG biết khái niệm node (không phụ thuộc lvc-node-api), KHONG phụ thuộc
+# lvc-engine/store/browser/app/tauri. KHONG BAO GIO log API key / prompt đầy đủ.
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+wiremock.workspace = true
+
+[lints]
+workspace = true

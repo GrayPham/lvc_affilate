@@ -12,6 +12,9 @@ lvc-browser.workspace = true
 # P4a (ADR-R014): engine generic theo registry node; impl dich vu DolaVideoHost cho node dola_video.
 lvc-node-api.workspace = true
 lvc-dola.workspace = true
+# P4d: provider sinh text (client HTTP Gemini/OpenAI) — engine impl dich vu TextGenHost cho node
+# script_gen (resolve API key tu vault qua TextSecretResolver roi goi client nay).
+lvc-genai.workspace = true
 async-trait.workspace = true
 # limiter.rs (Task 15): watch + Notify. pool.rs (Task 16) can them "time" cho cooldown/rate_limited —
 # da co san qua workspace tokio (rt-multi-thread, macros, fs, time).

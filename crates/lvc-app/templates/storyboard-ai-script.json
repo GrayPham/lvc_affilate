@@ -1,0 +1,19 @@
+{
+  "name": "Storyboard: AI viết kịch bản → tạo video",
+  "category": "Storyboard",
+  "description": "Nhập chủ đề/sản phẩm, để AI (Gemini/OpenAI) tự viết kịch bản nhiều phân cảnh; mỗi phân cảnh → một video theo storyboard → ghép thành một clip → lưu. Cần một API key text (provider gemini/openai, kind api_key) trong kho tài khoản.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "script", "kind": { "kind": "script_gen", "topic": "Giày chạy bộ siêu nhẹ cho runner thành thị: kể một câu chuyện ngắn từ lúc mang giày đến khi về đích", "num_scenes": 3, "language": "vi", "style": "quảng cáo ngắn, năng động, điện ảnh", "system": "", "credential": "", "provider": "gemini" }, "x": 60, "y": 280 },
+      { "id": "video", "kind": { "kind": "dola_video", "mode": "fast", "model": "seedance-2.5", "ratio": "9:16", "duration": 10, "logo": "off", "account": "" }, "x": 470, "y": 280 },
+      { "id": "concat", "kind": { "kind": "concat" }, "x": 840, "y": 280 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 1180, "y": 280 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "script", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e2", "from": "video", "from_port": "out", "to": "concat", "to_port": "in" },
+      { "id": "e3", "from": "concat", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

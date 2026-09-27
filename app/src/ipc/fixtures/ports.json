@@ -93,6 +93,21 @@
     "outputs": []
   },
   {
+    "kind": "script_gen",
+    "inputs": [
+      {
+        "name": "brief",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "text"
+      }
+    ]
+  },
+  {
     "kind": "trim",
     "inputs": [
       {

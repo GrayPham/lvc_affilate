@@ -314,6 +314,89 @@
     }
   },
   {
+    "kind": "script_gen",
+    "version": 1,
+    "category": "text",
+    "labelVi": "Kịch bản AI",
+    "inputs": [
+      {
+        "name": "brief",
+        "type": "text",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "text",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "gemini",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "topic": "",
+      "num_scenes": 3,
+      "language": "vi",
+      "style": "",
+      "system": "",
+      "credential": "",
+      "provider": "gemini"
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "title": "Chủ đề / brief",
+          "format": "textarea"
+        },
+        "num_scenes": {
+          "type": "integer",
+          "title": "Số phân cảnh",
+          "minimum": 1
+        },
+        "language": {
+          "type": "string",
+          "title": "Ngôn ngữ"
+        },
+        "style": {
+          "type": "string",
+          "title": "Phong cách"
+        },
+        "system": {
+          "type": "string",
+          "title": "Chỉ dẫn hệ thống (tuỳ chọn)",
+          "format": "textarea"
+        },
+        "credential": {
+          "type": "string",
+          "title": "Tên API key"
+        },
+        "provider": {
+          "type": "string",
+          "title": "Nhà cung cấp",
+          "enum": [
+            "gemini",
+            "openai"
+          ]
+        }
+      },
+      "required": [
+        "num_scenes",
+        "provider"
+      ]
+    }
+  },
+  {
     "kind": "trim",
     "version": 1,
     "category": "video",
