@@ -7,12 +7,17 @@
 // json! lon (body chat/completion ~60 khoa long nhau) can gioi han macro cao hon mac dinh 128.
 #![recursion_limit = "512"]
 
+pub mod aws4;
+pub mod datetime;
 pub mod device;
+pub mod dims;
 pub mod error;
+pub mod generate;
 pub mod payload;
 pub mod response;
 pub mod session;
 pub mod sign;
+pub mod upload;
 
 use std::path::PathBuf;
 
