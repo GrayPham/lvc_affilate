@@ -163,6 +163,17 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
     engine.set_text_secret_resolver(Arc::new(crate::textgen::VaultTextResolver::new(
         Arc::clone(&vault),
     )));
+    // P5 Task 9b (composition root): cap nguon profile_dir cho VeoSessionHost — engine resolve
+    // TEN credential Google (`account`) -> profile_dir qua Vault. Thieu dong nay = moi lan tao
+    // anh/video Veo3 deu loi "chua cau hinh kho tai khoan" (NoAccountResolver mac dinh).
+    engine.set_veo3_account_resolver(Arc::new(crate::veo3::VaultVeo3AccountResolver::new(
+        Arc::clone(&vault),
+    )));
+    // P5 Task 9 (composition root): thu muc goc chua profile Chrome KHACH tam (mint reCAPTCHA an
+    // danh, khong tai khoan nao) — canh `accounts/`, xem crates/lvc-engine/src/veo3.rs doc module.
+    let veo3_guest_dir = base.join("profiles").join("temp_profile");
+    std::fs::create_dir_all(&veo3_guest_dir).map_err(BootError::Io)?;
+    engine.set_veo3_guest_root_dir(veo3_guest_dir);
     app.manage(AppState {
         engine,
         vault,

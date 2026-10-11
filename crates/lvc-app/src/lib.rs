@@ -23,6 +23,7 @@ mod paths;
 pub mod registry;
 mod state;
 mod textgen;
+mod veo3;
 
 use tauri::Manager;
 

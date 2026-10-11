@@ -15,7 +15,19 @@ lvc-dola.workspace = true
 # P4d: provider sinh text (client HTTP Gemini/OpenAI) — engine impl dich vu TextGenHost cho node
 # script_gen (resolve API key tu vault qua TextSecretResolver roi goi client nay).
 lvc-genai.workspace = true
+# P5 Task 9: provider Google Labs Flow/Veo3 — engine impl dich vu VeoCaptchaHost (mint reCAPTCHA
+# qua lvc-browser::veo3::captcha) cho node veo3_image/veo3_video.
+lvc-veo3.workspace = true
+# P6: provider API CHINH THUC Google (Nano Banana/Veo) — engine impl GoogleImageHost/GoogleVideoHost
+# cho node google_image/google_video (resolve API key tu vault qua TextSecretResolver roi goi client).
+lvc-google.workspace = true
+# P6: provider API CHINH THUC Seedance/Seedream (Volcengine) + Grok (xAI) — engine impl host trait
+# tuong ung cho node seedance_*/grok_image. Cung khuon lvc-google.
+lvc-seedance.workspace = true
+lvc-grok.workspace = true
 async-trait.workspace = true
+# P6 apimedia/util.rs: dung data URL base64 cho anh goc i2v (Seedance nhan image_url).
+base64.workspace = true
 # limiter.rs (Task 15): watch + Notify. pool.rs (Task 16) can them "time" cho cooldown/rate_limited —
 # da co san qua workspace tokio (rt-multi-thread, macros, fs, time).
 tokio = { workspace = true, features = ["sync"] }

@@ -42,6 +42,14 @@ pub mod settings;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod textgen;
+// P6: dich vu host cho node goi API CHINH THUC (Google Imagen/Veo) — GoogleImageHost/GoogleVideoHost
+// (noi bo), resolve API key qua textgen::TextSecretResolver (dung lai, khong them resolver moi).
+pub mod apimedia;
+// P5 Task 9/9b: dich vu VeoCaptchaHost (mint reCAPTCHA qua trinh duyet KHACH, noi bo) +
+// VeoAccountResolver (Task 9b — API cong khai cho `lvc-app` impl bang Vault, dung y
+// `textgen::TextSecretResolver`, xem re-export duoi day) + EngineVeoSession/EngineVeoJobs (noi bo).
+// Setter `Engine::{set_veo3_guest_root_dir,set_veo3_account_resolver}` la API cong khai.
+pub mod veo3;
 
 pub use accounts::{
     AccountError, AccountStatus, ImportCookiesReport, LegacyImportReport, VerifyReport,
@@ -57,3 +65,4 @@ pub use resume::RequeueReport;
 pub use scripts::{ScriptError, ScriptRunError, ScriptRunReport, ScriptRunTask};
 pub use session_cache::SessionCache;
 pub use textgen::{ResolvedSecret, TextSecretResolver};
+pub use veo3::VeoAccountResolver;

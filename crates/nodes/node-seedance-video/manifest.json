@@ -1,0 +1,79 @@
+{
+  "kind": "seedance_video",
+  "version": 1,
+  "category": "video",
+  "labelVi": "Tạo video Seedance (API)",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "video",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "seedance",
+    "kinds": [
+      "api_key"
+    ]
+  },
+  "defaultParams": {
+    "mode": "t2v",
+    "model": "",
+    "aspect": "landscape",
+    "credential": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "title": "Che do",
+        "enum": [
+          "t2v",
+          "i2v"
+        ]
+      },
+      "model": {
+        "type": "string",
+        "title": "Model / endpoint id (rong = mac dinh)"
+      },
+      "aspect": {
+        "type": "string",
+        "title": "Ty le khung",
+        "enum": [
+          "portrait",
+          "landscape",
+          "square"
+        ]
+      },
+      "credential": {
+        "type": "string",
+        "title": "Ten API key Seedance",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "mode",
+      "aspect",
+      "credential"
+    ]
+  }
+}

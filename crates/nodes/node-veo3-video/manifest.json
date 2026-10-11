@@ -1,0 +1,85 @@
+{
+  "kind": "veo3_video",
+  "version": 1,
+  "category": "video",
+  "labelVi": "Tạo video Veo3",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    },
+    {
+      "name": "refs",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "video",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "google",
+    "kinds": [
+      "login"
+    ]
+  },
+  "defaultParams": {
+    "mode": "t2v",
+    "model": "",
+    "aspect": "portrait",
+    "seed_count": 1,
+    "account": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "title": "Che do",
+        "enum": [
+          "t2v",
+          "r2v"
+        ]
+      },
+      "model": {
+        "type": "string",
+        "title": "Model (rong = mac dinh theo mode)"
+      },
+      "aspect": {
+        "type": "string",
+        "title": "Ty le khung",
+        "enum": [
+          "portrait",
+          "landscape"
+        ]
+      },
+      "seed_count": {
+        "type": "integer",
+        "title": "So bien the (seed_count)",
+        "minimum": 1
+      },
+      "account": {
+        "type": "string",
+        "title": "Tai khoan (ten/label credential Google, bat buoc)"
+      }
+    },
+    "required": [
+      "mode",
+      "model",
+      "aspect",
+      "seed_count",
+      "account"
+    ]
+  }
+}

@@ -54,6 +54,13 @@ export const NodeKindTagSchema = z.enum([
   "audio_extract",
   "audio_split",
   "script_gen",
+  "veo3_image",
+  "veo3_video",
+  "google_image",
+  "google_video",
+  "seedance_image",
+  "seedance_video",
+  "grok_image",
 ]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
@@ -110,6 +117,58 @@ const ScriptGenKindSchema = z.object({
   credential: z.string(),
   provider: z.enum(["gemini", "openai"]),
 });
+// P5: node doc lap Google Labs Flow/Veo3 (crates/nodes/node-veo3-image, node-veo3-video) — khop
+// dung ImageParams/VideoParams cua Rust (xem manifest.json cua tung crate). `account` la id
+// credential BAT BUOC (chua co "auto" nhu Dola).
+const Veo3ImageKindSchema = z.object({
+  kind: z.literal("veo3_image"),
+  model: z.string(),
+  aspect: z.string(),
+  seed: z.number().nullable().optional(),
+  account: z.string(),
+});
+const Veo3VideoKindSchema = z.object({
+  kind: z.literal("veo3_video"),
+  mode: z.string(),
+  model: z.string(),
+  aspect: z.string(),
+  seed_count: z.number(),
+  account: z.string(),
+});
+// P6: node goi API CHINH THUC (crates/nodes/node-google-image, node-google-video) — khop dung
+// ImageParams/VideoParams cua Rust. `credential` la TEN (label) API key Google, BAT BUOC.
+const GoogleImageKindSchema = z.object({
+  kind: z.literal("google_image"),
+  model: z.string(),
+  aspect: z.string(),
+  credential: z.string(),
+});
+const GoogleVideoKindSchema = z.object({
+  kind: z.literal("google_video"),
+  mode: z.string(),
+  model: z.string(),
+  aspect: z.string(),
+  credential: z.string(),
+});
+// P6: Seedance (Volcengine) + Grok (xAI) — khop ImageParams/VideoParams cua Rust.
+const SeedanceImageKindSchema = z.object({
+  kind: z.literal("seedance_image"),
+  model: z.string(),
+  aspect: z.string(),
+  credential: z.string(),
+});
+const SeedanceVideoKindSchema = z.object({
+  kind: z.literal("seedance_video"),
+  mode: z.string(),
+  model: z.string(),
+  aspect: z.string(),
+  credential: z.string(),
+});
+const GrokImageKindSchema = z.object({
+  kind: z.literal("grok_image"),
+  model: z.string(),
+  credential: z.string(),
+});
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
@@ -123,6 +182,13 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   AudioExtractKindSchema,
   AudioSplitKindSchema,
   ScriptGenKindSchema,
+  Veo3ImageKindSchema,
+  Veo3VideoKindSchema,
+  GoogleImageKindSchema,
+  GoogleVideoKindSchema,
+  SeedanceImageKindSchema,
+  SeedanceVideoKindSchema,
+  GrokImageKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 
@@ -630,6 +696,8 @@ export const CredentialProviderSchema = z.enum([
   "gemini",
   "facebook",
   "apple",
+  "seedance",
+  "grok",
 ]);
 export type CredentialProvider = z.infer<typeof CredentialProviderSchema>;
 

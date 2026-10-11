@@ -24,6 +24,8 @@ export const CREDENTIAL_PROVIDER_VI: Record<CredentialProvider, string> = {
   gemini: "Gemini",
   facebook: "Facebook",
   apple: "Apple",
+  seedance: "Seedance (Volcengine)",
+  grok: "Grok (xAI)",
 };
 
 export function credentialProviderLabel(provider: CredentialProvider): string {

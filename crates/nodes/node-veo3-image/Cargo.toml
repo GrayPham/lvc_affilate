@@ -1,0 +1,25 @@
+[package]
+name = "node-veo3-image"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Node "veo3_image" - xem CLAUDE.md cung thu muc. Chi duoc phu thuoc lvc-node-api, lvc-core,
+# lvc-veo3 (provider). KHONG node khac / lvc-engine / lvc-store / lvc-browser / tauri.
+[dependencies]
+lvc-node-api.workspace = true
+lvc-veo3.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# CHI test: dung lvc-core de dung NodeCtx/PreviewCtx (Limits) trong tests/contract.rs - khong dung
+# trong src/ (xem CLAUDE.md "Phu thuoc duoc phep").
+lvc-core.workspace = true
+tokio = { workspace = true }
+tokio-util.workspace = true
+
+[lints]
+workspace = true

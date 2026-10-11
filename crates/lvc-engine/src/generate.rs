@@ -57,6 +57,7 @@ use crate::limiter::{DynamicLimiter, LimiterHandle};
 use crate::pool::{AccountPool, COOLDOWN_PROFILE_BUSY, COOLDOWN_RISK_CONTROL, Lease};
 use crate::session_cache::SessionCache;
 use crate::textgen::{NoResolver, TextSecretResolver};
+use crate::veo3::EngineVeoCaptcha;
 use lvc_genai::GenAiClient;
 
 /// config.py:115 `WARM_SESSION_IDLE_TIMEOUT` — 15 phut khong dung moi tat Chrome.
@@ -185,10 +186,28 @@ pub struct Engine<D: BrowserDriver + 'static> {
     /// P4d: client HTTP sinh text (Gemini/OpenAI) — dung chung cho dich vu `TextGenHost`.
     /// `pub(crate)`: `dag.rs` (module anh em) chen dich vu trong `start_run`.
     pub(crate) text_client: Arc<GenAiClient>,
+    /// P6: client HTTP API chinh thuc Google (Nano Banana/Veo) — dung chung cho dich vu
+    /// `GoogleImageHost`/`GoogleVideoHost`. `pub(crate)`: `dag.rs` chen dich vu trong `start_run`.
+    pub(crate) google_client: Arc<lvc_google::GoogleClient>,
+    /// P6: client HTTP Seedance/Seedream (Volcengine) + Grok (xAI) — dung chung cho host tuong ung.
+    pub(crate) seedance_client: Arc<lvc_seedance::SeedanceClient>,
+    pub(crate) grok_client: Arc<lvc_grok::GrokClient>,
     /// P4d: nguon API key cho `TextGenHost` — `lvc-app` dat MOT LAN qua
     /// [`Engine::set_text_secret_resolver`] (backed by Vault). Chua dat = [`NoResolver`] (node bao
     /// loi ro rang). Bi mat KHONG bao gio ra event/log/UI.
     text_resolver: OnceLock<Arc<dyn TextSecretResolver>>,
+    /// P5 Task 9: dich vu `lvc_veo3::VeoCaptchaHost` (mint token reCAPTCHA qua 1 trinh duyet KHACH
+    /// dung lai TUAN TU) — boc `GuestCaptchaBrowser` trong `Mutex`, xem [`crate::veo3`]. `root_dir`
+    /// (thu muc goc profile khach tam) do `lvc-app` cap MOT LAN qua
+    /// [`Engine::set_veo3_guest_root_dir`]. `pub(crate)`: `dag.rs` (module anh em) doc truc tiep
+    /// khi chen dich vu vao `Services` trong `start_run`, giong cach doc `text_client`.
+    pub(crate) veo3_captcha: EngineVeoCaptcha,
+    /// P5 Task 9b: dich vu `lvc_veo3::VeoSessionHost` (harvest/cache phien 1 `credential_id` — mo
+    /// profile Chromium THAT cua tai khoan, doc `at`/`bl`/`fsid`/cookie, cache lai) — xem
+    /// [`crate::veo3::EngineVeoSession`]. `resolver` (`credential_id` -> `profile_dir`) do `lvc-app`
+    /// cap MOT LAN qua [`Engine::set_veo3_account_resolver`]. `pub(crate)`: `dag.rs` doc truc tiep
+    /// khi chen dich vu vao `Services` trong `start_run`, giong cach doc `veo3_captcha`.
+    pub(crate) veo3_session: crate::veo3::EngineVeoSession,
 }
 
 /// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
@@ -366,7 +385,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             db,
             registry: OnceLock::new(),
             text_client: Arc::new(GenAiClient::new()),
+            google_client: Arc::new(lvc_google::GoogleClient::new()),
+            seedance_client: Arc::new(lvc_seedance::SeedanceClient::new()),
+            grok_client: Arc::new(lvc_grok::GrokClient::new()),
             text_resolver: OnceLock::new(),
+            veo3_captcha: EngineVeoCaptcha::new(),
+            veo3_session: crate::veo3::EngineVeoSession::new(),
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))
@@ -399,6 +423,27 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .get()
             .cloned()
             .unwrap_or_else(|| Arc::new(NoResolver))
+    }
+
+    /// P5 Task 9: dat thu muc goc chua profile Chrome KHACH tam de mint reCAPTCHA Veo3 (MOT LAN;
+    /// lan sau bi bo qua, tra `false`). `lvc-app` goi luc khoi dong (composition root) — `lvc-engine`
+    /// KHONG tu doan duong dan (khong co quy uoc "`app_data_dir`" chung ro rang o tang nay, xem doc
+    /// [`crate::veo3`]); goi y `<app_data_dir>/profiles/temp_profile` (canh `accounts/`, cung goc
+    /// voi [`EngineConfig::accounts_dir`]). Chua goi = [`lvc_veo3::VeoCaptchaHost::mint_token`] tra
+    /// loi ro rang (khong panic).
+    pub fn set_veo3_guest_root_dir(&self, dir: impl Into<PathBuf>) -> bool {
+        self.veo3_captcha.set_root_dir(dir)
+    }
+
+    /// P5 Task 9b: dat nguon `profile_dir` cho dich vu `VeoSessionHost` (MOT LAN; lan sau bi bo
+    /// qua, tra `false`). `lvc-app` cap resolver backed by `Vault` (doc `credential.meta.profile_dir`
+    /// cua credential `google/login`/`session`). Chua dat = [`crate::veo3::NoAccountResolver`]
+    /// (loi ro rang, khong panic) — dung y [`Engine::set_text_secret_resolver`].
+    pub fn set_veo3_account_resolver(
+        &self,
+        resolver: Arc<dyn crate::veo3::VeoAccountResolver>,
+    ) -> bool {
+        self.veo3_session.set_resolver(resolver)
     }
 
     /// P3 Task 4 (R5): kenh su kien — Tauri bridge `subscribe()`.

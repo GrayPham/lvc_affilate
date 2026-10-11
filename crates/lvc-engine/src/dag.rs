@@ -106,13 +106,21 @@ use lvc_core::graph::{Graph, migrate};
 use lvc_core::{FailureCode, Scene, TaskStatus};
 use lvc_dola::{DolaVideoHost, JobsReport, SceneJob, VideoDone};
 use lvc_genai::TextGenHost;
+use lvc_google::{GoogleImageHost, GoogleVideoHost};
+use lvc_grok::GrokImageHost;
 use lvc_node_api::{NodeCtx, Outputs, Prepared, Registry, Services, gather_inputs};
+use lvc_seedance::{SeedanceImageHost, SeedanceVideoHost};
 use lvc_store::{BatchRef, RunStatus};
+use lvc_veo3::flow::Flow;
+use lvc_veo3::{VeoCaptchaHost, VeoImageHost, VeoSessionHost, VeoVideoHost};
 use tokio::sync::watch;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
+use crate::apimedia::{
+    EngineGoogleImage, EngineGoogleVideo, EngineGrokImage, EngineSeedanceImage, EngineSeedanceVideo,
+};
 use crate::error::EngineError;
 use crate::events::EngineEvent;
 use crate::generate::{Engine, GenerateOutcome};
@@ -224,6 +232,38 @@ impl<D: BrowserDriver + 'static> DolaVideoHost for RunDolaHost<D> {
     }
 }
 
+/// P5 Task 9: dich vu `VeoCaptchaHost` cho MOT lan chay — node `veo3_image`/`veo3_video` goi qua
+/// `NodeCtx::services`. Chi la lop MONG chuyen tiep vao `engine.veo3_captcha` (khac `RunDolaHost` ở
+/// tren không chỉ vì kiểu chữ ký — trạng thái trình duyệt khách THẬT sống trên `Engine`, DÀI HẠN
+/// xuyên nhiều lần chạy, không phải tạo mới mỗi run; xem [`crate::veo3`]).
+struct RunVeoCaptchaHost<D: BrowserDriver + 'static> {
+    engine: Arc<Engine<D>>,
+}
+
+#[async_trait]
+impl<D: BrowserDriver + 'static> VeoCaptchaHost for RunVeoCaptchaHost<D> {
+    async fn mint_token(&self, action: &str) -> Result<String, lvc_veo3::error::VeoError> {
+        self.engine.veo3_captcha.mint_token(action).await
+    }
+}
+
+/// P5 Task 9b: dich vu `VeoSessionHost` cho MOT lan chay — lop MONG chuyen tiep vao
+/// `engine.veo3_session` (giong `RunVeoCaptchaHost` o tren — trang thai cache theo `credential_id`
+/// song tren `Engine`, DAI HAN xuyen nhieu lan chay, xem `crate::veo3::EngineVeoSession`).
+struct RunVeoSessionHost<D: BrowserDriver + 'static> {
+    engine: Arc<Engine<D>>,
+}
+
+#[async_trait]
+impl<D: BrowserDriver + 'static> VeoSessionHost for RunVeoSessionHost<D> {
+    async fn harvest(
+        &self,
+        credential_id: &str,
+    ) -> Result<lvc_veo3::FlowSession, lvc_veo3::error::VeoError> {
+        self.engine.veo3_session.harvest(credential_id).await
+    }
+}
+
 fn new_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4())
 }
@@ -331,6 +371,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         prepared: &Prepared,
         hooks_factory: HooksFactory,
         tasks_ready_tx: &watch::Sender<Vec<TaskRef>>,
+        cancel: &CancellationToken,
     ) -> (Services, Arc<lvc_core::Limits>) {
         for n in &graph.nodes {
             let total = prepared.jobs.get(&n.id).copied().unwrap_or(1);
@@ -348,6 +389,69 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         services.insert::<Arc<dyn TextGenHost>>(Arc::new(EngineTextGenHost::new(
             Arc::clone(&self.text_client),
             self.text_resolver(),
+        )));
+        // P5 Task 9 (ADR-R014): chen dich vu mint reCAPTCHA Veo3 VO DIEU KIEN (engine KHONG `match`
+        // theo kind) — node `veo3_image`/`veo3_video` lay qua `ctx.services.get::<Arc<dyn
+        // VeoCaptchaHost>>()`. Chua goi `set_veo3_guest_root_dir` thi `mint_token` tra loi ro rang
+        // (xem `crate::veo3`), khong thieu service tham lang.
+        let captcha_host: Arc<dyn VeoCaptchaHost> = Arc::new(RunVeoCaptchaHost {
+            engine: Arc::clone(self),
+        });
+        services.insert::<Arc<dyn VeoCaptchaHost>>(Arc::clone(&captcha_host));
+        // P5 Task 9b (ADR-R014): chen dich vu harvest/cache phien VeoSessionHost VO DIEU KIEN —
+        // node khong biet trait nay ton tai (chi `lvc-engine`, phia impl VeoImageHost/VeoVideoHost
+        // duoi day, moi goi toi). Chua goi `set_veo3_account_resolver` thi `harvest` tra loi ro
+        // rang (xem `crate::veo3::EngineVeoSession`).
+        let session_host: Arc<dyn VeoSessionHost> = Arc::new(RunVeoSessionHost {
+            engine: Arc::clone(self),
+        });
+        services.insert::<Arc<dyn VeoSessionHost>>(Arc::clone(&session_host));
+        // P5 Task 9c (ADR-R014): chen dich vu be mat NODE thuc VeoImageHost/VeoVideoHost VO DIEU
+        // KIEN — ghep 2 dich vu tren qua `lvc_veo3::flow::Flow`, tu quyet `local_path` theo
+        // run_id/node_id/scene_index (xem `crate::veo3::EngineVeoJobs`, mirror cach ham nay quyet
+        // duong dan cho Dola o tren). `cancel` = token CUA RUN (fix-round 1, C1) — video co the poll
+        // nhieu phut nen can kiem huy giua cac lan poll, giong `hooks.token` cua Dola.
+        let flow = Flow::new(captcha_host, session_host);
+        let veo_jobs = Arc::new(crate::veo3::EngineVeoJobs::new(
+            self.cfg.downloads_dir.clone(),
+            flow,
+            cancel.clone(),
+        ));
+        services.insert::<Arc<dyn VeoImageHost>>(Arc::clone(&veo_jobs) as Arc<dyn VeoImageHost>);
+        services.insert::<Arc<dyn VeoVideoHost>>(veo_jobs as Arc<dyn VeoVideoHost>);
+        // P6 (ADR-R014): chen dich vu node goi API CHINH THUC Google (Imagen/Veo) VO DIEU KIEN —
+        // node `google_image`/`google_video` lay qua `ctx.services`. Dung lai `text_resolver()`
+        // (resolve API key theo provider tag "gemini") + client HTTP `google_client`. Video can
+        // token huy CUA RUN (poll nhieu phut, giong veo_jobs o tren).
+        let text_resolver = self.text_resolver();
+        services.insert::<Arc<dyn GoogleImageHost>>(Arc::new(EngineGoogleImage::new(
+            Arc::clone(&self.google_client),
+            Arc::clone(&text_resolver),
+            self.cfg.downloads_dir.clone(),
+        )));
+        services.insert::<Arc<dyn GoogleVideoHost>>(Arc::new(EngineGoogleVideo::new(
+            Arc::clone(&self.google_client),
+            Arc::clone(&text_resolver),
+            self.cfg.downloads_dir.clone(),
+            cancel.clone(),
+        )));
+        // P6: Seedance (Volcengine) — anh + video (poll task), dung lai text_resolver (tag "seedance").
+        services.insert::<Arc<dyn SeedanceImageHost>>(Arc::new(EngineSeedanceImage::new(
+            Arc::clone(&self.seedance_client),
+            Arc::clone(&text_resolver),
+            self.cfg.downloads_dir.clone(),
+        )));
+        services.insert::<Arc<dyn SeedanceVideoHost>>(Arc::new(EngineSeedanceVideo::new(
+            Arc::clone(&self.seedance_client),
+            Arc::clone(&text_resolver),
+            self.cfg.downloads_dir.clone(),
+            cancel.clone(),
+        )));
+        // P6: Grok (xAI) — chi anh (tag "grok").
+        services.insert::<Arc<dyn GrokImageHost>>(Arc::new(EngineGrokImage::new(
+            Arc::clone(&self.grok_client),
+            text_resolver,
+            self.cfg.downloads_dir.clone(),
         )));
         (services, Arc::new(self.limits.clone()))
     }
@@ -428,6 +532,10 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     ///   duoc phat MOT `NodeState` cuoi (`cancelled`/`failed`) thay vi bo mac "queued" (I2).
     /// - Node that bai mot phan (vd 1/3 canh) -> van co dau ra phan OK, node sau (Luu) van chay.
     /// - Node loi khong nghiem trong -> KHONG co dau ra; node sau nhan `EdgeInput.values = None`.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "mot buoc tuan tu (start_run -> vong lap topo -> emit_pending_terminal -> tasks_ready)"
+    )]
     async fn run_steps(self: Arc<Self>, job: RunJob) -> (Option<String>, bool) {
         let RunJob {
             run_id,
@@ -440,8 +548,14 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             tasks_ready_tx,
         } = job;
         let total_of = |id: &str| prepared.jobs.get(id).copied().unwrap_or(1);
-        let (services, limits) =
-            self.start_run(&run_id, &graph, &prepared, hooks_factory, &tasks_ready_tx);
+        let (services, limits) = self.start_run(
+            &run_id,
+            &graph,
+            &prepared,
+            hooks_factory,
+            &tasks_ready_tx,
+            &token,
+        );
 
         let mut outputs: HashMap<String, Outputs> = HashMap::new();
         let mut touched: HashSet<String> = HashSet::new();

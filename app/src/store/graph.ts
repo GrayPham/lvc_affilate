@@ -46,6 +46,52 @@ const DEFAULT_DATA: Record<AddableNodeKind, () => NodeKind> = {
     credential: "",
     provider: "gemini",
   }),
+  veo3_image: () => ({
+    kind: "veo3_image",
+    model: "GEM_PIX_2",
+    aspect: "portrait",
+    seed: null,
+    account: "",
+  }),
+  veo3_video: () => ({
+    kind: "veo3_video",
+    mode: "t2v",
+    model: "",
+    aspect: "portrait",
+    seed_count: 1,
+    account: "",
+  }),
+  google_image: () => ({
+    kind: "google_image",
+    model: "",
+    aspect: "portrait",
+    credential: "",
+  }),
+  google_video: () => ({
+    kind: "google_video",
+    mode: "t2v",
+    model: "",
+    aspect: "landscape",
+    credential: "",
+  }),
+  seedance_image: () => ({
+    kind: "seedance_image",
+    model: "",
+    aspect: "square",
+    credential: "",
+  }),
+  seedance_video: () => ({
+    kind: "seedance_video",
+    mode: "t2v",
+    model: "",
+    aspect: "landscape",
+    credential: "",
+  }),
+  grok_image: () => ({
+    kind: "grok_image",
+    model: "",
+    credential: "",
+  }),
 };
 
 function genId(prefix: string): string {

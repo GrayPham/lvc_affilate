@@ -1,0 +1,82 @@
+{
+  "kind": "veo3_image",
+  "version": 1,
+  "category": "image",
+  "labelVi": "Tạo ảnh Veo3 (Google Labs Flow)",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    },
+    {
+      "name": "refs",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "google",
+    "kinds": [
+      "login"
+    ]
+  },
+  "defaultParams": {
+    "model": "GEM_PIX_2",
+    "aspect": "portrait",
+    "seed": null,
+    "account": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "enum": [
+          "NARWHAL",
+          "GEM_PIX_2",
+          "HARBOR_SEAL"
+        ]
+      },
+      "aspect": {
+        "type": "string",
+        "title": "Ty le khung",
+        "enum": [
+          "portrait",
+          "landscape"
+        ]
+      },
+      "seed": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "title": "Seed (rong = 0)"
+      },
+      "account": {
+        "type": "string",
+        "title": "Tai khoan (ten/label credential Google, bat buoc)",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "model",
+      "aspect",
+      "account"
+    ]
+  }
+}

@@ -19,6 +19,13 @@ pub fn build_registry() -> Registry {
         .with(node_audio_extract::node())
         .with(node_audio_split::node())
         .with(node_script_gen::node())
+        .with(node_veo3_image::node())
+        .with(node_veo3_video::node())
+        .with(node_google_image::node())
+        .with(node_google_video::node())
+        .with(node_seedance_image::node())
+        .with(node_seedance_video::node())
+        .with(node_grok_image::node())
 }
 
 #[cfg(test)]
@@ -40,12 +47,19 @@ mod tests {
                 "concat",
                 "dola_video",
                 "frame_capture",
+                "google_image",
+                "google_video",
+                "grok_image",
                 "image_upload",
                 "load_video",
                 "prompt",
                 "save",
                 "script_gen",
-                "trim"
+                "seedance_image",
+                "seedance_video",
+                "trim",
+                "veo3_image",
+                "veo3_video"
             ]
         );
     }

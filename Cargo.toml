@@ -10,6 +10,10 @@ members = [
     "crates/lvc-vault",
     "crates/providers/lvc-dola",
     "crates/providers/lvc-genai",
+    "crates/providers/lvc-veo3",
+    "crates/providers/lvc-google",
+    "crates/providers/lvc-seedance",
+    "crates/providers/lvc-grok",
     "crates/nodes/node-prompt",
     "crates/nodes/node-image-upload",
     "crates/nodes/node-save",
@@ -21,6 +25,13 @@ members = [
     "crates/nodes/node-audio-extract",
     "crates/nodes/node-audio-split",
     "crates/nodes/node-script-gen",
+    "crates/nodes/node-veo3-video",
+    "crates/nodes/node-veo3-image",
+    "crates/nodes/node-google-image",
+    "crates/nodes/node-google-video",
+    "crates/nodes/node-seedance-image",
+    "crates/nodes/node-seedance-video",
+    "crates/nodes/node-grok-image",
 ]
 
 [workspace.package]
@@ -50,9 +61,20 @@ lvc-browser = { path = "crates/lvc-browser" }
 lvc-node-api = { path = "crates/lvc-node-api" }
 lvc-vault = { path = "crates/lvc-vault" }
 lvc-dola = { path = "crates/providers/lvc-dola" }
+node-veo3-image = { path = "crates/nodes/node-veo3-image" }
+node-veo3-video = { path = "crates/nodes/node-veo3-video" }
+lvc-veo3 = { path = "crates/providers/lvc-veo3" }
 node-audio-split = { path = "crates/nodes/node-audio-split" }
 node-audio-extract = { path = "crates/nodes/node-audio-extract" }
 lvc-genai = { path = "crates/providers/lvc-genai" }
+lvc-google = { path = "crates/providers/lvc-google" }
+lvc-seedance = { path = "crates/providers/lvc-seedance" }
+lvc-grok = { path = "crates/providers/lvc-grok" }
+node-google-image = { path = "crates/nodes/node-google-image" }
+node-google-video = { path = "crates/nodes/node-google-video" }
+node-seedance-image = { path = "crates/nodes/node-seedance-image" }
+node-seedance-video = { path = "crates/nodes/node-seedance-video" }
+node-grok-image = { path = "crates/nodes/node-grok-image" }
 node-script-gen = { path = "crates/nodes/node-script-gen" }
 node-load-video = { path = "crates/nodes/node-load-video" }
 node-frame-capture = { path = "crates/nodes/node-frame-capture" }

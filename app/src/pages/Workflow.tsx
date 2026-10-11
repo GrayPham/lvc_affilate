@@ -44,6 +44,13 @@ import FrameCaptureNode from "../nodes/FrameCaptureNode";
 import AudioExtractNode from "../nodes/AudioExtractNode";
 import AudioSplitNode from "../nodes/AudioSplitNode";
 import ScriptGenNode from "../nodes/ScriptGenNode";
+import Veo3ImageNode from "../nodes/Veo3ImageNode";
+import Veo3VideoNode from "../nodes/Veo3VideoNode";
+import GoogleImageNode from "../nodes/GoogleImageNode";
+import GoogleVideoNode from "../nodes/GoogleVideoNode";
+import SeedanceImageNode from "../nodes/SeedanceImageNode";
+import SeedanceVideoNode from "../nodes/SeedanceVideoNode";
+import GrokImageNode from "../nodes/GrokImageNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import FlowEdge from "../graph/FlowEdge";
 import { isValidConnection } from "../graph/rules";
@@ -75,6 +82,13 @@ const nodeTypes: NodeTypes = {
   audio_extract: AudioExtractNode,
   audio_split: AudioSplitNode,
   script_gen: ScriptGenNode,
+  veo3_image: Veo3ImageNode,
+  veo3_video: Veo3VideoNode,
+  google_image: GoogleImageNode,
+  google_video: GoogleVideoNode,
+  seedance_image: SeedanceImageNode,
+  seedance_video: SeedanceVideoNode,
+  grok_image: GrokImageNode,
 } as unknown as NodeTypes;
 
 // Dây "dòng chảy" (đốm sáng chạy theo hướng) — dùng cho mọi cạnh.

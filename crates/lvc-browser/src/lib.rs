@@ -20,6 +20,7 @@ pub mod fake;
 pub mod job;
 pub mod ops;
 pub mod profile;
+pub mod veo3;
 
 pub use dola::DolaError;
 pub use driver::{BrowserDriver, LaunchOpts, SessionProbe};

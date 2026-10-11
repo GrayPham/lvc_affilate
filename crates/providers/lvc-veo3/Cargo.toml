@@ -1,0 +1,31 @@
+[package]
+name = "lvc-veo3"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Provider Google Labs Flow/Veo3 (spec 2026-09-27 v2, ADR-R018/R019). Giao thuc batchexecute cua
+# flow.google.com (KHONG con REST+Bearer aisandbox-pa — Google da bo 09/2026). Khai 4 trait dich vu
+# host: VeoCaptchaHost/VeoSessionHost (nho, browser-touching — lvc-browser::veo3 impl) va
+# VeoImageHost/VeoVideoHost (be mat node, giong DolaVideoHost — lvc-engine impl bang flow::Flow).
+# LUAT: KHONG biet khai niem node (khong phu thuoc lvc-node-api), KHONG phu thuoc
+# lvc-engine/store/browser/app/tauri.
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+uuid.workspace = true
+base64.workspace = true
+tokio = { workspace = true }
+regex = "1"
+form_urlencoded = "1"
+rand = "0.8"
+
+[dev-dependencies]
+wiremock.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,51 @@
+{
+  "kind": "grok_image",
+  "version": 1,
+  "category": "image",
+  "labelVi": "Tạo ảnh Grok (API xAI)",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "grok",
+    "kinds": [
+      "api_key"
+    ]
+  },
+  "defaultParams": {
+    "model": "",
+    "credential": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model (rong = grok-2-image-1212)"
+      },
+      "credential": {
+        "type": "string",
+        "title": "Ten API key Grok",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "credential"
+    ]
+  }
+}

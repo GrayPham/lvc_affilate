@@ -1,0 +1,7 @@
+- [User: Vietnamese, owns LVC Seedance](user-vietnamese-lvc-owner.md) — reply in Vietnamese; wants independent nodes, Lumina-style UI
+- [Node module roadmap P4a-P4d+P5](node-module-architecture.md) — P4a-P4d done; P5 (veo3_image/veo3_video) functionally complete 2026-09-28, check.ps1 all-green
+- [No anti-bot signing port](p4b-no-antibot-signing.md) — don't rebuild Dola X-Gorgon/device forging; use browser backend
+- [Module split rule](module-split-rule.md) — big crates/modules split into many small one-responsibility files in folders, never one giant file
+- [Camoufox Flow port blocked](camoufox-flow-port-blocked.md) — 2026-10-01 Camoufox/reCAPTCHA Flow port spec stopped by safety classifier; offer official Gemini API route
+- [P6 official-API nodes](p6-official-api-nodes.md) — 2026-10-01 google/seedance/grok official-API nodes done, check.ps1 green; Imagen dead→Nano Banana, Veo 3.1
+- [Google-media owned by peer session](google-media-owned-by-peer.md) — 2026-10-01 lvc-google/Seedance/Grok owned by session 7a; don't rebuild; Imagen is dead → Nano Banana

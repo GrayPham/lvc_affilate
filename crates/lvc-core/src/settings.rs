@@ -56,6 +56,10 @@ impl DolaChannel {
     ///
     /// # Errors
     /// Chuoi khong phai `"api"`/`"browser"`.
+    #[allow(
+        clippy::result_unit_err,
+        reason = "cho goi duy nhat (parse_dola_channel) chi can biet dung/sai, khong can chi tiet loi"
+    )]
     pub fn parse(s: &str) -> Result<Self, ()> {
         match s.trim().to_lowercase().as_str() {
             "api" => Ok(Self::Api),
@@ -192,7 +196,12 @@ fn parse_dola_channel(map: &HashMap<String, String>, warnings: &mut Vec<String>)
     match map.get("dola_channel") {
         None => DolaChannel::default(),
         Some(raw) => DolaChannel::parse(raw).unwrap_or_else(|()| {
-            invalid(warnings, "dola_channel", raw, DolaChannel::default().as_str());
+            invalid(
+                warnings,
+                "dola_channel",
+                raw,
+                DolaChannel::default().as_str(),
+            );
             DolaChannel::default()
         }),
     }
@@ -323,8 +332,12 @@ mod tests {
 
     #[test]
     fn dola_channel_parse_va_sai_ve_mac_dinh() {
-        for (raw, want) in [("api", DolaChannel::Api), ("browser", DolaChannel::Browser),
-                            ("API", DolaChannel::Api), ("Browser", DolaChannel::Browser)] {
+        for (raw, want) in [
+            ("api", DolaChannel::Api),
+            ("browser", DolaChannel::Browser),
+            ("API", DolaChannel::Api),
+            ("Browser", DolaChannel::Browser),
+        ] {
             let m = map(&[("dola_channel", raw)]);
             let (s, warnings) = AppSettings::from_map(&m);
             assert_eq!(s.dola_channel, want, "raw={raw}");

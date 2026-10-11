@@ -248,6 +248,198 @@
     }
   },
   {
+    "kind": "google_image",
+    "version": 1,
+    "category": "image",
+    "labelVi": "Tạo ảnh Google (API Imagen)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "gemini",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "model": "",
+      "aspect": "portrait",
+      "credential": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "title": "Model (rong = gemini-3.1-flash-image)"
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Ty le khung",
+          "enum": [
+            "portrait",
+            "landscape",
+            "square"
+          ]
+        },
+        "credential": {
+          "type": "string",
+          "title": "Ten API key Google",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "aspect",
+        "credential"
+      ]
+    }
+  },
+  {
+    "kind": "google_video",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Tạo video Google (API Veo)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      },
+      {
+        "name": "ref",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "gemini",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "mode": "t2v",
+      "model": "",
+      "aspect": "landscape",
+      "credential": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Che do",
+          "enum": [
+            "t2v",
+            "i2v"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "title": "Model (rong = veo-3.1-generate-preview)"
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Ty le khung",
+          "enum": [
+            "portrait",
+            "landscape",
+            "square"
+          ]
+        },
+        "credential": {
+          "type": "string",
+          "title": "Ten API key Google",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "mode",
+        "aspect",
+        "credential"
+      ]
+    }
+  },
+  {
+    "kind": "grok_image",
+    "version": 1,
+    "category": "image",
+    "labelVi": "Tạo ảnh Grok (API xAI)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "grok",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "model": "",
+      "credential": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "title": "Model (rong = grok-2-image-1212)"
+        },
+        "credential": {
+          "type": "string",
+          "title": "Ten API key Grok",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "credential"
+      ]
+    }
+  },
+  {
     "kind": "image_upload",
     "version": 1,
     "category": "input",
@@ -482,6 +674,147 @@
     }
   },
   {
+    "kind": "seedance_image",
+    "version": 1,
+    "category": "image",
+    "labelVi": "Tạo ảnh Seedance (API Seedream)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "seedance",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "model": "",
+      "aspect": "square",
+      "credential": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "title": "Model / endpoint id (rong = mac dinh)"
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Ty le khung",
+          "enum": [
+            "portrait",
+            "landscape",
+            "square"
+          ]
+        },
+        "credential": {
+          "type": "string",
+          "title": "Ten API key Seedance",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "aspect",
+        "credential"
+      ]
+    }
+  },
+  {
+    "kind": "seedance_video",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Tạo video Seedance (API)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      },
+      {
+        "name": "ref",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "seedance",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "mode": "t2v",
+      "model": "",
+      "aspect": "landscape",
+      "credential": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Che do",
+          "enum": [
+            "t2v",
+            "i2v"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "title": "Model / endpoint id (rong = mac dinh)"
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Ty le khung",
+          "enum": [
+            "portrait",
+            "landscape",
+            "square"
+          ]
+        },
+        "credential": {
+          "type": "string",
+          "title": "Ten API key Seedance",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "mode",
+        "aspect",
+        "credential"
+      ]
+    }
+  },
+  {
     "kind": "trim",
     "version": 1,
     "category": "video",
@@ -522,6 +855,173 @@
           "minimum": 0
         }
       }
+    }
+  },
+  {
+    "kind": "veo3_image",
+    "version": 1,
+    "category": "image",
+    "labelVi": "Tạo ảnh Veo3 (Google Labs Flow)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      },
+      {
+        "name": "refs",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "google",
+      "kinds": [
+        "login"
+      ]
+    },
+    "defaultParams": {
+      "model": "GEM_PIX_2",
+      "aspect": "portrait",
+      "seed": null,
+      "account": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "title": "Model",
+          "enum": [
+            "NARWHAL",
+            "GEM_PIX_2",
+            "HARBOR_SEAL"
+          ]
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Ty le khung",
+          "enum": [
+            "portrait",
+            "landscape"
+          ]
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "title": "Seed (rong = 0)"
+        },
+        "account": {
+          "type": "string",
+          "title": "Tai khoan (ten/label credential Google, bat buoc)",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "model",
+        "aspect",
+        "account"
+      ]
+    }
+  },
+  {
+    "kind": "veo3_video",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Tạo video Veo3",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      },
+      {
+        "name": "refs",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "google",
+      "kinds": [
+        "login"
+      ]
+    },
+    "defaultParams": {
+      "mode": "t2v",
+      "model": "",
+      "aspect": "portrait",
+      "seed_count": 1,
+      "account": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Che do",
+          "enum": [
+            "t2v",
+            "r2v"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "title": "Model (rong = mac dinh theo mode)"
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Ty le khung",
+          "enum": [
+            "portrait",
+            "landscape"
+          ]
+        },
+        "seed_count": {
+          "type": "integer",
+          "title": "So bien the (seed_count)",
+          "minimum": 1
+        },
+        "account": {
+          "type": "string",
+          "title": "Tai khoan (ten/label credential Google, bat buoc)"
+        }
+      },
+      "required": [
+        "mode",
+        "model",
+        "aspect",
+        "seed_count",
+        "account"
+      ]
     }
   }
 ]

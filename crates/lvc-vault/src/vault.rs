@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{SecretBox, VaultError, mask};
 
 /// Loại provider hỗ trợ (mở rộng dần). `kind` hợp lệ theo provider kiểm ở [`Vault::add`].
-pub const PROVIDERS: [&str; 7] = [
+pub const PROVIDERS: [&str; 9] = [
     "dola",
     "google",
     "chatgpt_web",
@@ -17,6 +17,9 @@ pub const PROVIDERS: [&str; 7] = [
     "gemini",
     "facebook",
     "apple",
+    // P6: nha cung cap API chinh thuc moi (chi api_key) cho node seedance_*/grok_image.
+    "seedance",
+    "grok",
 ];
 
 /// Lỗi kho tài khoản (có `code()` ổn định để map sang IPC như `AccountError`).
@@ -99,7 +102,7 @@ fn valid_label(s: &str) -> bool {
 fn kind_ok(provider: &str, kind: &str) -> bool {
     match provider {
         "dola" => kind == "session",
-        "openai" => kind == "api_key",
+        "openai" | "seedance" | "grok" => kind == "api_key",
         // Gemini: API key (chính thức/endpoint) HOẶC đăng nhập/cookie (lấy profile Google).
         "gemini" => kind == "api_key" || kind == "login" || kind == "session",
         "google" | "chatgpt_web" | "facebook" | "apple" => kind == "login" || kind == "session",

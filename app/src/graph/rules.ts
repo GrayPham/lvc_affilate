@@ -43,6 +43,13 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   audio_extract: {},
   audio_split: {},
   script_gen: { brief: true },
+  veo3_image: { prompt: true, refs: true },
+  veo3_video: { prompt: true, refs: true },
+  google_image: { prompt: true },
+  google_video: { prompt: true, ref: true },
+  seedance_image: { prompt: true },
+  seedance_video: { prompt: true, ref: true },
+  grok_image: { prompt: true },
 };
 
 /**

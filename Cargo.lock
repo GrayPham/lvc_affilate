@@ -111,7 +111,7 @@ dependencies = [
  "log",
  "pin-project-lite",
  "tokio",
- "tungstenite",
+ "tungstenite 0.28.0",
 ]
 
 [[package]]
@@ -2285,12 +2285,19 @@ dependencies = [
  "node-concat",
  "node-dola-video",
  "node-frame-capture",
+ "node-google-image",
+ "node-google-video",
+ "node-grok-image",
  "node-image-upload",
  "node-load-video",
  "node-prompt",
  "node-save",
  "node-script-gen",
+ "node-seedance-image",
+ "node-seedance-video",
  "node-trim",
+ "node-veo3-image",
+ "node-veo3-video",
  "serde",
  "serde_json",
  "tauri",
@@ -2323,6 +2330,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "uuid",
  "windows-sys 0.59.0",
@@ -2380,13 +2388,18 @@ name = "lvc-engine"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "dashmap",
  "lvc-browser",
  "lvc-core",
  "lvc-dola",
  "lvc-genai",
+ "lvc-google",
+ "lvc-grok",
  "lvc-node-api",
+ "lvc-seedance",
  "lvc-store",
+ "lvc-veo3",
  "node-dola-video",
  "node-image-upload",
  "node-prompt",
@@ -2417,6 +2430,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "lvc-google"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
+name = "lvc-grok"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "lvc-node-api"
 version = "0.1.0"
 dependencies = [
@@ -2426,6 +2467,20 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio-util",
+]
+
+[[package]]
+name = "lvc-seedance"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]
@@ -2455,6 +2510,24 @@ dependencies = [
  "tokio",
  "uuid",
  "windows-sys 0.59.0",
+ "wiremock",
+]
+
+[[package]]
+name = "lvc-veo3"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "form_urlencoded",
+ "rand 0.8.8",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
  "wiremock",
 ]
 
@@ -2661,6 +2734,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "node-google-image"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-google",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "node-google-video"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-google",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "node-grok-image"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-grok",
+ "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "node-image-upload"
 version = "0.1.0"
 dependencies = [
@@ -2730,12 +2842,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "node-seedance-image"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "lvc-seedance",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "node-seedance-video"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "lvc-seedance",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "node-trim"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "lvc-core",
  "lvc-node-api",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "node-veo3-image"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "lvc-veo3",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "node-veo3-video"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lvc-core",
+ "lvc-node-api",
+ "lvc-veo3",
  "serde",
  "serde_json",
  "tokio",
@@ -5158,6 +5324,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edc5f74e248dc973e0dbb7b74c7e0d6fcc301c694ff50049504004ef4d0cdcd9"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.24.0",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5444,6 +5622,24 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "tungstenite"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18e5b8366ee7a95b16d32197d0b2604b43a0be89dc5fac9f8e96ccafbaedda8a"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.8.8",
+ "sha1",
+ "thiserror 1.0.69",
+ "utf-8",
+]
 
 [[package]]
 name = "tungstenite"

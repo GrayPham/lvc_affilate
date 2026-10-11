@@ -69,6 +69,20 @@ export function nodeChipLabel(data: NodeKind): string {
       return NODE_LABEL_VI.audio_split;
     case "script_gen":
       return NODE_LABEL_VI.script_gen;
+    case "veo3_image":
+      return NODE_LABEL_VI.veo3_image;
+    case "veo3_video":
+      return NODE_LABEL_VI.veo3_video;
+    case "google_image":
+      return NODE_LABEL_VI.google_image;
+    case "google_video":
+      return NODE_LABEL_VI.google_video;
+    case "seedance_image":
+      return NODE_LABEL_VI.seedance_image;
+    case "seedance_video":
+      return NODE_LABEL_VI.seedance_video;
+    case "grok_image":
+      return NODE_LABEL_VI.grok_image;
   }
 }
 

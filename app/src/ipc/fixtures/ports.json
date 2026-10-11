@@ -83,6 +83,55 @@
     ]
   },
   {
+    "kind": "google_image",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "google_video",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "ref",
+        "type": "image"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "grok_image",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
     "kind": "image_upload",
     "inputs": [],
     "outputs": [
@@ -146,11 +195,83 @@
     ]
   },
   {
+    "kind": "seedance_image",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "seedance_video",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "ref",
+        "type": "image"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
     "kind": "trim",
     "inputs": [
       {
         "name": "in",
         "type": "video"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "veo3_image",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "refs",
+        "type": "image"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "veo3_video",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      },
+      {
+        "name": "refs",
+        "type": "image"
       }
     ],
     "outputs": [

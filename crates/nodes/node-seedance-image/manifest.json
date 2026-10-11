@@ -1,0 +1,62 @@
+{
+  "kind": "seedance_image",
+  "version": 1,
+  "category": "image",
+  "labelVi": "Tạo ảnh Seedance (API Seedream)",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "seedance",
+    "kinds": [
+      "api_key"
+    ]
+  },
+  "defaultParams": {
+    "model": "",
+    "aspect": "square",
+    "credential": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model / endpoint id (rong = mac dinh)"
+      },
+      "aspect": {
+        "type": "string",
+        "title": "Ty le khung",
+        "enum": [
+          "portrait",
+          "landscape",
+          "square"
+        ]
+      },
+      "credential": {
+        "type": "string",
+        "title": "Ten API key Seedance",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "aspect",
+      "credential"
+    ]
+  }
+}

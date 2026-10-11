@@ -38,6 +38,8 @@ const KINDS_BY_PROVIDER: Record<CredentialProvider, readonly CredentialKind[]> =
   chatgpt_web: ["login", "session"],
   facebook: ["login", "session"],
   apple: ["login", "session"],
+  seedance: ["api_key"],
+  grok: ["api_key"],
 };
 
 // Che do API hop le theo provider.
@@ -49,10 +51,12 @@ const MODES_BY_PROVIDER: Record<CredentialProvider, readonly CredentialMode[]> =
   gemini: ["official", "custom", "sdk", "cookie"],
   facebook: ["cookie"],
   apple: ["cookie"],
+  seedance: ["official", "custom"],
+  grok: ["official", "custom"],
 };
 
 /** Nền tảng có API key (tab "API key"). */
-const API_PROVIDERS: readonly CredentialProvider[] = ["openai", "gemini"];
+const API_PROVIDERS: readonly CredentialProvider[] = ["openai", "gemini", "seedance", "grok"];
 
 /** Nền tảng dùng cookie/đăng nhập (tab "Tài khoản"). */
 const COOKIE_PROVIDERS: readonly CredentialProvider[] = [

@@ -65,6 +65,20 @@ pub enum BrowserError {
     /// (`CdpError::ChannelSendError`). Engine (T15) dong session nay va mo lai, khong thu lai lenh.
     #[error("mat ket noi CDP (Chrome da thoat hoac trang bi huy)")]
     Disconnected,
+    /// Task 8 (`veo3::harvest`): URL sau dieu huong roi vao `/about`/`accounts.google.com`/trang
+    /// dang nhap — profile CHUA dang nhap Google/Flow (loi tai khoan, khong phai loi Chrome).
+    /// `0` = URL do (khong co query/fragment nhay cam trong truong hop nay, nhung van giu nguyen
+    /// de chan doan — URL flow.google.com khong mang chu ky nhu Dola).
+    #[error("profile chua dang nhap flow.google.com (url hien tai: {0})")]
+    NotLoggedIn(String),
+    /// Task 8 (`veo3::harvest`): doc duoc `at` (`WIZ_global_data.SNlM0e`) nhung cookie
+    /// flow.google.com KHONG co bat ky khoa dang nhap nao (`SID`/`__Secure-1PSID`/
+    /// `__Secure-3PSID`/`__Secure-1PSIDTS`) — dau hieu AV/khoa profile chan doc cookie DB. Loi
+    /// THAT da gap ben Python: cache "at co, cookie rong" lam moi request sau deu 401 toi khi
+    /// restart app — PHAI tra loi o day, KHONG cho qua. `0` = danh sach TEN cookie da thay (KHONG
+    /// bao gio gia tri).
+    #[error("moi phien thieu cookie dang nhap thuc (chi thay ten: {0})")]
+    MissingAuthCookie(String),
 }
 
 /// `#[from]` thu cong: kenh lenh dong (`ChannelSendError` = handler da dung / oneshot bi huy) →

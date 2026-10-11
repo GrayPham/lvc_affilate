@@ -60,6 +60,46 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [{ name: "brief", type: "text" }],
     outputs: [{ name: "out", type: "text" }],
   },
+  veo3_image: {
+    inputs: [
+      { name: "prompt", type: "text" },
+      { name: "refs", type: "image" },
+    ],
+    outputs: [{ name: "out", type: "image" }],
+  },
+  veo3_video: {
+    inputs: [
+      { name: "prompt", type: "text" },
+      { name: "refs", type: "image" },
+    ],
+    outputs: [{ name: "out", type: "video" }],
+  },
+  google_image: {
+    inputs: [{ name: "prompt", type: "text" }],
+    outputs: [{ name: "out", type: "image" }],
+  },
+  google_video: {
+    inputs: [
+      { name: "prompt", type: "text" },
+      { name: "ref", type: "image" },
+    ],
+    outputs: [{ name: "out", type: "video" }],
+  },
+  seedance_image: {
+    inputs: [{ name: "prompt", type: "text" }],
+    outputs: [{ name: "out", type: "image" }],
+  },
+  seedance_video: {
+    inputs: [
+      { name: "prompt", type: "text" },
+      { name: "ref", type: "image" },
+    ],
+    outputs: [{ name: "out", type: "video" }],
+  },
+  grok_image: {
+    inputs: [{ name: "prompt", type: "text" }],
+    outputs: [{ name: "out", type: "image" }],
+  },
 };
 
 /** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho moi kieu du lieu. */
@@ -87,6 +127,13 @@ export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   audio_extract: "Tách audio",
   audio_split: "Tách audio↔video",
   script_gen: "Kịch bản AI",
+  veo3_image: "Tạo ảnh Veo3 (Google Labs Flow)",
+  veo3_video: "Tạo video Veo3",
+  google_image: "Tạo ảnh Google (API Imagen)",
+  google_video: "Tạo video Google (API Veo)",
+  seedance_image: "Tạo ảnh Seedance (API Seedream)",
+  seedance_video: "Tạo video Seedance (API)",
+  grok_image: "Tạo ảnh Grok (API xAI)",
 };
 
 /** `NodeKind` co the them vao canvas tu Palette — P4a: ca 4 kind con lai deu them duoc. */

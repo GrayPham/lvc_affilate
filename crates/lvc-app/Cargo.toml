@@ -33,6 +33,13 @@ node-load-video.workspace = true
 node-audio-extract.workspace = true
 node-audio-split.workspace = true
 node-script-gen.workspace = true
+node-veo3-image.workspace = true
+node-veo3-video.workspace = true
+node-google-image.workspace = true
+node-google-video.workspace = true
+node-seedance-image.workspace = true
+node-seedance-video.workspace = true
+node-grok-image.workspace = true
 # textgen.rs (P4d): impl `lvc_engine::TextSecretResolver` (trait #[async_trait]) bang Vault.
 async-trait.workspace = true
 tauri = { version = "2", features = ["protocol-asset"] }

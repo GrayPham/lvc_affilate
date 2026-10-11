@@ -52,7 +52,7 @@ struct PublicTemplate {
 }
 
 /// `(id, raw json)` mỗi mẫu Public. id ổn định `public:<tên file>` (lưu trong workflow người dùng).
-const PUBLIC: [(&str, &str); 15] = [
+const PUBLIC: [(&str, &str); 16] = [
     (
         "public:affiliate-review",
         include_str!("../../templates/affiliate-review.json"),
@@ -112,6 +112,10 @@ const PUBLIC: [(&str, &str); 15] = [
     (
         "public:video-trim-frame",
         include_str!("../../templates/video-trim-frame.json"),
+    ),
+    (
+        "public:affiliate-veo3-image-to-video",
+        include_str!("../../templates/affiliate-veo3-image-to-video.json"),
     ),
 ];
 
@@ -329,7 +333,7 @@ mod tests {
         let only_public = template_list_impl(&ctx, Some("public".into()))
             .await
             .unwrap();
-        assert_eq!(only_public.len(), 15);
+        assert_eq!(only_public.len(), 16);
         assert!(only_public.iter().all(|t| t.scope == "public"));
         // Nhóm được khai đúng: có ít nhất một mẫu mỗi nhóm chính.
         assert!(only_public.iter().any(|t| t.category == "Affiliate"));
@@ -353,7 +357,7 @@ mod tests {
         assert_eq!(meta.category, "Cơ bản");
 
         let all = template_list_impl(&ctx, None).await.unwrap();
-        assert_eq!(all.len(), 16);
+        assert_eq!(all.len(), 17);
         let priv_only = template_list_impl(&ctx, Some("private".into()))
             .await
             .unwrap();

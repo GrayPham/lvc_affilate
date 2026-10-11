@@ -1,0 +1,26 @@
+[package]
+name = "lvc-grok"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Provider API CHINH THUC xAI (Grok) — tao anh `POST /v1/images/generations` (OpenAI-compatible),
+# key header `Authorization: Bearer`, ep response_format=b64_json de nhan bytes. xAI CHUA co API
+# video cong khai (knowledge cutoff 2026-01) -> KHONG co client video. Khai host trait
+# GrokImageHost. LUAT (ADR-R014): KHONG biet khai niem node, KHONG phu thuoc
+# engine/store/browser/app/tauri. KHONG BAO GIO log API key.
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+base64.workspace = true
+tokio = { workspace = true }
+
+[dev-dependencies]
+wiremock.workspace = true
+
+[lints]
+workspace = true

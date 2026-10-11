@@ -1,0 +1,66 @@
+{
+  "name": "Video affiliate (Veo3 — ảnh sản phẩm → video)",
+  "category": "Affiliate",
+  "description": "Mẫu thử node Veo3 mới: prompt tạo ảnh sản phẩm (Google Labs Flow) → dùng chính ảnh đó làm tham chiếu để tạo video affiliate dọc 9:16 → lưu cả ảnh và video. Cần điền 'Tài khoản' (đúng TÊN/label tài khoản Google đã thêm ở tab Tài khoản AI) ở 2 node veo3_image/veo3_video trước khi chạy — chưa hỗ trợ tự chọn tài khoản.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "img_prompt",
+        "kind": {
+          "kind": "prompt",
+          "text": "ảnh sản phẩm chai serum skincare đặt trên bàn gỗ sáng màu, ánh sáng tự nhiên dịu, phong cách quảng cáo affiliate tối giản, nền sạch, góc chụp cận cảnh gây thu hút, không có người, tỉ lệ dọc"
+        },
+        "x": 60,
+        "y": 80
+      },
+      {
+        "id": "image",
+        "kind": {
+          "kind": "veo3_image",
+          "model": "GEM_PIX_2",
+          "aspect": "portrait",
+          "seed": null,
+          "account": "dan-ten-tai-khoan-cua-ban"
+        },
+        "x": 420,
+        "y": 80
+      },
+      {
+        "id": "video_prompt",
+        "kind": {
+          "kind": "prompt",
+          "text": "video ngắn 9:16 giới thiệu sản phẩm skincare, camera lướt nhẹ nhàng quanh sản phẩm, ánh sáng đẹp lung linh, phong cách TikTok affiliate, không có người, 8 giây"
+        },
+        "x": 60,
+        "y": 320
+      },
+      {
+        "id": "video",
+        "kind": {
+          "kind": "veo3_video",
+          "mode": "r2v",
+          "model": "",
+          "aspect": "portrait",
+          "seed_count": 1,
+          "account": "dan-ten-tai-khoan-cua-ban"
+        },
+        "x": 780,
+        "y": 200
+      },
+      {
+        "id": "save",
+        "kind": { "kind": "save", "out_dir": "" },
+        "x": 1140,
+        "y": 200
+      }
+    ],
+    "edges": [
+      { "id": "e1", "from": "img_prompt", "from_port": "out", "to": "image", "to_port": "prompt" },
+      { "id": "e2", "from": "video_prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e3", "from": "image", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e4", "from": "image", "from_port": "out", "to": "save", "to_port": "image" },
+      { "id": "e5", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

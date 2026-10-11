@@ -1,0 +1,62 @@
+{
+  "kind": "google_image",
+  "version": 1,
+  "category": "image",
+  "labelVi": "Tạo ảnh Google (API Imagen)",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "gemini",
+    "kinds": [
+      "api_key"
+    ]
+  },
+  "defaultParams": {
+    "model": "",
+    "aspect": "portrait",
+    "credential": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model (rong = gemini-3.1-flash-image)"
+      },
+      "aspect": {
+        "type": "string",
+        "title": "Ty le khung",
+        "enum": [
+          "portrait",
+          "landscape",
+          "square"
+        ]
+      },
+      "credential": {
+        "type": "string",
+        "title": "Ten API key Google",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "aspect",
+      "credential"
+    ]
+  }
+}
