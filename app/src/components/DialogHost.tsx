@@ -64,7 +64,7 @@ function DialogView({ req, onDone }: { req: DialogReq; onDone: () => void }) {
       role="presentation"
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-line bg-[#17171a] p-4 text-ink shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-line bg-panel p-4 text-ink shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

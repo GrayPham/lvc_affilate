@@ -42,7 +42,7 @@ export default function CanvasToolbar() {
   const openTemplates = useWorkflowUi((s) => s.openTemplates);
 
   return (
-    <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl border border-line bg-[#17171a]/95 p-1.5 shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl border border-line bg-panel/95 p-1.5 shadow-2xl backdrop-blur-md">
       <ToolButton title="Thêm node" active={addMenuOpen} onClick={toggleAddMenu}>
         <svg width={ICON.size} height={ICON.size} viewBox={ICON.viewBox} fill={ICON.fill} stroke={ICON.stroke} strokeWidth={ICON.strokeWidth} strokeLinecap={ICON.strokeLinecap} strokeLinejoin={ICON.strokeLinejoin}>
           <path d="M12 5v14M5 12h14" />

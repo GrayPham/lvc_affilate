@@ -28,7 +28,7 @@ export default function FlowEdge({
         id={id}
         path={path}
         markerEnd={markerEnd}
-        style={{ stroke: "#6b6b74", strokeWidth: 1.5, strokeDasharray: "6 6", ...style }}
+        style={{ stroke: "var(--ink3)", strokeWidth: 1.5, strokeDasharray: "6 6", ...style }}
       />
       {/* Đốm sáng chạy theo hướng nguồn -> đích (glow qua drop-shadow). */}
       <circle r="3.4" fill="#7dd3fc" style={{ filter: "drop-shadow(0 0 4px #38bdf8)" }}>

@@ -29,7 +29,7 @@ export default function OutputPreview({
   const hp = useHoverPlay();
   return (
     <div
-      className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]"
+      className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-fill2 to-fill"
       {...(src && kind === "video" ? hp.hover : {})}
       title={src ? (kind === "video" ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined) : "Chưa có kết quả (chạy để tạo)"}
     >

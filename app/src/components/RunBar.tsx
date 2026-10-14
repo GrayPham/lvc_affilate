@@ -363,7 +363,7 @@ export default function RunBar() {
   }
 
   return (
-    <div className="flex flex-col gap-2.5 border-b border-line bg-[#121216] px-3 py-2.5 text-ink">
+    <div className="flex flex-col gap-2.5 border-b border-line bg-rail px-3 py-2.5 text-ink">
       <div className="flex items-center gap-1.5">
         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent-text" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />

@@ -91,7 +91,7 @@ export default function MediaCard({ label, selected, errors, runState, wide, onR
   return (
     <div
       className={
-        "relative overflow-hidden rounded-2xl border bg-[#17171a] shadow-lg transition-colors " +
+        "relative overflow-hidden rounded-2xl border bg-panel shadow-lg transition-colors " +
         (wide ? "w-72" : "w-56") +
         " " +
         nodeBorderClass({ hasErrors, selected, runState })

@@ -136,7 +136,7 @@ export function Switch({
       <span
         className={
           "absolute top-[3px] h-3.5 w-3.5 rounded-[7px] transition-[left] " +
-          (checked ? "left-[19px] bg-[#231703]" : "left-[3px] bg-bg")
+          (checked ? "left-[19px] bg-accent-ink" : "left-[3px] bg-ink3")
         }
       />
     </button>

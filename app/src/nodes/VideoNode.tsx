@@ -163,7 +163,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
       <MediaCard label={NODE_LABEL_VI.dola_video} selected={selected} errors={errors} runState={runState} wide>
         {/* Vung xem truoc: video ket qua neu da chay xong; chua co thi placeholder toi + glyph play. */}
         <div
-          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]"
+          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-fill2 to-fill"
           {...(videoSrc ? hp.hover : {})}
           title={videoSrc ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
         >

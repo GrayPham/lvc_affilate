@@ -89,7 +89,7 @@ export default function NodeLogPanel() {
   );
 
   return (
-    <div className="pointer-events-auto flex max-h-[min(60vh,22rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-line bg-[#17171a]/95 text-ink shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex max-h-[min(60vh,22rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-line bg-panel/95 text-ink shadow-2xl backdrop-blur-md">
       {/* Tiêu đề */}
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <div className="min-w-0 flex-1">

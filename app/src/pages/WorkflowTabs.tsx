@@ -248,7 +248,7 @@ export default function WorkflowTabs() {
             className={
               "group relative flex max-w-[16rem] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-2 text-xs " +
               (tab.id === activeId
-                ? "border-line bg-[#0a0a0b] text-ink"
+                ? "border-line bg-stage text-ink"
                 : "border-transparent text-ink3 hover:bg-fill hover:text-ink2")
             }
           >

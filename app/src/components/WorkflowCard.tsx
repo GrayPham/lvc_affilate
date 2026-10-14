@@ -91,7 +91,7 @@ export default function WorkflowCard({
 
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-line bg-panel">
-      <div className="relative aspect-[16/10] overflow-hidden bg-[#16161A]">
+      <div className="relative aspect-[16/10] overflow-hidden bg-stage">
         <img
           src={src}
           alt={`Ảnh bìa: ${title}`}

@@ -361,7 +361,7 @@ function WorkflowCanvas() {
   return (
     <div
       ref={wrapperRef}
-      className="relative flex-1 bg-[#0a0a0b]"
+      className="relative flex-1 bg-stage"
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDoubleClick={onPaneDoubleClick}
@@ -400,9 +400,22 @@ function WorkflowCanvas() {
         defaultEdgeOptions={{ type: "flow", style: { stroke: "#6b6b74", strokeWidth: 1.5 } }}
         fitView
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#2b2b32" bgColor="#0a0a0b" />
+        {/* React Flow nhận màu qua PROP, không qua class, nên không dùng được token Tailwind —
+            lấy thẳng biến CSS để lưới chấm và bản đồ thu nhỏ đổi theo giao diện sáng/tối. */}
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={22}
+          size={1.4}
+          color="var(--line2)"
+          bgColor="var(--stage)"
+        />
         <Controls />
-        <MiniMap pannable zoomable maskColor="rgba(10,10,11,0.6)" style={{ background: "#17171a" }} />
+        <MiniMap
+          pannable
+          zoomable
+          maskColor="color-mix(in srgb, var(--stage) 60%, transparent)"
+          style={{ background: "var(--panel)" }}
+        />
       </ReactFlow>
 
       {/* Thanh cong cu doc trai (P-lumina) noi tren canvas */}
@@ -443,7 +456,7 @@ function WorkflowCanvas() {
 
 export default function Workflow() {
   return (
-    <div className="flex h-full flex-col bg-[#0a0a0b]">
+    <div className="flex h-full flex-col bg-stage">
       <CaptureFramesPanel />
       <TrimPanel />
       <RunBar />
@@ -451,7 +464,7 @@ export default function Workflow() {
         <ReactFlowProvider>
           <WorkflowCanvas />
         </ReactFlowProvider>
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-line bg-[#121216] text-ink">
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-line bg-rail text-ink">
           <h2 className="border-b border-line p-2 text-xs font-semibold uppercase tracking-wide text-ink2">
             Tiến độ
           </h2>

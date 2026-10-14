@@ -38,13 +38,19 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f6f5f2;
-  --stage: #eceae5;
-  --panel: #ffffff;
-  --rail: #ffffff;
-  --fill: rgb(28 27 25 / 0.04);
-  --line: rgb(28 27 25 / 0.08);
-  --line2: rgb(28 27 25 / 0.15);
+  /* Ban ban giao de `panel`/`rail` = #ffffff. Dung nguyen thi man hinh toan mat phang TRANG TINH
+     canh nhau (canvas + the node + thanh ben + ban do thu nho) -> CHOI, nhin lau moi mat. Ha sang
+     mot bac va giu tong AM (vang nhe) cua bang mau: cac mat phang van phan biet duoc voi nhau
+     nhung khong con mang nao o do sang toi da. Tuong quan tang-nen giu nguyen thu tu:
+     stage (toi nhat) < bg < rail < panel (sang nhat). */
+  --bg: #f1efea;
+  --stage: #e4e1d9;
+  --panel: #fbfaf7;
+  --rail: #f7f5f1;
+  /* Vien dam hon mot chut de bu lai do tuong phan mat khi ha sang nen. */
+  --fill: rgb(28 27 25 / 0.05);
+  --line: rgb(28 27 25 / 0.11);
+  --line2: rgb(28 27 25 / 0.18);
   --ink: #1c1b19;
   --ink2: #4a4844;
   --ink3: #6f6c66;

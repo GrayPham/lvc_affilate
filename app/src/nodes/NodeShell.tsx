@@ -22,7 +22,7 @@ export default function NodeShell({ label, selected, errors, runState, children 
   return (
     <div
       className={
-        "w-56 rounded-2xl border bg-[#17171a] p-2.5 text-ink shadow-lg transition-colors " +
+        "w-56 rounded-2xl border bg-panel p-2.5 text-ink shadow-lg transition-colors " +
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >

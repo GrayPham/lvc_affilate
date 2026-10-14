@@ -58,7 +58,7 @@ export default function NodeFloatingToolbar({
   const items = actions ?? [];
   return (
     <NodeToolbar nodeId={nodeId} position={Position.Top} offset={10}>
-      <div className="flex items-center gap-0.5 rounded-lg border border-line bg-[#1c1c22] px-1 py-0.5 shadow-lg">
+      <div className="flex items-center gap-0.5 rounded-lg border border-line bg-panel px-1 py-0.5 shadow-lg">
         {items.map((a) => (
           <ActionButton key={a.key} action={a} />
         ))}

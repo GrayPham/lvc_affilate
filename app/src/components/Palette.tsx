@@ -61,7 +61,7 @@ export default function Palette({
   );
 
   return (
-    <div className="flex max-h-[70vh] w-56 flex-col gap-1.5 rounded-2xl border border-line bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
+    <div className="flex max-h-[70vh] w-56 flex-col gap-1.5 rounded-2xl border border-line bg-panel/95 p-2 shadow-2xl backdrop-blur-md">
       <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ink2">
         {connectFrom ? "Nối tới node" : "Thêm node"}
       </h2>

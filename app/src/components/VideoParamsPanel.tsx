@@ -75,7 +75,7 @@ export default function VideoParamsPanel() {
   }
 
   return (
-    <div className="pointer-events-auto flex max-w-[calc(100%-2rem)] flex-col gap-2 rounded-2xl border border-line bg-[#17171a]/95 px-3 py-2.5 text-ink shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex max-w-[calc(100%-2rem)] flex-col gap-2 rounded-2xl border border-line bg-panel/95 px-3 py-2.5 text-ink shadow-2xl backdrop-blur-md">
       {/* Chip tham chieu (cong refs) */}
       {chips.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-line pb-2">

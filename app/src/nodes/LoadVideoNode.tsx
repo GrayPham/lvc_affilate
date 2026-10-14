@@ -130,7 +130,7 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
         onRename={(name) => updateNodeData(id, { ...data, label: name })}
       >
         <div
-          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-[#1f1f26] to-[#111114]"
+          className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-fill2 to-fill"
           {...(src ? hp.hover : {})}
           title={src ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
         >
