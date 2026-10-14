@@ -1,0 +1,21 @@
+{
+  "kind": "note",
+  "version": 1,
+  "category": "text",
+  "labelVi": "Ghi chú",
+  "inputs": [],
+  "outputs": [],
+  "defaultParams": {
+    "text": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "title": "Nội dung ghi chú",
+        "format": "textarea"
+      }
+    }
+  }
+}

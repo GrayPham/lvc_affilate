@@ -18,7 +18,7 @@
 //! | [`insert_text`] | `Input.insertText` |
 //! | [`set_file_input`] | `DOM.getDocument` + `DOM.querySelector` + `DOM.resolveNode` (qua `Page::find_element`) + `DOM.setFileInputFiles` |
 //! | [`delete_cookies`] | `Network.deleteCookies` |
-//! | [`cookies`], [`cookie_header`] | `Network.getCookies` (`urls=[url]`) |
+//! | [`cookies`], [`cookie_header`], [`cookies_full`] | `Network.getCookies` (`urls=[url]`) |
 //! | [`url`] | trang thai frame chinh cua chromiumoxide (`Page.frameNavigated`) |
 //! | [`reload`] | `Page.reload` + cho `Page.domContentEventFired` |
 //! | [`goto`] | `Page.navigate` + cho `Page.domContentEventFired` |
@@ -495,6 +495,54 @@ pub async fn cookies(page: &Page, url: &str) -> Result<Vec<CookieKv>, BrowserErr
     Ok(raw.into_iter().map(CookieKv::from).collect())
 }
 
+/// `Network.getCookies(urls=[url])` -> danh sach [`lvc_core::cookie::Cookie`] ĐẦY ĐỦ (khác
+/// [`cookies`]/[`CookieKv`] chỉ giữ 3 trường cho lớp Dola) — dùng khi cần TIÊM LẠI cookie đã đọc
+/// qua [`crate::driver::BrowserDriver::add_cookies`] (Phần C, trích xuất cookie sau đăng nhập thủ
+/// công — `CookieParam` lúc tiêm cần đủ `path`/`secure`/`http_only`/`expires`, không chỉ
+/// name/value/domain). `expires == -1.0` (CDP: "khong co han") -> `None` (cookie phiên, khớp
+/// `lvc_core::cookie::Cookie::expires`). KHÔNG log giá trị.
+///
+/// # Errors
+/// Loi CDP.
+pub async fn cookies_full(
+    page: &Page,
+    url: &str,
+) -> Result<Vec<lvc_core::cookie::Cookie>, BrowserError> {
+    let raw = page
+        .execute(
+            GetCookiesParams::builder()
+                .urls(vec![url.to_string()])
+                .build(),
+        )
+        .await
+        .map_err(map_cdp)?
+        .result
+        .cookies;
+    Ok(raw.into_iter().map(cdp_cookie_to_core).collect())
+}
+
+/// THUẦN (tách riêng để test không cần `CdpCookie` thật): CDP dùng `-1` làm "khong co han" (cookie
+/// phiên), `lvc_core::cookie::Cookie::expires` dùng `None` cho CÙNG ý nghĩa đó — ánh xạ ở đây.
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "epoch giay thuc te < 2^53, ep tu f64 sang i64 khong mat gia tri"
+)]
+fn expires_from_cdp(raw: f64) -> Option<i64> {
+    if raw < 0.0 { None } else { Some(raw as i64) }
+}
+
+fn cdp_cookie_to_core(c: CdpCookie) -> lvc_core::cookie::Cookie {
+    lvc_core::cookie::Cookie {
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        secure: c.secure,
+        http_only: c.http_only,
+        expires: expires_from_cdp(c.expires),
+    }
+}
+
 /// [`cookies`] gop thanh header `Cookie` dang `a=b; c=d` (cho reqwest, Task 10). KHONG log gia tri.
 ///
 /// # Errors
@@ -844,6 +892,13 @@ mod tests {
                 "https://x.dola.com/bdcaptcha.html"
             ]
         );
+    }
+
+    #[test]
+    fn expires_from_cdp_am_1_la_cookie_phien() {
+        assert_eq!(expires_from_cdp(-1.0), None);
+        assert_eq!(expires_from_cdp(0.0), Some(0));
+        assert_eq!(expires_from_cdp(1_800_000_000.0), Some(1_800_000_000));
     }
 
     /// Chinh sach log: `Debug` cua `CookieKv` KHONG in gia tri cookie.

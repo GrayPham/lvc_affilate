@@ -134,6 +134,15 @@ pub trait BrowserDriver: Send + Sync {
     /// Loi CDP khi dat cookie.
     async fn add_cookies(&self, s: &Self::Session, cookies: &[Cookie]) -> Result<(), BrowserError>;
 
+    /// Doc lai cookie hien co cua `url` tren phien `s` (doi xung voi [`Self::add_cookies`]) —
+    /// Phan C: trich xuat cookie sau dang nhap thu cong (`login::open_headed`, tick dinh ky trong
+    /// luc cua so con mo) de luu lai vao credential, KHONG chi giu `profile_dir`. Gioi han theo
+    /// `url` (giong `ops::cookies`), khong doc "cookie ca trinh duyet".
+    ///
+    /// # Errors
+    /// Loi CDP khi doc cookie.
+    async fn cookies(&self, s: &Self::Session, url: &str) -> Result<Vec<Cookie>, BrowserError>;
+
     /// # Errors
     /// Dieu huong that bai (`BrowserError::Navigation`) hoac loi CDP.
     async fn goto(&self, s: &Self::Session, url: &str) -> Result<(), BrowserError>;
@@ -249,6 +258,9 @@ mod tests {
             }
             async fn add_cookies(&self, (): &(), _: &[Cookie]) -> Result<(), BrowserError> {
                 Ok(())
+            }
+            async fn cookies(&self, (): &(), _: &str) -> Result<Vec<Cookie>, BrowserError> {
+                Ok(vec![])
             }
             async fn goto(&self, (): &(), _: &str) -> Result<(), BrowserError> {
                 Ok(())

@@ -13,6 +13,7 @@ pub const PLATFORMS: &[&str] = &[
     "apple",
     "gemini",
     "chatgpt_web",
+    "museai",
 ];
 
 /// URL trang đăng nhập của nền tảng (để B mở cho người dùng tự đăng nhập). `None` nếu không rõ.
@@ -24,6 +25,7 @@ pub fn login_url(platform: &str) -> Option<&'static str> {
         "facebook" => "https://www.facebook.com/login/",
         "apple" => "https://appleid.apple.com/",
         "chatgpt_web" => "https://chatgpt.com/auth/login",
+        "museai" => "https://muse.ai/",
         _ => return None,
     })
 }

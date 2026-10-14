@@ -24,6 +24,14 @@ pub fn downloads_dir(base: &Path) -> PathBuf {
     base.join("downloads")
 }
 
+/// Thu muc TAM: anh/canh le tai ve truoc khi ghep, xem `commands::cache`. Tach khoi
+/// `downloads_dir` vi noi dung o day la rac co the xoa bat ky luc nao, con `downloads` la ket qua
+/// nguoi dung giu lai.
+#[must_use]
+pub fn cache_dir(base: &Path) -> PathBuf {
+    base.join("cache")
+}
+
 /// Thu muc du lieu ung dung theo dinh danh Tauri (`identifier` trong `tauri.conf.json`,
 /// `vn.lvcmedia.seedance`) — vd Windows `%APPDATA%/vn.lvcmedia.seedance`.
 ///
@@ -51,6 +59,14 @@ mod tests {
         assert_eq!(
             logs_dir(Path::new("/app/data")),
             PathBuf::from("/app/data/logs")
+        );
+    }
+
+    #[test]
+    fn cache_dir_noi_thu_muc_cache() {
+        assert_eq!(
+            cache_dir(Path::new("/app/data")),
+            PathBuf::from("/app/data/cache")
         );
     }
 

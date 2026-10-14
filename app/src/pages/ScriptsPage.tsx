@@ -1,12 +1,16 @@
 // Man "Kịch bản" (P3c Task 2): `ScriptList` (trai) + `SceneTable` (phai). Tu cap nhat `doc` (trang
-// thai tung canh) qua `useRunStore().events` khi mot su kien `task_stage/task_done/task_failed`
+// thai tung canh) qua `useEngineActivity().events` khi mot su kien `task_stage/task_done/task_failed`
 // CHAM toi mot `taskId` thuoc kich ban DANG MO (debounce 300ms) — cung mot mo hinh voi
 // `pages/TasksPage.tsx` (KHONG tu `listenEngine` rieng o day: `src/store/engine_bridge.ts`, goi tu
 // `main.tsx`, la subscription DUY NHAT cho kenh `engine://event` suot vong doi app; trang nay chi
-// DOC `useRunStore().events`, xem doc file do).
+// DOC `useEngineActivity().events`, xem doc file do).
+//
+// PHAI dung `engineActivity` (store toan app) chu KHONG phai `useRunStore`: tu khi co nhieu tab
+// workflow, `useRunStore` doi mot `RunStoreProvider` bao ngoai — trang nay nam NGOAI cac tab do
+// nen goi vao se nem loi va lam TRANG ca app.
 import { useEffect, useRef } from "react";
 
-import { useRunStore } from "../store/run";
+import { useEngineActivity } from "../store/engineActivity";
 import { useScriptsStore } from "../store/scripts";
 import ScriptList from "../components/ScriptList";
 import SceneTable from "../components/SceneTable";
@@ -28,7 +32,7 @@ export default function ScriptsPage() {
   const refreshDoc = useScriptsStore((s) => s.refreshDoc);
   const doc = useScriptsStore((s) => s.doc);
   const clearRunIdIfMatches = useScriptsStore((s) => s.clearRunIdIfMatches);
-  const events = useRunStore((s) => s.events);
+  const events = useEngineActivity((s) => s.events);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {

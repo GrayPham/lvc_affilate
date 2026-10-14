@@ -16,3 +16,5 @@ accounts_creds.json
 app/node_modules
 app/dist
 crates/lvc-app/gen
+cookie_test/*
+references/

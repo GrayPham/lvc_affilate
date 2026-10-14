@@ -25,6 +25,13 @@ lvc-google.workspace = true
 # tuong ung cho node seedance_*/grok_image. Cung khuon lvc-google.
 lvc-seedance.workspace = true
 lvc-grok.workspace = true
+lvc-tts.workspace = true
+# museai.rs: client giao thuc Hatch/Noise cua muse.ai — engine impl dich vu MuseaiVideoHost cho
+# node museai_video (mo trinh duyet that lay bootstrap token roi noi qua lvc-museai::protocol).
+lvc-museai.workspace = true
+# scriptsink.rs: hop dong dich vu ScriptSinkHost (luu ket qua node script_gen thanh kich ban trong
+# tab "Kịch bản") — engine impl bang lvc-store::ScriptRepo (da la dependency tren).
+lvc-scripts.workspace = true
 async-trait.workspace = true
 # P6 apimedia/util.rs: dung data URL base64 cho anh goc i2v (Seedance nhan image_url).
 base64.workspace = true
@@ -51,6 +58,13 @@ node-prompt.workspace = true
 node-image-upload.workspace = true
 node-save.workspace = true
 node-dola-video.workspace = true
+# Script-video (P-affiliate-multi-engine): test registry day du 4 node video — xem
+# `test_support::test_registry_all_video`.
+node-veo3-video.workspace = true
+node-google-video.workspace = true
+node-seedance-video.workspace = true
+# examples/museai_gen_one.rs: thi nghiem song MOT LAN sinh video MuseAI that.
+node-museai-video.workspace = true
 # pool.rs (Task 16): accounts_dir gia (thu muc profile phai ton tai — browser_pool.py:405-411).
 tempfile = "3"
 # examples/gen_one.rs (Task 18): tracing ra stderr, env filter; CHI cho example/test (dev-dep).

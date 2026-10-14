@@ -8,5 +8,11 @@
   "defaultModel": "seedance-2.0",
   "defaultRatio": "9:16",
   "defaultDuration": 10,
-  "dolaChannel": "api"
+  "dolaChannel": "api",
+  "subdirPattern": "workflow_date",
+  "filenameTemplate": "{workflow}_{gio}_{stt}",
+  "duplicatePolicy": "number",
+  "onError": "skip",
+  "restBetween": 30,
+  "missingAccount": "skip"
 }

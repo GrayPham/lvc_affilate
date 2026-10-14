@@ -6,7 +6,8 @@
     "scope": "public",
     "category": "Cơ bản",
     "thumbnail": "",
-    "updatedAt": 0.0
+    "updatedAt": 0.0,
+    "version": ""
   },
   {
     "id": "tpl_1",
@@ -15,6 +16,7 @@
     "scope": "private",
     "category": "Cơ bản",
     "thumbnail": "",
-    "updatedAt": 1700000000.0
+    "updatedAt": 1700000000.0,
+    "version": ""
   }
 ]

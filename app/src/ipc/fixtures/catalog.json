@@ -512,6 +512,130 @@
     }
   },
   {
+    "kind": "museai_image",
+    "version": 1,
+    "category": "image",
+    "labelVi": "Tạo ảnh MuseAI",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "museai",
+      "kinds": [
+        "login"
+      ]
+    },
+    "defaultParams": {
+      "account": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "type": "string",
+          "title": "Tài khoản (rỗng = tự chọn)"
+        }
+      }
+    }
+  },
+  {
+    "kind": "museai_video",
+    "version": 1,
+    "category": "video",
+    "labelVi": "Tạo video MuseAI",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "museai",
+      "kinds": [
+        "login"
+      ]
+    },
+    "defaultParams": {
+      "account": "",
+      "aspect": "",
+      "duration": null
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "type": "string",
+          "title": "Tài khoản (rỗng = tự chọn)"
+        },
+        "aspect": {
+          "type": "string",
+          "title": "Tỉ lệ khung hình (chỉ chèn vào prompt — muse.ai không có API, không đảm bảo)",
+          "enum": [
+            "",
+            "16:9",
+            "9:16",
+            "1:1"
+          ]
+        },
+        "duration": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "title": "Thời lượng giây (chỉ chèn vào prompt, không đảm bảo)"
+        }
+      }
+    }
+  },
+  {
+    "kind": "note",
+    "version": 1,
+    "category": "text",
+    "labelVi": "Ghi chú",
+    "inputs": [],
+    "outputs": [],
+    "defaultParams": {
+      "text": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "title": "Nội dung ghi chú",
+          "format": "textarea"
+        }
+      }
+    }
+  },
+  {
     "kind": "prompt",
     "version": 1,
     "category": "text",
@@ -591,6 +715,99 @@
     }
   },
   {
+    "kind": "script_agent",
+    "version": 1,
+    "category": "text",
+    "labelVi": "Agent kịch bản affiliate",
+    "inputs": [
+      {
+        "name": "brief",
+        "type": "text",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "text",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "gemini",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "topic": "",
+      "num_scenes": 4,
+      "language": "vi",
+      "style": "",
+      "extra_instructions": "",
+      "credential": "",
+      "provider": "gemini",
+      "save_as_script": false,
+      "script_name": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "title": "Sản phẩm / chương trình affiliate",
+          "format": "textarea"
+        },
+        "num_scenes": {
+          "type": "integer",
+          "title": "Số phân cảnh",
+          "minimum": 1
+        },
+        "language": {
+          "type": "string",
+          "title": "Ngôn ngữ"
+        },
+        "style": {
+          "type": "string",
+          "title": "Phong cách"
+        },
+        "extra_instructions": {
+          "type": "string",
+          "title": "Yêu cầu thêm (tuỳ chọn, nối vào chỉ dẫn affiliate có sẵn)",
+          "format": "textarea"
+        },
+        "credential": {
+          "type": "string",
+          "title": "Tên API key"
+        },
+        "provider": {
+          "type": "string",
+          "title": "Nhà cung cấp",
+          "enum": [
+            "gemini",
+            "openai"
+          ]
+        },
+        "save_as_script": {
+          "type": "boolean",
+          "title": "Lưu thành kịch bản khi chạy"
+        },
+        "script_name": {
+          "type": "string",
+          "title": "Tên kịch bản (rỗng = tự đặt tên)"
+        }
+      },
+      "required": [
+        "num_scenes",
+        "provider"
+      ]
+    }
+  },
+  {
     "kind": "script_gen",
     "version": 1,
     "category": "text",
@@ -626,7 +843,9 @@
       "style": "",
       "system": "",
       "credential": "",
-      "provider": "gemini"
+      "provider": "gemini",
+      "save_as_script": false,
+      "script_name": ""
     },
     "paramsSchema": {
       "type": "object",
@@ -665,6 +884,14 @@
             "gemini",
             "openai"
           ]
+        },
+        "save_as_script": {
+          "type": "boolean",
+          "title": "Lưu thành kịch bản khi chạy"
+        },
+        "script_name": {
+          "type": "string",
+          "title": "Tên kịch bản (rỗng = tự đặt tên)"
         }
       },
       "required": [
@@ -858,6 +1085,76 @@
     }
   },
   {
+    "kind": "tts",
+    "version": 1,
+    "category": "audio",
+    "labelVi": "Tạo giọng đọc AI (TTS)",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text",
+        "many": true,
+        "required": true,
+        "collect": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "audio",
+        "many": true,
+        "required": false,
+        "collect": false
+      }
+    ],
+    "credential": {
+      "provider": "elevenlabs",
+      "kinds": [
+        "api_key"
+      ]
+    },
+    "defaultParams": {
+      "provider": "elevenlabs",
+      "voice_id": "",
+      "model": "",
+      "speed": 1.0,
+      "credential": ""
+    },
+    "paramsSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "title": "Nhà cung cấp",
+          "enum": [
+            "elevenlabs",
+            "minimax"
+          ]
+        },
+        "voice_id": {
+          "type": "string",
+          "title": "Id giọng đọc (bắt buộc)"
+        },
+        "model": {
+          "type": "string",
+          "title": "Model (rỗng = mặc định)"
+        },
+        "speed": {
+          "type": "number",
+          "title": "Tốc độ đọc (1.0 = mặc định)"
+        },
+        "credential": {
+          "type": "string",
+          "title": "Tên API key (rỗng = tự chọn)"
+        }
+      },
+      "required": [
+        "provider",
+        "voice_id"
+      ]
+    }
+  },
+  {
     "kind": "veo3_image",
     "version": 1,
     "category": "image",
@@ -928,14 +1225,12 @@
         },
         "account": {
           "type": "string",
-          "title": "Tai khoan (ten/label credential Google, bat buoc)",
-          "minLength": 1
+          "title": "Tai khoan (rong = tu chon)"
         }
       },
       "required": [
         "model",
-        "aspect",
-        "account"
+        "aspect"
       ]
     }
   },
@@ -1012,15 +1307,14 @@
         },
         "account": {
           "type": "string",
-          "title": "Tai khoan (ten/label credential Google, bat buoc)"
+          "title": "Tai khoan (rong = tu chon)"
         }
       },
       "required": [
         "mode",
         "model",
         "aspect",
-        "seed_count",
-        "account"
+        "seed_count"
       ]
     }
   }

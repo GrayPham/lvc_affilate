@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "rust-skills@rust-skills": true,
+    "superpowers@superpowers-dev": true
+  }
+}

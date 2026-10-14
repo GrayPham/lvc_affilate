@@ -22,6 +22,7 @@
 //! chuoi proxy vao `tracing::*!`/thong diep loi).
 
 use std::path::{Component, Path};
+use std::sync::Arc;
 use std::time::Duration;
 
 use lvc_browser::dola::labels::DOLA_CHAT_URL;
@@ -382,6 +383,17 @@ fn looks_like_chromium_profile(dir: &Path) -> std::io::Result<bool> {
 }
 
 impl<D: BrowserDriver + 'static> Engine<D> {
+    /// Thu muc profile Dola cua `name` (`accounts_dir/<name>`) — da qua [`validate_name`], AN TOAN
+    /// dung lam goc `Path::join`. Dung cho "Mo trinh duyet xem" (lvc-app) — tranh lap lai
+    /// `accounts_dir.join(name)` TRUC TIEP voi ten CHUA kiem (xem C1, review Task 10: `".."`/duong
+    /// tuyet doi thoat khoi `accounts_dir` neu khong qua `validate_name` truoc).
+    ///
+    /// # Errors
+    /// [`AccountError::InvalidName`] — xem [`validate_name`].
+    pub fn account_profile_dir(&self, name: &str) -> Result<std::path::PathBuf, AccountError> {
+        Ok(self.cfg.accounts_dir.join(validate_name(name)?))
+    }
+
     /// browser_pool.py:490-548 `list_accounts` — xem bang doi chieu day du trong doc [`AccountStatus`]
     /// / `task-10-context.md`. Dung [`crate::pool::AccountPool::rows_with_dirs`] lam nguon danh sach
     /// (CUNG nguon voi `candidates_for`/`pick_account` — UI khong bao gio thay tai khoan khac voi
@@ -691,6 +703,75 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             login_ok,
             checked_at: now,
         })
+    }
+
+    /// Mở lại profile Dola của `name` ở chế độ HIỆN cửa sổ để người dùng tự xem/thao tác — "Mở
+    /// trình duyệt" trong UI tab Tài khoản. KHÁC [`Self::verify`] (headless, đóng ngay sau khi đọc
+    /// trạng thái): cửa sổ ở đây ở lại cho tới khi người dùng tự đóng, nên THUÊ (`try_lease`) tài
+    /// khoản trong SUỐT thời gian đó — tránh một lượt tự động (`generate_video`) tranh chấp MỞ
+    /// CÙNG `profile_dir` (khoá cấp hệ điều hành của Chrome, không phải khoá của app) trong lúc
+    /// người dùng đang xem. `Lease` được CHUYỂN vào tác vụ nền theo dõi cửa sổ
+    /// ([`crate::login::watch_until_closed`]) — chỉ nhả khi cửa sổ đóng (hoặc quá giờ), KHÔNG nhả
+    /// ngay khi hàm này trả về (khác `verify`).
+    ///
+    /// # Errors
+    /// - [`AccountError::InvalidName`] (C1): `name` không hợp lệ.
+    /// - [`AccountError::AccountNotFound`]: không có dòng `accounts_meta` cho `name`.
+    /// - [`AccountError::InvalidProxy`]: `accounts_meta.proxy` của dòng này không còn hợp lệ.
+    /// - [`AccountError::ProfileBusy`]: tài khoản đang có tác vụ khác giữ (lease/OS-level Chrome
+    ///   lock).
+    /// - [`AccountError::Browser`]/[`AccountError::Io`]: `launch`/`goto`/tạo thư mục lỗi.
+    pub async fn open_account_viewer(&self, name: &str) -> Result<(), AccountError>
+    where
+        D::Session: 'static,
+    {
+        let name = validate_name(name)?;
+        let row = self
+            .pool()
+            .account_row(name)
+            .await?
+            .ok_or_else(|| AccountError::AccountNotFound(name.to_string()))?;
+        let proxy_spec = effective_proxy(&row.proxy, &self.cfg.global_proxy)
+            .map_err(|e| AccountError::InvalidProxy(e.to_string()))?;
+        let Some(lease) = self.pool().try_lease(name, &row.proxy) else {
+            return Err(AccountError::ProfileBusy(format!(
+                "tai khoan '{name}' dang co tac vu khac dang chay"
+            )));
+        };
+
+        // I2 (nhu verify): loai phien am trong cache TRUOC — tranh chinh phien am do gay ProfileBusy
+        // khi launch cua so moi tren CUNG profile_dir.
+        if let Some(s) = self.cache().remove(name).await {
+            self.close(name, s).await;
+        }
+
+        let browser = effective_browser(name, &row.browser);
+        let opts = LaunchOpts {
+            profile_dir: self.cfg.accounts_dir.join(name),
+            browser,
+            executable_override: self.cfg.executable_override.clone(),
+            headless: false,
+            proxy: proxy_spec,
+            logs_dir: self.cfg.logs_dir.clone(),
+            ..LaunchOpts::default()
+        };
+        let session = self.driver.launch(&opts).await?;
+
+        if let Err(e) = self.driver.goto(&session, DOLA_CHAT_URL).await {
+            if let Err(close_err) = self.driver.close(session).await {
+                warn!(error = %close_err, "open_account_viewer: khong dong duoc phien sau khi goto loi (bo qua)");
+            }
+            drop(lease);
+            return Err(AccountError::Browser(e));
+        }
+
+        let driver = Arc::clone(&self.driver);
+        tokio::spawn(async move {
+            // `lease` song den khi tac vu nen ket thuc (cua so dong/qua gio) -> nha o day.
+            let _lease = lease;
+            crate::login::watch_until_closed(driver, session, None).await;
+        });
+        Ok(())
     }
 
     /// Bat/tat lich mot tai khoan roi bao lai [`Self::refresh_account_count`] (context.md: goi SAU
@@ -1189,6 +1270,51 @@ mod tests {
         assert_eq!(err.code(), "PROFILE_BUSY");
         drop(lease);
         assert!(f.calls().is_empty(), "khong duoc dung browser khi dang ban");
+    }
+
+    #[tokio::test]
+    async fn open_account_viewer_launch_goto_dung_profile_giu_lease() {
+        let f = fx(&["a"], vec![FakeStep::Launch(Ok(()))]).await;
+        f.engine.open_account_viewer("a").await.unwrap();
+        let calls = f.calls();
+        assert_eq!(
+            calls.first(),
+            Some(&FakeCall::Launch {
+                profile_dir: f.accounts_dir().join("a"),
+                browser: BrowserKind::Chromium,
+            })
+        );
+        // Lease da chuyen vao tac vu nen theo doi cua so — con ban NGAY SAU khi ham tra ve (tac vu
+        // nen chua kip chay, runtime test mac dinh current-thread, chua co diem `await` nao nhuong
+        // cho no) — khac `verify` (nha lease ngay khi ham tra ve).
+        assert!(
+            f.engine.pool().try_lease("a", "").is_none(),
+            "lease phai con bi giu boi tac vu nen theo doi cua so"
+        );
+    }
+
+    #[tokio::test]
+    async fn open_account_viewer_dang_co_lease_bao_profile_busy() {
+        let f = fx(&["a"], vec![]).await;
+        let lease = f.engine.pool().try_lease("a", "").unwrap();
+        let err = f.engine.open_account_viewer("a").await.unwrap_err();
+        assert_eq!(err.code(), "PROFILE_BUSY");
+        drop(lease);
+        assert!(f.calls().is_empty(), "khong duoc dung browser khi dang ban");
+    }
+
+    #[tokio::test]
+    async fn open_account_viewer_ten_khong_hop_le_bao_loi() {
+        let f = fx(&[], vec![]).await;
+        let err = f.engine.open_account_viewer("..").await.unwrap_err();
+        assert_eq!(err.code(), "INVALID_NAME");
+    }
+
+    #[tokio::test]
+    async fn open_account_viewer_tai_khoan_khong_ton_tai_bao_loi() {
+        let f = fx(&[], vec![]).await;
+        let err = f.engine.open_account_viewer("ghost").await.unwrap_err();
+        assert_eq!(err.code(), "ACCOUNT_NOT_FOUND");
     }
 
     #[tokio::test]

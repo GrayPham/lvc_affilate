@@ -104,6 +104,17 @@ pub async fn build_engine<D: BrowserDriver + 'static>(
 
     let requeue = engine.requeue_on_start(now_unix()).await?;
 
+    // Hang cho (man "Tác vụ"): app tat giua chung thi muc dang `running` khong bao gio tu ket
+    // thuc — de nguyen se ket hang cho mai mai. Dua ve `waiting` de chay lai tu dau muc do.
+    match lvc_store::QueueRepo::new(&db).requeue_running().await {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(
+            requeued = n,
+            "hang cho: dua muc dang chay do lan truoc ve cho"
+        ),
+        Err(e) => tracing::warn!(error = %e, "hang cho: khong dua duoc muc dang chay ve cho"),
+    }
+
     Ok(Bootstrapped {
         engine,
         handle,
@@ -169,19 +180,32 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
     engine.set_veo3_account_resolver(Arc::new(crate::veo3::VaultVeo3AccountResolver::new(
         Arc::clone(&vault),
     )));
+    // Composition root: cap nguon profile_dir cho MuseaiVideoHost — engine resolve TEN credential
+    // MuseAI (`account`) -> profile_dir qua Vault. Thieu dong nay = moi lan tao video MuseAI deu
+    // loi "chua cau hinh kho tai khoan" (NoAccountResolver mac dinh).
+    engine.set_museai_account_resolver(Arc::new(crate::museai::VaultMuseaiAccountResolver::new(
+        Arc::clone(&vault),
+    )));
     // P5 Task 9 (composition root): thu muc goc chua profile Chrome KHACH tam (mint reCAPTCHA an
     // danh, khong tai khoan nao) — canh `accounts/`, xem crates/lvc-engine/src/veo3.rs doc module.
     let veo3_guest_dir = base.join("profiles").join("temp_profile");
     std::fs::create_dir_all(&veo3_guest_dir).map_err(BootError::Io)?;
     engine.set_veo3_guest_root_dir(veo3_guest_dir);
+    // Thu muc tam: don file qua CACHE_MAX_AGE_DAYS ngay (dong "Tu xoa sau 7 ngay" tren man Cai dat
+    // la mo ta cua CHINH buoc nay). Khong lam chet khoi dong neu don that bai — chi la rac.
+    crate::commands::cache::prune_cache_at_startup(&base);
     app.manage(AppState {
         engine,
         vault,
         handle,
         db,
-        settings: RwLock::new(settings),
+        settings: Arc::new(RwLock::new(settings)),
+        base_dir: base.clone(),
         runs: Arc::new(DashMap::new()),
         resuming: Arc::new(DashSet::new()),
+        template_registry_url: lvc_template_registry::DEFAULT_INDEX_URL.to_string(),
+        queue_running: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        queue_cancel: std::sync::Arc::new(std::sync::Mutex::new(None)),
     });
     Ok(())
 }

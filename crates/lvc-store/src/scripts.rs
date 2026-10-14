@@ -41,6 +41,15 @@ pub struct ScriptRow {
     pub dir: String,
     pub created_at: f64,
     pub updated_at: f64,
+    /// `kind` node Video dung khi Chay (vd `"dola_video"`/`"veo3_video"`/`"google_video"`/
+    /// `"seedance_video"`) — migration `0006_scripts_video_config.sql`, mac dinh `"dola_video"`.
+    pub video_kind: String,
+    /// Tham so node Video dang JSON tho; rong (`""`) = "chua dat" (xem
+    /// `lvc_engine::scripts::effective_video_params`). KHONG giai ma o day — `ScriptRepo` khong
+    /// biet/khong validate hinh dang params theo kind (ADR-R014).
+    pub video_params: String,
+    /// Nhan phan loai tu do (vd "Affiliate") — khong rang buoc enum.
+    pub category: String,
 }
 
 fn row_to_script(r: &sqlx::sqlite::SqliteRow) -> Result<ScriptRow, StoreError> {
@@ -50,6 +59,9 @@ fn row_to_script(r: &sqlx::sqlite::SqliteRow) -> Result<ScriptRow, StoreError> {
         dir: r.try_get("dir")?,
         created_at: r.try_get("created_at")?,
         updated_at: r.try_get("updated_at")?,
+        video_kind: r.try_get("video_kind")?,
+        video_params: r.try_get("video_params")?,
+        category: r.try_get("category")?,
     })
 }
 
@@ -67,9 +79,13 @@ pub struct ScriptMeta {
     pub done: i64,
     pub failed: i64,
     pub running: i64,
+    pub video_kind: String,
+    pub video_params: String,
+    pub category: String,
 }
 
 const COUNTS_SQL: &str = "SELECT s.id, s.name, s.dir, s.created_at, s.updated_at,
+       s.video_kind, s.video_params, s.category,
        COUNT(sc.id) AS total,
        SUM(CASE WHEN t.status = ?1 THEN 1 ELSE 0 END) AS done,
        SUM(CASE WHEN t.status = ?2 THEN 1 ELSE 0 END) AS failed,
@@ -94,6 +110,9 @@ fn row_to_meta(r: &sqlx::sqlite::SqliteRow) -> Result<ScriptMeta, StoreError> {
         done: done.unwrap_or(0),
         failed: failed.unwrap_or(0),
         running: running.unwrap_or(0),
+        video_kind: r.try_get("video_kind")?,
+        video_params: r.try_get("video_params")?,
+        category: r.try_get("category")?,
     })
 }
 
@@ -275,6 +294,49 @@ impl ScriptRepo {
                 .execute(self.db.pool())
                 .await?;
         }
+        self.get(id)
+            .await?
+            .ok_or_else(|| StoreError::BadPath(format!("script {id} khong ton tai")))
+    }
+
+    /// Dat engine Video + tham so dung khi Chay kich ban. `video_params` la CHUOI JSON tho (rong
+    /// = "chua dat", xem doc [`ScriptRow::video_params`]) — `ScriptRepo` khong validate `kind`/
+    /// hinh dang params (viec do thuoc lop goi, xem `lvc-app::commands::scripts::
+    /// script_set_video_config`, dung `Registry::manifests()` de kiem `kind` ton tai).
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi/doc lai that bai; coi id khong ton tai la [`StoreError::BadPath`].
+    pub async fn set_video_config(
+        &self,
+        id: &str,
+        video_kind: &str,
+        video_params: &str,
+    ) -> Result<ScriptRow, StoreError> {
+        sqlx::query(
+            "UPDATE scripts SET video_kind = ?2, video_params = ?3, updated_at = ?4 WHERE id = ?1",
+        )
+        .bind(id)
+        .bind(video_kind)
+        .bind(video_params)
+        .bind(now())
+        .execute(self.db.pool())
+        .await?;
+        self.get(id)
+            .await?
+            .ok_or_else(|| StoreError::BadPath(format!("script {id} khong ton tai")))
+    }
+
+    /// Dat nhan phan loai tu do (vd "Affiliate") — khong rang buoc gia tri.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi/doc lai that bai; coi id khong ton tai la [`StoreError::BadPath`].
+    pub async fn set_category(&self, id: &str, category: &str) -> Result<ScriptRow, StoreError> {
+        sqlx::query("UPDATE scripts SET category = ?2, updated_at = ?3 WHERE id = ?1")
+            .bind(id)
+            .bind(category.trim())
+            .bind(now())
+            .execute(self.db.pool())
+            .await?;
         self.get(id)
             .await?
             .ok_or_else(|| StoreError::BadPath(format!("script {id} khong ton tai")))
@@ -590,7 +652,7 @@ impl ScriptRepo {
 #[cfg(test)]
 mod tests {
     use super::{ReplaceScenesError, SceneIn, ScriptRepo};
-    use crate::{BatchRef, Db, TaskRepo};
+    use crate::{BatchRef, Db, StoreError, TaskRepo};
     use lvc_core::{LogoMode, Mode, Model, Ratio, Scene};
 
     fn scene_in(id: Option<&str>, prompt: &str) -> SceneIn {
@@ -909,5 +971,63 @@ mod tests {
         let statuses = repo.scene_task_statuses(&s.id).await.unwrap();
         assert!(statuses.is_empty());
         assert!(repo.running_scene_ids(&s.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn script_moi_tao_mac_dinh_dola_video_va_category_rong() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = ScriptRepo::new(&db);
+        let s = repo.create("Demo", "").await.unwrap();
+        assert_eq!(s.video_kind, "dola_video");
+        assert_eq!(s.video_params, "");
+        assert_eq!(s.category, "");
+
+        let metas = repo.list_with_counts().await.unwrap();
+        assert_eq!(metas[0].video_kind, "dola_video");
+        assert_eq!(metas[0].category, "");
+    }
+
+    #[tokio::test]
+    async fn set_video_config_ghi_dung_kind_va_params() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = ScriptRepo::new(&db);
+        let s = repo.create("Demo", "").await.unwrap();
+
+        let params = r#"{"mode":"t2v","aspect":"portrait","seed_count":1,"account":"acc1"}"#;
+        let updated = repo
+            .set_video_config(&s.id, "veo3_video", params)
+            .await
+            .unwrap();
+        assert_eq!(updated.video_kind, "veo3_video");
+        assert_eq!(updated.video_params, params);
+        assert!(updated.updated_at >= s.updated_at);
+
+        let fetched = repo.get(&s.id).await.unwrap().unwrap();
+        assert_eq!(fetched.video_kind, "veo3_video");
+        assert_eq!(fetched.video_params, params);
+    }
+
+    #[tokio::test]
+    async fn set_video_config_khong_ton_tai_bao_bad_path() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = ScriptRepo::new(&db);
+        let err = repo
+            .set_video_config("khong-ton-tai", "veo3_video", "{}")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, StoreError::BadPath(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn set_category_ghi_dung_va_trim() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = ScriptRepo::new(&db);
+        let s = repo.create("Demo", "").await.unwrap();
+
+        let updated = repo.set_category(&s.id, "  Affiliate  ").await.unwrap();
+        assert_eq!(updated.category, "Affiliate");
+
+        let fetched = repo.get(&s.id).await.unwrap().unwrap();
+        assert_eq!(fetched.category, "Affiliate");
     }
 }

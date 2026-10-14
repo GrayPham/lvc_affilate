@@ -14,6 +14,7 @@ import {
   credentialAdd,
   credentialDelete,
   credentialList,
+  credentialSetNodeTypes,
   credentialUpdate,
   credentialVerify,
 } from "../ipc/commands";
@@ -69,6 +70,8 @@ interface CredentialsState {
   add: (input: CredentialAddInput) => Promise<CredentialView>;
   update: (id: string, patch: CredentialUpdateInput) => Promise<void>;
   verify: (id: string) => Promise<VerifyOutcome>;
+  /** Dat tag loai node (`video`/`image`/`script`) — node AI chi lay tai khoan/key dung tag. */
+  setNodeTypes: (id: string, nodeTypes: string[]) => Promise<void>;
   /** `false` = khong co gi de xoa (idempotent). */
   remove: (id: string) => Promise<boolean>;
 }
@@ -119,6 +122,16 @@ export const useCredentialsStore = create<CredentialsState>((set, get) => ({
       const outcome = await credentialVerify(id);
       await get().load();
       return outcome;
+    } finally {
+      set((s) => ({ busy: decBusy(s.busy, id) }));
+    }
+  },
+
+  setNodeTypes: async (id, nodeTypes) => {
+    set((s) => ({ busy: incBusy(s.busy, id) }));
+    try {
+      await credentialSetNodeTypes(id, nodeTypes);
+      await get().load();
     } finally {
       set((s) => ({ busy: decBusy(s.busy, id) }));
     }

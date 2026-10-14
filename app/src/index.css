@@ -1,6 +1,171 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------------------------------------
+   DESIGN TOKEN (ban ban giao `references/lvc-ui-design/HANDOFF.md`) — nguon su that DUY NHAT cho mau
+   sac toan app. Gia tri THAT nam o `:root` (toi) / `:root[data-theme="light"]` (sang); khoi `@theme`
+   duoi chi TRO vao chung de Tailwind sinh ra lop tien ich (`bg-panel`, `text-ink2`, `border-line`…).
+   Doi theme = doi thuoc tinh `data-theme` tren <html> (xem `store/uiStore.ts`), KHONG sua file nao.
+   ------------------------------------------------------------------------------------------------ */
+:root {
+  --bg: #0a0a0c;
+  --stage: #0a0a0c;
+  --panel: #141417;
+  --rail: #0d0d10;
+  --fill: rgb(255 255 255 / 0.04);
+  --line: rgb(255 255 255 / 0.07);
+  --line2: rgb(255 255 255 / 0.13);
+  --ink: #e9e8e6;
+  --ink2: #b0aea9;
+  --ink3: #8a8882;
+  --accent: #f5a524;
+  --accent-ink: #1a1206;
+  --accent-text: #f7bc57;
+  --accent-soft: rgb(245 165 36 / 0.12);
+  /* Trang thai tai khoan — khop `accountState()` (format/accountRow.ts). */
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --rest: #38bdf8;
+  --limit: #e879f9;
+  --nocredit: #fb923c;
+  --unknown: #9a99a2;
+  /* Tag loai node tren tai khoan/API key. */
+  --tag-video: #fda4af;
+  --tag-image: #5eead4;
+  --tag-script: #a5b4fc;
+  --rose: #fb7185;
+  --rose-ink: #2a0a10;
+  --dialog-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.8);
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f5f2;
+  --stage: #eceae5;
+  --panel: #ffffff;
+  --rail: #ffffff;
+  --fill: rgb(28 27 25 / 0.04);
+  --line: rgb(28 27 25 / 0.08);
+  --line2: rgb(28 27 25 / 0.15);
+  --ink: #1c1b19;
+  --ink2: #4a4844;
+  --ink3: #6f6c66;
+  --accent: #f5a524;
+  --accent-ink: #1a1206;
+  --accent-text: #a14a06;
+  --accent-soft: rgb(245 165 36 / 0.16);
+  --ok: #047857;
+  --warn: #a14a06;
+  --rest: #0369a1;
+  --limit: #a21caf;
+  --nocredit: #c2410c;
+  --unknown: #6b6a72;
+  --tag-video: #be123c;
+  --tag-image: #0f766e;
+  --tag-script: #4338ca;
+  --rose: #e11d48;
+  --rose-ink: #ffffff;
+  --dialog-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.28);
+}
+
+@theme inline {
+  /* Be Vietnam Pro neu may co cai; app chay offline nen KHONG tai font tu CDN. */
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+
+  --color-bg: var(--bg);
+  --color-stage: var(--stage);
+  --color-panel: var(--panel);
+  --color-rail: var(--rail);
+  --color-fill: var(--fill);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-rest: var(--rest);
+  --color-limit: var(--limit);
+  --color-nocredit: var(--nocredit);
+  --color-unknown: var(--unknown);
+  --color-tag-video: var(--tag-video);
+  --color-tag-image: var(--tag-image);
+  --color-tag-script: var(--tag-script);
+  --color-rose: var(--rose);
+  --color-rose-ink: var(--rose-ink);
+
+  /* Bo goc theo ban ban giao: nut/o nhap 9–10px, the 12–13px, dialog 16px. */
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.18);
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.28);
+  --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.36);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Chuyen dong mem cho moi phan tu tuong tac — khong dung "all" (tranh giat layout khi w/h doi),
+     chi cac thuoc tinh thi giac thuong gap khi hover/focus/active. */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+  button:active:not(:disabled) {
+    transform: translateY(0.5px);
+  }
+
+  input,
+  select,
+  textarea {
+    box-shadow: var(--shadow-sm);
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  button:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgb(217 119 6 / 0.3);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--line2);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink3);
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------
    Canvas Workflow (P-lumina) — bổ trợ trực quan cho nối dây:
    - Làm mờ node KHÔNG nối được trong lúc kéo: Workflow.tsx chèn <style> theo `data-id` (không đổi
      object node để tránh kẹt kết nối của React Flow).

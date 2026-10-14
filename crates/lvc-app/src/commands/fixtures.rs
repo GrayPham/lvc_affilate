@@ -7,6 +7,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use super::scripts::{SceneDto, ScriptDoc};
 use lvc_browser::driver::{POLL_STAGES, SUBMIT_STAGES};
 use lvc_core::graph::{Edge, Graph, GraphError, Node, NodeData, PortType};
 use lvc_core::{AppSettings, LogoMode, Mode, Model, Ratio};
@@ -19,7 +20,6 @@ use lvc_store::{RunRow, RunStatus, ScriptMeta, TaskRow, WorkflowMeta};
 use serde_json::{Value, json};
 
 use super::IpcError;
-use super::scripts::{SceneDto, ScriptDoc};
 use super::tasks::TaskDto;
 use super::workflow::PlanSummary;
 
@@ -326,6 +326,11 @@ fn script_meta_fixture() -> ScriptMeta {
         done: 3,
         failed: 1,
         running: 1,
+        // Ba cot them sau (migration `0006`) — fixture phai khai day du de khop `ScriptMeta`
+        // hien tai, khong duoc de UI tuong chung la tuy chon.
+        video_kind: "dola_video".to_string(),
+        video_params: String::new(),
+        category: String::new(),
     }
 }
 
@@ -510,6 +515,7 @@ fn template_list_fixture() -> Value {
             category: "Cơ bản".to_string(),
             thumbnail: String::new(),
             updated_at: 0.0,
+            version: String::new(),
         },
         TemplateMeta {
             id: "tpl_1".to_string(),
@@ -519,6 +525,7 @@ fn template_list_fixture() -> Value {
             category: "Cơ bản".to_string(),
             thumbnail: String::new(),
             updated_at: 1_700_000_000.0,
+            version: String::new(),
         },
     ])
     .unwrap()
@@ -536,6 +543,7 @@ fn template_doc_fixture() -> crate::commands::templates::TemplateDoc {
             category: "Cơ bản".to_string(),
             thumbnail: String::new(),
             updated_at: 0.0,
+            version: String::new(),
         },
         graph: three_scene_graph(),
     }

@@ -23,10 +23,20 @@ một dòng, có ngày.
   nào, nên `Param` đúng ngữ nghĩa hơn).
 - `account` (= `credential_id`) BẮT BUỘC không rỗng — P5 chưa có "auto" như `AccountPool` của Dola
   (tự chọn theo LRU/hạn mức cho provider bất kỳ là việc P6+, xem spec mục 7).
-- Không có override TXT theo dòng (`attrs` như `ratio=`/`account=` của Dola) — spec P5 không yêu
-  cầu, `mode`/`model`/`aspect`/`seed_count`/`account` chỉ đọc từ tham số node, giống nhau cho MỌI
-  job trong 1 lần chạy node. Nếu sau này cần override theo dòng, thêm vào `jobs.rs` giống
-  `dola_video::jobs::to_raw`/`defaults`, không đổi hợp đồng cổng vào/ra.
+- 2026-10-11 (hoàn thiện kịch bản affiliate đa-engine): thêm override TXT theo dòng cho
+  `ratio`→`aspect`/`refs`/`account`, theo đúng hướng đã ghi ở mục trên (không đổi hợp đồng cổng
+  vào/ra, chỉ sửa `jobs.rs`). Khác Dola ở 2 điểm CÓ CHỦ Ý:
+  - `ratio` không hợp lệ (khác `"16:9"`/`"9:16"`, vd `"1:1"` — Veo3 không có aspect vuông) IM LẶNG
+    bỏ qua thay vì lỗi cứng, vì đây là override TUỲ CHỌN theo dòng (khác validate `aspect` tĩnh ở
+    tham số node — cái đó VẪN lỗi cứng nếu sai).
+  - `account` static rỗng vẫn lỗi `Param{field:"account"}` NGAY LẬP TỨC dù có dòng nào override
+    hay không (giữ nguyên invariant "P5 chưa có tự chọn tài khoản" — khác Dola, nơi TXT có thể bù
+    cho field tĩnh rỗng vì Dola field đó vốn optional).
+  - `refs` vượt `MAX_REFERENCE_IMAGES` SAU KHI gộp giờ kiểm TỪNG DÒNG (gom lỗi, dòng lỗi bị bỏ qua
+    — các dòng khác vẫn xử lý tiếp) thay vì kiểm một lần trên danh sách cổng — vì refs giờ có thể
+    khác nhau giữa các dòng.
+- Không đọc `duration`/`model`/`mode` theo dòng — không có field tương đương ý nghĩa ở Veo3
+  (`duration`), hoặc hợp lý hơn khi giữ chung cho cả node (`model`/`mode`).
 - `model` rỗng ("") trong tham số node = "tự chọn theo mode"
   (`lvc_veo3::model::default_video_model::{TEXT_TO_VIDEO,REFERENCE_TO_VIDEO}`) — khớp
   `default_params.model = ""` trong manifest, KHÔNG phải giá trị lỗi.

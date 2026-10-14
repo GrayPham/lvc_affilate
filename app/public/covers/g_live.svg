@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="640" height="400"><defs><linearGradient id="gk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2A1210"/><stop offset="1" stop-color="#0E0807"/></linearGradient>
+<radialGradient id="lk" cx=".5" cy=".35" r=".6"><stop offset="0" stop-color="#FB7185" stop-opacity=".55"/><stop offset="1" stop-color="#FB7185" stop-opacity="0"/></radialGradient></defs>
+<rect width="320" height="200" fill="url(#gk)"/><rect width="320" height="200" fill="url(#lk)"/>
+<ellipse cx="160" cy="168" rx="120" ry="16" fill="#000" opacity=".28"/><rect x="72" y="22" width="76" height="150" rx="12" fill="#0B0B0D"/><rect x="76" y="27" width="68" height="140" rx="9" fill="#1B1B20"/>
+<g><rect x="76" y="27" width="68" height="140" rx="9" fill="#5B1A22"/><g transform="translate(110 0) scale(.62) translate(-110 50)"><g transform="translate(110 0) scale(1.0) translate(-110 0)"><path d="M64 170 Q66 118 110 116 Q154 118 156 170Z" fill="#FB7185"/>
+<rect x="102" y="100" width="16" height="20" fill="#E7B892"/><circle cx="110" cy="84" r="24" fill="#E7B892"/>
+<path d="M85 84 Q84 56 110 56 Q137 56 135 86 Q126 68 108 68 Q92 70 85 84Z" fill="#2A1B12"/></g></g><rect x="80" y="34" width="26" height="11" rx="3" fill="#EF4444"/><text x="84" y="43" font-family="system-ui" font-size="8" font-weight="800" fill="#fff">LIVE</text></g><rect x="210" y="40" width="20" height="18" rx="3" fill="#1a1a1a"/><rect x="196" y="56" width="48" height="108" rx="12" fill="#FB7185"/>
+<rect x="196" y="56" width="14" height="108" rx="7" fill="#fff" opacity=".18"/><rect x="202" y="96" width="36" height="34" rx="4" fill="#fff" opacity=".9"/>
+<rect x="208" y="104" width="24" height="3" rx="1.5" fill="#222" opacity=".6"/><rect x="208" y="111" width="16" height="3" rx="1.5" fill="#222" opacity=".35"/><path d="M262 53 L264 58 L269 60 L264 62 L262 67 L260 62 L255 60 L260 58Z" fill="#fff" opacity=".8"/></svg>

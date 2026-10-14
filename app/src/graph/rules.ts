@@ -33,6 +33,7 @@ export function allowedDurations(mode: Mode, model: Model): readonly number[] {
  */
 const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   prompt: {},
+  note: {},
   image_upload: {},
   load_video: {},
   dola_video: { prompt: true, refs: true },
@@ -43,6 +44,7 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   audio_extract: {},
   audio_split: {},
   script_gen: { brief: true },
+  script_agent: { brief: true },
   veo3_image: { prompt: true, refs: true },
   veo3_video: { prompt: true, refs: true },
   google_image: { prompt: true },
@@ -50,6 +52,9 @@ const INPUT_PORT_MANY: Record<NodeKindTag, Record<string, boolean>> = {
   seedance_image: { prompt: true },
   seedance_video: { prompt: true, ref: true },
   grok_image: { prompt: true },
+  museai_video: { prompt: true },
+  museai_image: { prompt: true },
+  tts: { prompt: true },
 };
 
 /**

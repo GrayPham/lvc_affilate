@@ -1,0 +1,25 @@
+[package]
+name = "lvc-tts"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Provider sinh AUDIO (text-to-speech) dung chung (ElevenLabs / MiniMax) cho node-tts. Chua client
+# HTTP that (reqwest) + hop dong dich vu host `TtsHost` ma node lay qua `ctx.services`.
+# LUAT (ADR-R014): KHONG biet khai niem node (khong phu thuoc lvc-node-api), KHONG phu thuoc
+# lvc-engine/store/browser/app/tauri. KHONG BAO GIO log API key / text day du.
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+wiremock.workspace = true
+
+[lints]
+workspace = true

@@ -9,17 +9,18 @@ import {
   templateErrorMessage,
 } from "../src/format/template";
 
-describe("TEMPLATE_ERROR_VI — pin dung 5 ma loi TEMPLATE_* + STORE (P4d contract)", () => {
+describe("TEMPLATE_ERROR_VI — pin dung 6 ma loi TEMPLATE_* + STORE (P4d + P7 contract)", () => {
   const TEMPLATE_ERROR_CODES: readonly string[] = [
     "TEMPLATE_NOT_FOUND",
     "TEMPLATE_CORRUPT",
     "TEMPLATE_READONLY",
     "GRAPH_ENCODE",
     "STORE",
+    "TEMPLATE_REMOTE_UNAVAILABLE",
   ];
 
-  it("dung 5 ma, khong sot khong thua", () => {
-    expect(TEMPLATE_ERROR_CODES).toHaveLength(5);
+  it("dung 6 ma, khong sot khong thua", () => {
+    expect(TEMPLATE_ERROR_CODES).toHaveLength(6);
     expect(Object.keys(TEMPLATE_ERROR_VI).sort()).toEqual([...TEMPLATE_ERROR_CODES].sort());
   });
 

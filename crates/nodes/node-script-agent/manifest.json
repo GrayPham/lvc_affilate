@@ -1,0 +1,93 @@
+{
+  "kind": "script_agent",
+  "version": 1,
+  "category": "text",
+  "labelVi": "Agent kịch bản affiliate",
+  "inputs": [
+    {
+      "name": "brief",
+      "type": "text",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "text",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "gemini",
+    "kinds": [
+      "api_key"
+    ]
+  },
+  "defaultParams": {
+    "topic": "",
+    "num_scenes": 4,
+    "language": "vi",
+    "style": "",
+    "extra_instructions": "",
+    "credential": "",
+    "provider": "gemini",
+    "save_as_script": false,
+    "script_name": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "topic": {
+        "type": "string",
+        "title": "Sản phẩm / chương trình affiliate",
+        "format": "textarea"
+      },
+      "num_scenes": {
+        "type": "integer",
+        "title": "Số phân cảnh",
+        "minimum": 1
+      },
+      "language": {
+        "type": "string",
+        "title": "Ngôn ngữ"
+      },
+      "style": {
+        "type": "string",
+        "title": "Phong cách"
+      },
+      "extra_instructions": {
+        "type": "string",
+        "title": "Yêu cầu thêm (tuỳ chọn, nối vào chỉ dẫn affiliate có sẵn)",
+        "format": "textarea"
+      },
+      "credential": {
+        "type": "string",
+        "title": "Tên API key"
+      },
+      "provider": {
+        "type": "string",
+        "title": "Nhà cung cấp",
+        "enum": [
+          "gemini",
+          "openai"
+        ]
+      },
+      "save_as_script": {
+        "type": "boolean",
+        "title": "Lưu thành kịch bản khi chạy"
+      },
+      "script_name": {
+        "type": "string",
+        "title": "Tên kịch bản (rỗng = tự đặt tên)"
+      }
+    },
+    "required": [
+      "num_scenes",
+      "provider"
+    ]
+  }
+}

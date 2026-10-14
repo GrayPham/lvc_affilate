@@ -28,12 +28,14 @@ import "@xyflow/react/dist/style.css";
 import Palette, { DRAG_KIND_MIME } from "../components/Palette";
 import CanvasToolbar from "../components/CanvasToolbar";
 import VideoParamsPanel from "../components/VideoParamsPanel";
+import ApiNodeParamsPanel from "../components/ApiNodeParamsPanel";
 import NodeLogPanel from "../components/NodeLogPanel";
 import CaptureFramesPanel from "../components/CaptureFramesPanel";
 import TrimPanel from "../components/TrimPanel";
 import RunBar from "../components/RunBar";
 import ProgressPanel from "../components/ProgressPanel";
 import PromptNode from "../nodes/PromptNode";
+import NoteNode from "../nodes/NoteNode";
 import ImageUploadNode from "../nodes/ImageUploadNode";
 import LoadVideoNode from "../nodes/LoadVideoNode";
 import VideoNode from "../nodes/VideoNode";
@@ -44,6 +46,7 @@ import FrameCaptureNode from "../nodes/FrameCaptureNode";
 import AudioExtractNode from "../nodes/AudioExtractNode";
 import AudioSplitNode from "../nodes/AudioSplitNode";
 import ScriptGenNode from "../nodes/ScriptGenNode";
+import ScriptAgentNode from "../nodes/ScriptAgentNode";
 import Veo3ImageNode from "../nodes/Veo3ImageNode";
 import Veo3VideoNode from "../nodes/Veo3VideoNode";
 import GoogleImageNode from "../nodes/GoogleImageNode";
@@ -51,13 +54,16 @@ import GoogleVideoNode from "../nodes/GoogleVideoNode";
 import SeedanceImageNode from "../nodes/SeedanceImageNode";
 import SeedanceVideoNode from "../nodes/SeedanceVideoNode";
 import GrokImageNode from "../nodes/GrokImageNode";
+import MuseaiVideoNode from "../nodes/MuseaiVideoNode";
+import MuseaiImageNode from "../nodes/MuseaiImageNode";
+import TtsNode from "../nodes/TtsNode";
 import type { RFEdge, RFNode } from "../graph/adapter";
 import FlowEdge from "../graph/FlowEdge";
 import { isValidConnection } from "../graph/rules";
 import { canConnectToNode, type PendingConnect } from "../graph/connect";
 import { ADDABLE_KINDS, type AddableNodeKind } from "../graph/ports";
-import { loadPersistedGraph, useGraphStore } from "../store/graph";
-import { useRunStore } from "../store/run";
+import { useGraphStore, useGraphStoreApi } from "../store/graph";
+import { useRunStoreApi } from "../store/run";
 import { useWorkflowUi } from "../store/workflowUi";
 import { runList, taskList } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
@@ -72,6 +78,7 @@ import { errorText } from "../ipc/error_text";
 // NodeTypes` (khong phai `any` bare) chu khong tach le tung entry vi khong lam gon hon.
 const nodeTypes: NodeTypes = {
   prompt: PromptNode,
+  note: NoteNode,
   image_upload: ImageUploadNode,
   load_video: LoadVideoNode,
   dola_video: VideoNode,
@@ -82,6 +89,7 @@ const nodeTypes: NodeTypes = {
   audio_extract: AudioExtractNode,
   audio_split: AudioSplitNode,
   script_gen: ScriptGenNode,
+  script_agent: ScriptAgentNode,
   veo3_image: Veo3ImageNode,
   veo3_video: Veo3VideoNode,
   google_image: GoogleImageNode,
@@ -89,6 +97,9 @@ const nodeTypes: NodeTypes = {
   seedance_image: SeedanceImageNode,
   seedance_video: SeedanceVideoNode,
   grok_image: GrokImageNode,
+  museai_video: MuseaiVideoNode,
+  museai_image: MuseaiImageNode,
+  tts: TtsNode,
 } as unknown as NodeTypes;
 
 // Dây "dòng chảy" (đốm sáng chạy theo hướng) — dùng cho mọi cạnh.
@@ -106,7 +117,8 @@ function WorkflowCanvas() {
   const onConnect = useGraphStore((s) => s.onConnect);
   const addNode = useGraphStore((s) => s.addNode);
   const setSelected = useGraphStore((s) => s.setSelected);
-  const loadGraph = useGraphStore((s) => s.loadGraph);
+  const graphApi = useGraphStoreApi();
+  const runApi = useRunStoreApi();
   const addMenuOpen = useWorkflowUi((s) => s.addMenuOpen);
   const closeAddMenu = useWorkflowUi((s) => s.closeAddMenu);
   const openAddMenu = useWorkflowUi((s) => s.openAddMenu);
@@ -158,29 +170,23 @@ function WorkflowCanvas() {
     [openMenuAt],
   );
 
-  // Tai canvas da luu tam (localStorage, xem store/graph.ts) MOT LAN luc trang mo — reload trang
-  // khong mat viec dang sua.
-  useEffect(() => {
-    const persisted = loadPersistedGraph();
-    if (persisted) {
-      loadGraph(persisted);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // P-tabs: hydrat canvas tu localStorage (tab "chinh") chuyen sang luc TAO tab trong
+  // `WorkflowTabs.tsx` (truoc khi Workflow.tsx mount) — khong con lam o day nua, vi EVERY lan mount
+  // component nay (vd doi tab roi quay lai) se nap NHAM noi dung tab "chinh" de len tab dang mo.
 
   // Fix-round 1 (review C2, phan 2): moi lan trang nay MO (mount) — kenh su kien that su nam o
   // `store/engine_bridge.ts` (song suot app, xem doc dau file) — dong bo lai run dang theo doi
   // (neu co) tu DB, phong truong hop da bo lo `run_done`/cac su kien `task_*` trong luc trang bi
   // unmount (doi tab). Chi can khi con `runId` nhung `status` van `null` (chua biet ket thuc chua).
   useEffect(() => {
-    const { runId, status } = useRunStore.getState();
+    const { runId, status } = runApi.getState();
     if (!runId || status !== null) {
       return;
     }
     Promise.all([runList(20), taskList(runId, 200)])
       .then(([rows, tasks]) => {
         const row = rows.find((r) => r.id === runId) ?? null;
-        useRunStore.getState().reconcile(row, tasks);
+        runApi.getState().reconcile(row, tasks);
       })
       .catch((e: unknown) => {
         console.warn("khong the dong bo lai trang thai run tu DB:", errorText(e));
@@ -211,7 +217,7 @@ function WorkflowCanvas() {
       if (inField && ["a", "c", "x", "v", "z"].includes(k)) {
         return; // de o nhap tu xu ly
       }
-      const g = useGraphStore.getState();
+      const g = graphApi.getState();
       switch (k) {
         case "z":
           e.preventDefault();
@@ -420,9 +426,11 @@ function WorkflowCanvas() {
         )
       ) : null}
 
-      {/* Bang tham so duoi — chi hien khi node dola_video duoc chon (component tu an) */}
+      {/* Bang tham so duoi — chi hien khi node dola_video/mot trong 7 node API duoc chon (component
+          tu an, xem doc trong tung file) */}
       <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-4">
         <VideoParamsPanel />
+        <ApiNodeParamsPanel />
       </div>
 
       {/* Bang nhat ky chay cua node dang chon (goc duoi-trai) — hien khi node da co trang thai chay */}

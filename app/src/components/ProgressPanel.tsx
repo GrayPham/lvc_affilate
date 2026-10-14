@@ -7,8 +7,10 @@
 import { useEffect, useState } from "react";
 
 import { useRunStore } from "../store/run";
+import { useGraphStore } from "../store/graph";
 import { taskList } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
+import { NODE_LABEL_VI } from "../graph/ports";
 import type { TaskDto } from "../ipc/types";
 
 function formatElapsed(ms: number): string {
@@ -38,9 +40,20 @@ const ROW_CLASS: Record<DisplayStatus, string> = {
   failed: "border-red-500/30 bg-red-500/10 text-red-100",
 };
 
+/** `node_state` tho tu Rust (`NODE_*` o `dag.rs`) -> mau hang, khop tinh than `ROW_CLASS`. */
+const NODE_ROW_CLASS: Record<string, string> = {
+  queued: "border-white/10 bg-white/5 text-slate-300",
+  running: ROW_CLASS.running,
+  done: ROW_CLASS.done,
+  failed: ROW_CLASS.failed,
+  cancelled: "border-white/10 bg-white/5 text-slate-400",
+};
+
 export default function ProgressPanel() {
   const runId = useRunStore((s) => s.runId);
   const liveTasks = useRunStore((s) => s.tasks);
+  const nodeStates = useRunStore((s) => s.nodes);
+  const graphNodes = useGraphStore((s) => s.nodes);
   const [meta, setMeta] = useState<Record<string, TaskDto>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -83,10 +96,38 @@ export default function ProgressPanel() {
     return ia - ib;
   });
 
+  // Node API (Veo3/Google/Seedance/Grok/MuseAI...) KHONG co dong `tasks` rieng nhu dola_video
+  // (xem doc `store/run.ts::reconcileTasksFromDb`) — bang tren chi hien duoc canh CUA DOLA. Voi
+  // node khac, dung tien do CAP NODE (`node_state`, da phat cho MOI node, khong rieng Dola) lam
+  // du phong — khong deu CHI TIET bang (khong co account/stage/elapsed tung canh) nhung it ra KHONG
+  // con hien "chua co tac vu nao" trong khi ro rang dang chay that (review nguoi dung 2026-10-13).
+  const taskNodeIds = new Set(Object.values(meta).map((t) => t.nodeId));
+  const nodeOnlyIds = Object.keys(nodeStates).filter((nid) => !taskNodeIds.has(nid));
+
   return (
     <div className="flex flex-col gap-1 overflow-auto p-2">
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
-      {ids.length === 0 ? <p className="text-xs text-slate-400">Chưa có tác vụ nào.</p> : null}
+      {ids.length === 0 && nodeOnlyIds.length === 0 ? <p className="text-xs text-slate-400">Chưa có tác vụ nào.</p> : null}
+      {nodeOnlyIds.map((nid) => {
+        const n = nodeStates[nid];
+        if (!n) {
+          return null;
+        }
+        const kind = graphNodes.find((gn) => gn.id === nid)?.data.kind;
+        const label = kind ? NODE_LABEL_VI[kind] : nid;
+        const cls = NODE_ROW_CLASS[n.state] ?? NODE_ROW_CLASS.queued;
+        return (
+          <div key={nid} className={`flex items-center gap-2 rounded border px-2 py-1 text-xs ${cls}`}>
+            <span className="flex-1 truncate" title={n.error ?? undefined}>
+              {label}
+            </span>
+            <span className="shrink-0 font-mono">
+              {n.done}/{n.total}
+              {n.failed > 0 ? ` (${n.failed} lỗi)` : ""}
+            </span>
+          </div>
+        );
+      })}
       {ids.map((id) => {
         const live = liveTasks[id];
         const info = meta[id];

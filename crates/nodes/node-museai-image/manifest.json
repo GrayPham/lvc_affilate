@@ -1,0 +1,42 @@
+{
+  "kind": "museai_image",
+  "version": 1,
+  "category": "image",
+  "labelVi": "Tạo ảnh MuseAI",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "museai",
+    "kinds": [
+      "login"
+    ]
+  },
+  "defaultParams": {
+    "account": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "account": {
+        "type": "string",
+        "title": "Tài khoản (rỗng = tự chọn)"
+      }
+    }
+  }
+}

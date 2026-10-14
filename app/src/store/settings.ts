@@ -2,12 +2,9 @@
 // server xac nhan lan doc/luu gan nhat) / `warnings` (server tra ve tu `settings_set`, xem
 // `crates/lvc-app/src/commands/settings.rs::settings_set_impl`) / `dirty` (draft != saved).
 //
-// `toAppSettings`/`THREADS_MAX`/`THREADS_MIN` nam O DAY (khong o `components/SettingsForm.tsx`
-// nhu ban dau) — review Task 13 fix round 1 (Minor #2): tranh store<->component gan-vong-tron
-// (`SettingsForm.tsx` da can `useSettingsStore` tu file nay; truoc do file nay lai import nguoc
-// `toAppSettings` tu `SettingsForm.tsx`). `validateSettings` (con dung React-adjacent — goi
-// `allowedDurations` de hien loi ngay tren form) VAN o `SettingsForm.tsx`, import `THREADS_MAX`/
-// `THREADS_MIN` tu day.
+// `toAppSettings`/`THREADS_MAX`/`THREADS_MIN` nam O DAY de tranh store<->component gan-vong-tron.
+// `validateSettings` o `components/settings/validate.ts` (THUAN, import `THREADS_MAX`/`THREADS_MIN`
+// tu day) — man `SettingsPage` goi no de chan tu-luu khi gia tri ro rang sai.
 import { create } from "zustand";
 
 import { settingsGet, settingsSet } from "../ipc/commands";
@@ -54,7 +51,7 @@ interface SettingsState {
   setDraft: (patch: Partial<AppSettings>) => void;
   /**
    * Chuan hoa `draft` qua `toAppSettings` roi goi `settings_set` — cap nhat `saved`/`warnings` khi
-   * thanh cong. Tra `true`/`false` de `SettingsForm` biet co hien thong bao "Đã lưu" hay khong.
+   * thanh cong. Tra `true`/`false` de noi goi biet lan luu co thanh cong hay khong.
    */
   save: () => Promise<boolean>;
 }

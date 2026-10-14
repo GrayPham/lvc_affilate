@@ -1,8 +1,17 @@
 // Bang node keo tha (Task 12 brief, P4a): cac node trong `ADDABLE_KINDS` keo duoc vao canvas (hien
 // tai ca 4 kind); kind nao khong thuoc tap nay se hien mo, khong keo duoc.
 // Workflow.tsx doc `DRAG_KIND_MIME` tren `onDrop` cua `<ReactFlow>` de biet loai node vua tha.
+import { useState } from "react";
+
 import type { AddableNodeKind } from "../graph/ports";
-import { NODE_KIND_ORDER, NODE_LABEL_VI, ADDABLE_KINDS } from "../graph/ports";
+import {
+  ADDABLE_KINDS,
+  CATEGORY_LABEL_VI,
+  CATEGORY_ORDER,
+  NODE_CATEGORY_VI,
+  NODE_KIND_ORDER,
+  NODE_LABEL_VI,
+} from "../graph/ports";
 import { connectionForNewNode, type PendingConnect } from "../graph/connect";
 import type { NodeKindTag } from "../ipc/types";
 import { useGraphStore } from "../store/graph";
@@ -23,6 +32,7 @@ export default function Palette({
   connectFrom?: Omit<PendingConnect, "kind"> | null;
 }) {
   const nodes = useGraphStore((s) => s.nodes);
+  const [query, setQuery] = useState("");
 
   // Khi menu mo do KEO MOT DAY: chi hien cac loai node NOI DUOC voi cong dang keo (yeu cau: "đâu ra
   // các node có thể nối được"). Suy tu kind cua node nguon + khop cong theo kieu (connect.ts).
@@ -35,16 +45,51 @@ export default function Palette({
     }
   }
 
+  // Loc theo tu tim (khop ten hien thi, khong phan biet hoa/thuong/dau) roi GOM NHOM theo
+  // `NODE_CATEGORY_VI` — danh sach kind da dai ~20 muc, liet ke phang khong cuon se tran ra ngoai
+  // canvas va kho chon (phan anh nguoi dung: "làm sao mà chọn node").
+  const q = query.trim().toLowerCase();
+  const filtered = q === "" ? kinds : kinds.filter((k) => NODE_LABEL_VI[k].toLowerCase().includes(q));
+  // Danh sach ~20 muc — gom nhom lai moi render (khong can useMemo, chi phi khong dang ke).
+  const byCategory = new Map<string, NodeKindTag[]>();
+  for (const k of filtered) {
+    const cat = NODE_CATEGORY_VI[k];
+    (byCategory.get(cat) ?? byCategory.set(cat, []).get(cat)!).push(k);
+  }
+  const groups = CATEGORY_ORDER.map((cat) => ({ cat, kinds: byCategory.get(cat) ?? [] })).filter(
+    (g) => g.kinds.length > 0,
+  );
+
   return (
-    <div className="flex w-44 flex-col gap-1.5 rounded-2xl border border-white/10 bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
+    <div className="flex max-h-[70vh] w-56 flex-col gap-1.5 rounded-2xl border border-white/10 bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
       <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
         {connectFrom ? "Nối tới node" : "Thêm node"}
       </h2>
-      {kinds.length === 0 ? (
-        <p className="px-1 py-1 text-[11px] text-slate-500">Không có node nào nối được cổng này.</p>
-      ) : (
-        kinds.map((kind) => <PaletteItem key={kind} kind={kind} at={at} connectFrom={connectFrom} />)
-      )}
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Tìm node…"
+        className="nodrag w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-sky-400/60"
+      />
+      <div className="flex flex-col gap-2 overflow-y-auto pr-0.5">
+        {groups.length === 0 ? (
+          <p className="px-1 py-1 text-[11px] text-slate-500">
+            {kinds.length === 0 ? "Không có node nào nối được cổng này." : "Không khớp node nào."}
+          </p>
+        ) : (
+          groups.map((g) => (
+            <div key={g.cat} className="flex flex-col gap-1">
+              <span className="px-1 text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+                {CATEGORY_LABEL_VI[g.cat] ?? g.cat}
+              </span>
+              {g.kinds.map((kind) => (
+                <PaletteItem key={kind} kind={kind} at={at} connectFrom={connectFrom} />
+              ))}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

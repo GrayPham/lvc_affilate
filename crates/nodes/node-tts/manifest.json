@@ -1,0 +1,70 @@
+{
+  "kind": "tts",
+  "version": 1,
+  "category": "audio",
+  "labelVi": "Tạo giọng đọc AI (TTS)",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "audio",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "elevenlabs",
+    "kinds": [
+      "api_key"
+    ]
+  },
+  "defaultParams": {
+    "provider": "elevenlabs",
+    "voice_id": "",
+    "model": "",
+    "speed": 1.0,
+    "credential": ""
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Nhà cung cấp",
+        "enum": [
+          "elevenlabs",
+          "minimax"
+        ]
+      },
+      "voice_id": {
+        "type": "string",
+        "title": "Id giọng đọc (bắt buộc)"
+      },
+      "model": {
+        "type": "string",
+        "title": "Model (rỗng = mặc định)"
+      },
+      "speed": {
+        "type": "number",
+        "title": "Tốc độ đọc (1.0 = mặc định)"
+      },
+      "credential": {
+        "type": "string",
+        "title": "Tên API key (rỗng = tự chọn)"
+      }
+    },
+    "required": [
+      "provider",
+      "voice_id"
+    ]
+  }
+}

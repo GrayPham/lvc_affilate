@@ -34,7 +34,9 @@
     "style": "",
     "system": "",
     "credential": "",
-    "provider": "gemini"
+    "provider": "gemini",
+    "save_as_script": false,
+    "script_name": ""
   },
   "paramsSchema": {
     "type": "object",
@@ -73,6 +75,14 @@
           "gemini",
           "openai"
         ]
+      },
+      "save_as_script": {
+        "type": "boolean",
+        "title": "Lưu thành kịch bản khi chạy"
+      },
+      "script_name": {
+        "type": "string",
+        "title": "Tên kịch bản (rỗng = tự đặt tên)"
       }
     },
     "required": [

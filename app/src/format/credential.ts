@@ -26,11 +26,52 @@ export const CREDENTIAL_PROVIDER_VI: Record<CredentialProvider, string> = {
   apple: "Apple",
   seedance: "Seedance (Volcengine)",
   grok: "Grok (xAI)",
+  museai: "MuseAI",
+  elevenlabs: "ElevenLabs (TTS)",
+  minimax: "MiniMax (TTS)",
+  github: "GitHub (publish)",
 };
 
 export function credentialProviderLabel(provider: CredentialProvider): string {
   return CREDENTIAL_PROVIDER_VI[provider];
 }
+
+/** Nền tảng có API key (tab "API key"). `github` không phải nhà cung cấp AI — token của nó chỉ
+ * dùng để publish workflow lên kho cộng đồng, nhưng cũng là một "API key" người dùng tự dán nên
+ * quản ở cùng tab. */
+export const API_PROVIDERS: readonly CredentialProvider[] = [
+  "openai",
+  "gemini",
+  "seedance",
+  "grok",
+  "elevenlabs",
+  "minimax",
+  "github",
+];
+
+/** Nền tảng dùng cookie/đăng nhập (tab "Tài khoản") — dùng cho "Nạp cookie hàng loạt" + "Thêm tài
+ * khoản" (dán tay), KHÔNG cần biết URL đăng nhập. */
+export const COOKIE_PROVIDERS: readonly CredentialProvider[] = [
+  "dola",
+  "google",
+  "gemini",
+  "facebook",
+  "apple",
+  "chatgpt_web",
+  "museai",
+];
+
+/** Tập CON của [`COOKIE_PROVIDERS`] — chỉ nền tảng ĐÃ BIẾT URL trang đăng nhập (`lvc-app::
+ * commands::login::platform::PLATFORMS`), dùng cho "Đăng nhập thủ công" (mở trình duyệt thật).
+ * `museai` CHƯA có URL xác nhận nên không đưa vào đây. */
+export const INTERACTIVE_LOGIN_PROVIDERS: readonly CredentialProvider[] = [
+  "dola",
+  "google",
+  "gemini",
+  "facebook",
+  "apple",
+  "chatgpt_web",
+];
 
 // ---------------------------------------------------------------------------------------------
 // Nhan loai bi mat (kind).
@@ -96,11 +137,11 @@ export function credentialStatusLabel(status: CredentialStatus): string {
 
 /** Lop mau badge cho tung trang thai (mau phan biet ro giua cac trang thai). */
 export const CREDENTIAL_STATUS_BADGE_CLASS: Record<CredentialStatus, string> = {
-  ok: "bg-emerald-100 text-emerald-700",
-  expired: "bg-amber-100 text-amber-700",
-  banned: "bg-red-100 text-red-700",
-  quota: "bg-orange-100 text-orange-700",
-  unknown: "bg-slate-100 text-slate-600",
+  ok: "bg-emerald-500/15 text-emerald-400",
+  expired: "bg-amber-500/15 text-amber-400",
+  banned: "bg-red-500/15 text-red-400",
+  quota: "bg-orange-500/15 text-orange-400",
+  unknown: "bg-white/5 text-neutral-400",
 };
 
 // ---------------------------------------------------------------------------------------------

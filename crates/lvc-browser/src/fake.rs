@@ -311,6 +311,22 @@ impl BrowserDriver for FakeDriver {
         Ok(())
     }
 
+    /// "Hanh vi mac dinh vo hai" (doc dau module): KHONG tieu thu kich ban, tra MOT cookie gia CO
+    /// NOI DUNG (khac `[]`) de test Phan C (`on_tick` trich xuat cookie) kiem duoc du lieu THUC SU
+    /// chay qua duong ong (callback -> `vault.update_secret`) thay vi chi dem so lan goi suong.
+    async fn cookies(&self, s: &FakeSession, url: &str) -> Result<Vec<Cookie>, BrowserError> {
+        let _ = url;
+        Ok(vec![Cookie {
+            name: "lvc_fake_session".to_string(),
+            value: s.seq.to_string(),
+            domain: "example.com".to_string(),
+            path: "/".to_string(),
+            secure: false,
+            http_only: false,
+            expires: None,
+        }])
+    }
+
     async fn goto(&self, s: &FakeSession, url: &str) -> Result<(), BrowserError> {
         let _ = (s, url);
         Ok(())

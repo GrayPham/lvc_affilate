@@ -71,6 +71,23 @@ export default function ScriptGenNode({ id, data, selected }: NodeProps<ScriptGe
             placeholder="Tên API key trong kho"
             onChange={(e) => updateNodeData(id, { ...data, credential: e.target.value })}
           />
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <input
+              type="checkbox"
+              className="nodrag"
+              checked={data.save_as_script}
+              onChange={(e) => updateNodeData(id, { ...data, save_as_script: e.target.checked })}
+            />
+            Lưu thành kịch bản khi chạy
+          </label>
+          {data.save_as_script ? (
+            <input
+              className={FIELD_CLASS}
+              value={data.script_name}
+              placeholder="Tên kịch bản (bỏ trống để tự đặt tên)"
+              onChange={(e) => updateNodeData(id, { ...data, script_name: e.target.value })}
+            />
+          ) : null}
         </div>
       </NodeShell>
       <Handle

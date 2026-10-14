@@ -25,13 +25,18 @@
 //! `invoke("settings_set", { s })`. Ten LENH (command) thi giu nguyen `snake_case`, khong doi.
 
 pub mod accounts;
+pub mod cache;
 pub mod credentials;
+pub mod device;
 pub mod login;
 pub mod media;
+pub mod publish;
+pub mod queue;
 pub mod scripts;
 pub mod settings;
 pub mod tasks;
 pub mod templates;
+pub mod updates;
 pub mod workflow;
 
 #[cfg(test)]
@@ -186,7 +191,14 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     pub db: Db,
     /// Cai dat hien hanh, cache trong bo nho (dong bo boi `settings::settings_set_impl` khi luu) —
     /// tranh doc lai DB moi lan UI can hien thi.
-    pub settings: RwLock<AppSettings>,
+    ///
+    /// `Arc` vi bo chay hang cho (`commands::queue::spawn_runner`) song LAU HON lenh IPC bat dau
+    /// no nen khong muon duoc `&Ctx`; giu Arc de no doc lai cai dat MOI NHAT truoc moi workflow —
+    /// nguoi dung doi "Nghi giua hai workflow" giua luc chay thi muc ke tiep ap dung ngay.
+    pub settings: Arc<RwLock<AppSettings>>,
+    /// Thu muc du lieu ung dung (`crate::paths::app_data_dir`) — can cho cac lenh lam viec voi
+    /// duong dan co dinh khong di qua `EngineConfig` (vd thu muc tam: `commands::cache`).
+    pub base_dir: std::path::PathBuf,
     pub runs: Arc<DashMap<String, CancellationToken>>,
     /// I3 (fix-round 1, final-review): `task_id` dang co MOT lan `task_resume` chay nen (giua luc
     /// spawn va luc `Engine::resume` ket thuc) — chan lan goi THU HAI cung `task_id` trong luc do
@@ -196,6 +208,16 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     /// `DashSet` (khong phai `HashSet` sau `Mutex`) vi nhieu lenh IPC co the goi dong thoi tu nhieu
     /// luong Tauri; insert/remove don gian hon can mot registry rieng nhu `CancelRegistry`.
     pub resuming: Arc<DashSet<String>>,
+    /// P7: URL `index.json` của kho template CỘNG ĐỒNG (`commands::templates`). Mặc định
+    /// [`lvc_template_registry::DEFAULT_INDEX_URL`]; test đổi sang URL `wiremock` để KHÔNG BAO GIỜ
+    /// gọi mạng thật (xem `crates/providers/lvc-template-registry/CLAUDE.md`). Chưa cấu hình được
+    /// qua Settings UI (MVP — xem câu hỏi mở trong spec P7).
+    pub template_registry_url: String,
+    /// Bộ chạy hàng chờ (màn "Tác vụ") có đang hoạt động không — `Arc` vì task nền giữ tham chiếu
+    /// 'static tới nó để tự tắt cờ khi dừng (xem `commands::queue::spawn_runner`).
+    pub queue_running: Arc<std::sync::atomic::AtomicBool>,
+    /// Token huỷ của bộ chạy hàng chờ; `None` = không chạy.
+    pub queue_cancel: Arc<std::sync::Mutex<Option<CancellationToken>>>,
 }
 
 /// Ho tro dung chung cho test cac lenh (`workflow.rs`/`tasks.rs`/`settings.rs`) — dung
@@ -235,9 +257,15 @@ pub(crate) mod test_support {
             vault: Arc::new(lvc_vault::Vault::new(&boot.db, lvc_vault::default_box())),
             handle: boot.handle,
             db: boot.db,
-            settings: RwLock::new(boot.settings),
+            settings: Arc::new(RwLock::new(boot.settings)),
+            base_dir: dir.path().to_path_buf(),
             runs: Arc::new(DashMap::new()),
             resuming: Arc::new(DashSet::new()),
+            // Test tu doi sang URL wiremock truoc khi goi scope="remote" (truong pub, ctx la gia
+            // tri so huu cuc bo trong tuple tra ve — xem cac test trong `commands/templates.rs`).
+            template_registry_url: lvc_template_registry::DEFAULT_INDEX_URL.to_string(),
+            queue_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            queue_cancel: Arc::new(std::sync::Mutex::new(None)),
         };
         (dir, ctx, driver)
     }

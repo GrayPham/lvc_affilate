@@ -152,6 +152,41 @@
     ]
   },
   {
+    "kind": "museai_image",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "kind": "museai_video",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "note",
+    "inputs": [],
+    "outputs": []
+  },
+  {
     "kind": "prompt",
     "inputs": [],
     "outputs": [
@@ -178,6 +213,21 @@
       }
     ],
     "outputs": []
+  },
+  {
+    "kind": "script_agent",
+    "inputs": [
+      {
+        "name": "brief",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "text"
+      }
+    ]
   },
   {
     "kind": "script_gen",
@@ -240,6 +290,21 @@
       {
         "name": "out",
         "type": "video"
+      }
+    ]
+  },
+  {
+    "kind": "tts",
+    "inputs": [
+      {
+        "name": "prompt",
+        "type": "text"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "audio"
       }
     ]
   },

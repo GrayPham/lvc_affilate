@@ -71,15 +71,14 @@
       },
       "account": {
         "type": "string",
-        "title": "Tai khoan (ten/label credential Google, bat buoc)"
+        "title": "Tai khoan (rong = tu chon)"
       }
     },
     "required": [
       "mode",
       "model",
       "aspect",
-      "seed_count",
-      "account"
+      "seed_count"
     ]
   }
 }

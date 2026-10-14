@@ -16,6 +16,8 @@ use lvc_vault::Vault;
 
 /// Resolver backed by [`Vault`]: tra `profile_dir` credential `provider="google"`,
 /// `kind` `login`/`session`, theo `label` (tên người dùng khai ở tham số `account` của node).
+/// `account` RỖNG — tự chọn tài khoản ĐẦU TIÊN còn dùng được trong kho (đủ `enabled` + có
+/// `profile_dir`), giống hành vi "để trống = tự chọn" của Dola (review người dùng 2026-10-13).
 pub struct VaultVeo3AccountResolver {
     vault: Arc<Vault>,
 }
@@ -31,27 +33,43 @@ impl VaultVeo3AccountResolver {
 impl VeoAccountResolver for VaultVeo3AccountResolver {
     async fn profile_dir(&self, credential_id: &str) -> Result<PathBuf, String> {
         let wanted = credential_id.trim();
-        if wanted.is_empty() {
-            return Err("tham so 'account' rong — chua chon tai khoan Google".to_string());
-        }
         let list = self
             .vault
             .list(Some("google"))
             .await
             .map_err(|e| e.to_string())?;
-        let cred = list
-            .iter()
-            .find(|c| c.enabled && (c.kind == "login" || c.kind == "session") && c.label == wanted)
-            .ok_or_else(|| {
-                format!("khong tim thay tai khoan Google '{wanted}' (tab Tai khoan AI)")
-            })?;
+        let logged_in = |c: &&lvc_vault::CredentialView| {
+            c.enabled && (c.kind == "login" || c.kind == "session")
+        };
+        let has_profile = |c: &&lvc_vault::CredentialView| {
+            c.meta
+                .get("profile_dir")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|s| !s.is_empty())
+        };
+        let cred = if wanted.is_empty() {
+            list.iter()
+                .find(|c| logged_in(c) && has_profile(c))
+                .ok_or_else(|| {
+                    "khong co tai khoan Google nao san sang (tab Tai khoan AI)".to_string()
+                })?
+        } else {
+            list.iter()
+                .find(|c| logged_in(c) && c.label == wanted)
+                .ok_or_else(|| {
+                    format!("khong tim thay tai khoan Google '{wanted}' (tab Tai khoan AI)")
+                })?
+        };
         let profile_dir = cred
             .meta
             .get("profile_dir")
             .and_then(serde_json::Value::as_str)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                format!("tai khoan Google '{wanted}' thieu profile_dir — dang nhap lai qua tab Tai khoan AI")
+                format!(
+                    "tai khoan Google '{}' thieu profile_dir — dang nhap lai qua tab Tai khoan AI",
+                    cred.label
+                )
             })?;
         Ok(PathBuf::from(profile_dir))
     }
@@ -100,11 +118,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn account_rong_bao_loi_ro_rang() {
+    async fn account_rong_khong_co_tai_khoan_nao_bao_loi_ro() {
         let v = vault().await;
         let r = VaultVeo3AccountResolver::new(v);
         let err = r.profile_dir("").await.unwrap_err();
-        assert!(err.contains("rong"));
+        assert!(err.contains("khong co tai khoan"));
+    }
+
+    #[tokio::test]
+    async fn account_rong_tu_chon_tai_khoan_dau_tien_con_dung_duoc() {
+        // `VaultRepo::list` sap theo `label` (ORDER BY label, xem lvc-store/src/credentials.rs) —
+        // "tk-a" phai den TRUOC "tk-b" theo bang chu cai, khop dung "dau tien" ma resolver chon.
+        let v = vault().await;
+        v.add(&add("tk-a", "C:/accounts/.logins/google/tk-a"))
+            .await
+            .unwrap();
+        v.add(&add("tk-b", "C:/accounts/.logins/google/tk-b"))
+            .await
+            .unwrap();
+        let r = VaultVeo3AccountResolver::new(v);
+        let dir = r.profile_dir("").await.unwrap();
+        assert_eq!(dir, PathBuf::from("C:/accounts/.logins/google/tk-a"));
     }
 
     #[tokio::test]

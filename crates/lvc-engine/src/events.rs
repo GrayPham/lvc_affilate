@@ -75,6 +75,17 @@ pub enum EngineEvent {
     },
     /// Task 7: run ket thuc (`status` = `completed`/`failed`/`cancelled`).
     RunDone { run_id: String, status: String },
+    /// P-lumina: node (API — Veo3/Google/Seedance/Grok/MuseAI...) vua sinh xong MOT asset media
+    /// (anh/video) — phat NGAY sau `exec.run()` thanh cong de UI preview ma KHONG can dong `tasks`
+    /// rieng (chi `dola_video`/`run_video_jobs` co dong do — xem `dag.rs::emit_preview_if_media`).
+    /// `preview_path`: duong dan asset DAU TIEN tim thay trong dau ra node (anh/video, bo qua
+    /// text/audio) — `None` neu node khong co dau ra media (khong phat su kien nay trong truong
+    /// hop do, xem call site).
+    NodeOutputs {
+        run_id: String,
+        node_id: String,
+        preview_path: String,
+    },
 }
 
 /// Kenh phat su kien. `emit` khong bao gio loi: khong co receiver -> bo qua (`SendError`).
@@ -231,11 +242,19 @@ mod tests {
                 },
                 json!({"type":"run_done","runId":"r1","status":"completed"}),
             ),
+            (
+                EngineEvent::NodeOutputs {
+                    run_id: "r1".into(),
+                    node_id: "n1".into(),
+                    preview_path: r"C:\out\a.mp4".into(),
+                },
+                json!({"type":"node_outputs","runId":"r1","nodeId":"n1","previewPath":"C:\\out\\a.mp4"}),
+            ),
         ];
         assert_eq!(
             cases.len(),
-            8,
-            "5 bien the (+2 None + 1 node_state failed co error)"
+            9,
+            "6 bien the (+2 None + 1 node_state failed co error)"
         );
         for (ev, want) in cases {
             assert_eq!(serde_json::to_value(&ev).unwrap(), want, "{ev:?}");

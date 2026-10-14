@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 interface LightboxProps {
   src: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
   onClose: () => void;
 }
 
@@ -33,6 +33,14 @@ export default function Lightbox({ src, kind, onClose }: LightboxProps) {
         <video
           src={src}
           className="max-h-full max-w-full rounded-lg bg-black"
+          controls
+          autoPlay
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : kind === "audio" ? (
+        <audio
+          src={src}
+          className="w-full max-w-md"
           controls
           autoPlay
           onClick={(e) => e.stopPropagation()}

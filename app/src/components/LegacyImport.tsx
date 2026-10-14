@@ -8,6 +8,7 @@ import { confirmDialog } from "../store/dialog";
 import { legacyImport, pickDirectory } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 import type { LegacyImportReport } from "../ipc/types";
+import { BTN_NEUTRAL_SM } from "../ui/buttonStyles";
 
 export default function LegacyImport() {
   const [busy, setBusy] = useState(false);
@@ -48,26 +49,26 @@ export default function LegacyImport() {
   }
 
   return (
-    <section className="flex flex-col gap-2 border-t border-slate-200 pt-4">
-      <p className="text-sm font-medium">Nhập dữ liệu từ bản Python</p>
-      <p className="text-xs text-slate-500">
+    <section className="flex flex-col gap-2 border-t border-white/10 pt-4 text-neutral-200">
+      <p className="text-sm font-medium text-neutral-100">Nhập dữ liệu từ bản Python</p>
+      <p className="text-xs text-neutral-500">
         Chọn thư mục cài đặt bản Python cũ để nhập task/tài khoản/lượt dùng/cài đặt vào ứng dụng này.
       </p>
       <div>
         <button
           type="button"
           disabled={busy}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+          className={BTN_NEUTRAL_SM}
           onClick={() => void handleClick()}
         >
           {busy ? "Đang nhập…" : "Nhập dữ liệu từ bản Python"}
         </button>
       </div>
 
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {error ? <p className="text-xs text-red-400">{error}</p> : null}
 
       {report ? (
-        <div className="rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+        <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-300">
           <p>
             Đã nhập {report.tasks} task, {report.accounts} tài khoản, {report.usage} lượt dùng,{" "}
             {report.settings} cài đặt, {report.scripts} kịch bản ({report.scenes} cảnh).

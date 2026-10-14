@@ -12,21 +12,31 @@ node khác, `lvc-engine`, `lvc-store`, `lvc-browser`, `tauri`. Node CHỈ biết
 - Vào: `prompt: Text*` (bắt buộc, nhiều cạnh — dùng cho CẢ `t2v` lẫn `r2v`), `refs: Image*` (tuỳ
   chọn — chỉ có ý nghĩa khi `mode="r2v"`, tối đa 6 ảnh).
 - Ra: `out: Video*` — `Asset.meta`: `node`, `index` (= `scene_index`).
-- Tài khoản: `google/login` (`credential_id` truyền qua tham số `account`, BẮT BUỘC — chưa có
-  "auto" như Dola).
+- Tài khoản: `google/login` (`credential_id` truyền qua tham số `account` — rỗng = tự chọn tài
+  khoản đầu tiên còn dùng được trong kho, `VaultVeo3AccountResolver`, giống `dola_video`,
+  2026-10-13).
 
 ## Tham số
 `mode` (`"t2v"|"r2v"`), `model` (rỗng = mặc định theo mode), `aspect` (`"portrait"|"landscape"`),
 `seed_count`, `account`.
 
 ## Luật riêng
-- Map ngầm: 1 `TextItem` trên cổng `prompt` = 1 job = 1 video; `scene_index` 1..N liên tục. KHÔNG
-  có override TXT theo dòng (`attrs`) — khác `dola_video`, xem `MEMORY.md`.
-- `mode="r2v"`: MỌI job dùng CHUNG danh sách ảnh của cổng `refs` (tối đa `MAX_REFERENCE_IMAGES = 6`
-  — vượt quá → `GraphError::Param{field:"refs"}`).
-- `mode="t2v"`: `refs` bị BỎ QUA hoàn toàn, KHÔNG lỗi dù có nối ảnh vào.
+- Map ngầm: 1 `TextItem` trên cổng `prompt` = 1 job = 1 video; `scene_index` 1..N liên tục.
+- Override TXT theo dòng (`attrs`, khoá trùng `node_prompt::attrs`): `ratio` (`"16:9"`→landscape,
+  `"9:16"`→portrait; giá trị khác IM LẶNG bỏ qua, giữ `aspect` tĩnh của node — KHÔNG lỗi), `refs`
+  (gộp thêm vào cổng `refs`, chỉ dùng khi `mode="r2v"`, cú pháp `\n`-separated), `account` (ghi đè
+  khi dòng có giá trị khác rỗng; dòng không override dùng `account` tĩnh của node). KHÔNG đọc
+  `duration`/`model`/`mode` theo dòng (không có field tương đương ở Veo3 / vẫn dùng chung cho cả
+  node) — xem `MEMORY.md`.
+- `mode="r2v"`: MỌI job mặc định dùng ảnh của cổng `refs`, có thể gộp thêm ảnh riêng qua `refs=`
+  TXT mỗi dòng (tối đa `MAX_REFERENCE_IMAGES = 6` SAU KHI gộp — vượt quá →
+  `GraphError::Param{field:"refs"}` cho đúng dòng đó, các dòng khác vẫn xử lý tiếp).
+- `mode="t2v"`: `refs` (cổng lẫn TXT) bị BỎ QUA hoàn toàn, KHÔNG lỗi dù có nối ảnh vào.
 - `mode` khác `"t2v"|"r2v"` → `GraphError::Param{field:"mode"}` (không panic).
-- `account` rỗng → `GraphError::Param{field:"account"}` (P5 chưa có tự chọn tài khoản).
+- `account` tĩnh (tham số node) RỖNG — KHÔNG lỗi (2026-10-13, trước đây bắt buộc): mỗi job dùng
+  `item_account` (override TXT nếu dòng có, không thì giá trị tĩnh) truyền xuống
+  `VeoAccountResolver`; rỗng ở đó nghĩa là TỰ CHỌN tài khoản (xem `lvc-app::veo3::
+  VaultVeo3AccountResolver`).
 - Chạy thật CHỈ qua `VeoVideoHost` (`ctx.services`) — không tự mở trình duyệt/gọi mạng.
 - Thất bại một phần → `Ok` + `failure = report.failed.join(",")`.
 - P5 CHƯA làm `i2v`/`interpolation` (2 rpc đó chưa có cURL thật xác nhận, xem spec mục 7).

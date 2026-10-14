@@ -10,6 +10,10 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [],
     outputs: [{ name: "out", type: "text" }],
   },
+  note: {
+    inputs: [],
+    outputs: [],
+  },
   image_upload: {
     inputs: [],
     outputs: [{ name: "out", type: "image" }],
@@ -60,6 +64,10 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [{ name: "brief", type: "text" }],
     outputs: [{ name: "out", type: "text" }],
   },
+  script_agent: {
+    inputs: [{ name: "brief", type: "text" }],
+    outputs: [{ name: "out", type: "text" }],
+  },
   veo3_image: {
     inputs: [
       { name: "prompt", type: "text" },
@@ -100,6 +108,18 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     inputs: [{ name: "prompt", type: "text" }],
     outputs: [{ name: "out", type: "image" }],
   },
+  museai_video: {
+    inputs: [{ name: "prompt", type: "text" }],
+    outputs: [{ name: "out", type: "video" }],
+  },
+  museai_image: {
+    inputs: [{ name: "prompt", type: "text" }],
+    outputs: [{ name: "out", type: "image" }],
+  },
+  tts: {
+    inputs: [{ name: "prompt", type: "text" }],
+    outputs: [{ name: "out", type: "audio" }],
+  },
 };
 
 /** Mau moi kieu cong (tay cam React Flow, duong noi) — dung nhat quan cho moi kieu du lieu. */
@@ -117,6 +137,7 @@ export const PORT_TYPE_COLOR: Record<PortType, string> = {
  */
 export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   prompt: "Prompt",
+  note: "Ghi chú",
   image_upload: "Tải ảnh lên",
   load_video: "Tải video lên",
   dola_video: "Tạo video Dola",
@@ -127,6 +148,7 @@ export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   audio_extract: "Tách audio",
   audio_split: "Tách audio↔video",
   script_gen: "Kịch bản AI",
+  script_agent: "Agent kịch bản affiliate",
   veo3_image: "Tạo ảnh Veo3 (Google Labs Flow)",
   veo3_video: "Tạo video Veo3",
   google_image: "Tạo ảnh Google (API Imagen)",
@@ -134,10 +156,63 @@ export const NODE_LABEL_VI: Record<NodeKindTag, string> = {
   seedance_image: "Tạo ảnh Seedance (API Seedream)",
   seedance_video: "Tạo video Seedance (API)",
   grok_image: "Tạo ảnh Grok (API xAI)",
+  museai_video: "Tạo video MuseAI",
+  museai_image: "Tạo ảnh MuseAI",
+  tts: "Tạo giọng đọc AI (TTS)",
 };
 
-/** `NodeKind` co the them vao canvas tu Palette — P4a: ca 4 kind con lai deu them duoc. */
-export const ADDABLE_KINDS: ReadonlySet<NodeKindTag> = new Set<NodeKindTag>(NODE_KIND_ORDER);
+/**
+ * Nhom (category) cua tung `NodeKind` — khop CHINH XAC `category` cua manifest node (P4a,
+ * `fixtures/catalog.json` / lenh `node_catalog`), dung de GOM NHOM danh sach "Thêm node" (Palette)
+ * thay vi liet ke phang mot danh sach dai (kho chon khi so luong kind tang theo thoi gian).
+ */
+export const NODE_CATEGORY_VI: Record<NodeKindTag, string> = {
+  prompt: "text",
+  note: "text",
+  image_upload: "input",
+  load_video: "input",
+  dola_video: "video",
+  concat: "video",
+  save: "output",
+  trim: "video",
+  frame_capture: "image",
+  audio_extract: "audio",
+  audio_split: "video",
+  script_gen: "text",
+  script_agent: "text",
+  veo3_image: "image",
+  veo3_video: "video",
+  google_image: "image",
+  google_video: "video",
+  seedance_image: "image",
+  seedance_video: "video",
+  grok_image: "image",
+  museai_video: "video",
+  museai_image: "image",
+  tts: "audio",
+};
+
+/** Thu tu + nhan tieng Viet cua tung nhom — thu tu nay quyet dinh thu tu hien thi trong Palette
+ * (theo mach luong lam viec tu nhien: dau vao -> van ban -> anh -> video -> am thanh -> xuat). */
+export const CATEGORY_ORDER: readonly string[] = ["input", "text", "image", "video", "audio", "output"];
+export const CATEGORY_LABEL_VI: Record<string, string> = {
+  input: "Đầu vào",
+  text: "Văn bản",
+  image: "Tạo ảnh",
+  video: "Tạo / xử lý video",
+  audio: "Âm thanh",
+  output: "Lưu / xuất",
+};
+
+/** Kind co trong catalog nhung CHUA trien khai that (khung rong scripts/new-node.ps1) — khong cho
+ * them vao canvas de nguoi dung khong keo phai mot node luon bao "chua cai dat". Bo khoi tap nay
+ * ngay khi node co logic that (xem crate CLAUDE.md). */
+const NOT_YET_IMPLEMENTED: ReadonlySet<NodeKindTag> = new Set<NodeKindTag>([]);
+
+/** `NodeKind` co the them vao canvas tu Palette. */
+export const ADDABLE_KINDS: ReadonlySet<NodeKindTag> = new Set<NodeKindTag>(
+  NODE_KIND_ORDER.filter((k) => !NOT_YET_IMPLEMENTED.has(k)),
+);
 
 /** Kieu hep — cac `NodeKindTag` co the tha vao canvas (Palette/`store/graph.ts`). */
 export type AddableNodeKind = NodeKindTag;

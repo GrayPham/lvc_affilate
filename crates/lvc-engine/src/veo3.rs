@@ -27,14 +27,22 @@ use std::time::Duration;
 use async_trait::async_trait;
 use lvc_browser::veo3::captcha::{GuestCaptchaBrowser, GuestCaptchaOpts};
 use lvc_browser::veo3::harvest::{HarvestOpts, harvest_session};
+use lvc_store::TaskRepo;
 use lvc_veo3::error::VeoError;
 use lvc_veo3::flow::Flow;
+use lvc_veo3::job::VideoSource;
 use lvc_veo3::job::{
     ImageJob, ImageJobDone, ImageJobsReport, VideoJob, VideoJobDone, VideoJobsReport,
 };
 use lvc_veo3::{FlowSession, VeoImageHost, VeoVideoHost};
 use tokio::sync::Mutex;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+
+use crate::apimedia::task_tracking::{
+    announce_batch, create_pending_task, finish_task_done, finish_task_failed,
+};
+use crate::dag::TaskRef;
 
 /// Trạng thái dùng chung cho dịch vụ `VeoCaptchaHost` — một bản DUY NHẤT sống trên `Engine` (không
 /// phải per-run) vì mục tiêu là "1 trình duyệt khách sống, dùng lại tuần tự", không phải mở mới mỗi
@@ -232,14 +240,24 @@ pub(crate) struct EngineVeoJobs {
     downloads_dir: PathBuf,
     flow: Flow,
     cancel: CancellationToken,
+    tasks: TaskRepo,
+    tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
 }
 
 impl EngineVeoJobs {
-    pub(crate) fn new(downloads_dir: PathBuf, flow: Flow, cancel: CancellationToken) -> Self {
+    pub(crate) fn new(
+        downloads_dir: PathBuf,
+        flow: Flow,
+        cancel: CancellationToken,
+        tasks: TaskRepo,
+        tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
+    ) -> Self {
         Self {
             downloads_dir,
             flow,
             cancel,
+            tasks,
+            tasks_ready_tx,
         }
     }
 
@@ -338,8 +356,15 @@ impl VeoImageHost for EngineVeoJobs {
     }
 }
 
+fn video_job_prompt(source: &VideoSource) -> &str {
+    match source {
+        VideoSource::Text { prompt } | VideoSource::Reference { prompt, .. } => prompt,
+    }
+}
+
 #[async_trait]
 impl VeoVideoHost for EngineVeoJobs {
+    /// 2 giai đoạn — xem doc cùng tên ở `EngineGoogleVideo::generate_videos`/`task_tracking`.
     async fn generate_videos(
         &self,
         run_id: &str,
@@ -347,14 +372,46 @@ impl VeoVideoHost for EngineVeoJobs {
         jobs: Vec<VideoJob>,
     ) -> VideoJobsReport {
         let mut report = VideoJobsReport::default();
+
+        let mut pending: Vec<(VideoJob, String)> = Vec::with_capacity(jobs.len());
+        let mut refs: Vec<(u32, String)> = Vec::with_capacity(jobs.len());
         for job in jobs {
+            match create_pending_task(
+                &self.tasks,
+                run_id,
+                node_id,
+                job.scene_index,
+                video_job_prompt(&job.source),
+                &job.credential_id,
+            )
+            .await
+            {
+                Ok(task_id) => {
+                    refs.push((job.scene_index, task_id.clone()));
+                    pending.push((job, task_id));
+                }
+                Err(e) => report.failed.push(format!(
+                    "canh {}: khong tao duoc dong task: {e}",
+                    job.scene_index
+                )),
+            }
+        }
+        announce_batch(&self.tasks_ready_tx, node_id, &refs);
+
+        for (job, task_id) in pending {
             let scene_index = job.scene_index;
             match self.run_one_video(run_id, node_id, &job).await {
-                Ok(local_path) => report.done.push(VideoJobDone {
-                    scene_index,
-                    local_path,
-                }),
-                Err(msg) => report.failed.push(format!("canh {scene_index}: {msg}")),
+                Ok(local_path) => {
+                    finish_task_done(&self.tasks, &task_id, &local_path).await;
+                    report.done.push(VideoJobDone {
+                        scene_index,
+                        local_path,
+                    });
+                }
+                Err(msg) => {
+                    finish_task_failed(&self.tasks, &task_id, &msg).await;
+                    report.failed.push(format!("canh {scene_index}: {msg}"));
+                }
             }
         }
         report
@@ -466,12 +523,28 @@ mod tests {
         }
     }
 
-    fn jobs_host(captcha_err: Option<VeoError>, session_err: Option<VeoError>) -> EngineVeoJobs {
+    async fn test_tasks() -> (TaskRepo, watch::Sender<Vec<TaskRef>>) {
+        let db = lvc_store::Db::open_memory().await.unwrap();
+        let (tx, _rx) = watch::channel(Vec::<TaskRef>::new());
+        (TaskRepo::new(&db), tx)
+    }
+
+    async fn jobs_host(
+        captcha_err: Option<VeoError>,
+        session_err: Option<VeoError>,
+    ) -> EngineVeoJobs {
         let flow = Flow::new(
             Arc::new(FakeCaptcha { err: captcha_err }),
             Arc::new(FakeSession { err: session_err }),
         );
-        EngineVeoJobs::new(PathBuf::from("dl"), flow, CancellationToken::new())
+        let (tasks, tasks_ready_tx) = test_tasks().await;
+        EngineVeoJobs::new(
+            PathBuf::from("dl"),
+            flow,
+            CancellationToken::new(),
+            tasks,
+            tasks_ready_tx,
+        )
     }
 
     fn image_job(scene_index: u32) -> ImageJob {
@@ -516,7 +589,7 @@ mod tests {
     /// anh huong.
     #[tokio::test]
     async fn generate_images_loi_mint_thi_vao_failed_khong_goi_mang() {
-        let host = jobs_host(Some(VeoError::from_text("loi mint gia")), None);
+        let host = jobs_host(Some(VeoError::from_text("loi mint gia")), None).await;
         let report = host
             .generate_images("run1", "img", vec![image_job(1)])
             .await;
@@ -533,7 +606,7 @@ mod tests {
     /// khong lam hong canh khac (o day chi co 1 canh, nhung cau truc vong lap ho tro nhieu canh).
     #[tokio::test]
     async fn generate_images_loi_harvest_thi_vao_failed() {
-        let host = jobs_host(None, Some(VeoError::from_text("loi harvest gia")));
+        let host = jobs_host(None, Some(VeoError::from_text("loi harvest gia"))).await;
         let report = host
             .generate_images("run1", "img", vec![image_job(1)])
             .await;
@@ -545,7 +618,7 @@ mod tests {
     /// phai vao `failed` ma KHONG can vong poll nao.
     #[tokio::test]
     async fn generate_videos_loi_mint_thi_vao_failed_khong_can_poll() {
-        let host = jobs_host(Some(VeoError::from_text("loi mint gia")), None);
+        let host = jobs_host(Some(VeoError::from_text("loi mint gia")), None).await;
         let report = host
             .generate_videos("run1", "vid", vec![video_job(1)])
             .await;
@@ -568,7 +641,8 @@ mod tests {
         );
         let cancel = CancellationToken::new();
         cancel.cancel();
-        let host = EngineVeoJobs::new(PathBuf::from("dl"), flow, cancel);
+        let (tasks, tasks_ready_tx) = test_tasks().await;
+        let host = EngineVeoJobs::new(PathBuf::from("dl"), flow, cancel, tasks, tasks_ready_tx);
         let report = host
             .generate_videos("run1", "vid", vec![video_job(1)])
             .await;

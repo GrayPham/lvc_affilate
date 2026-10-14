@@ -131,6 +131,34 @@ fn scene_row_to_raw(scene: &SceneRow, prompt: String, defaults: &AppSettings) ->
     }
 }
 
+/// Tham so node Video thuc su dung khi chay kich ban. `lvc-engine` KHONG duoc "biet hinh dang"
+/// params rieng cua tung kind (ADR-R014) — `stored` la du lieu da duoc caller (lop IPC `lvc-app`)
+/// chuan bi san (nguyen vem tu cot `scripts.video_params`, hoac `NodeManifest.default_params` cua
+/// dung kind khi cot do rong). Ngoai le TUONG THICH NGUOC DUY NHAT: `video_kind="dola_video"` VA
+/// `stored` rong (kich ban cu truoc khi co cot `video_kind`, hoac nguoi dung chua tung luu cau
+/// hinh) -> suy tu `AppSettings` toan cuc, giu dung hanh vi truoc khi co lua chon provider. KHONG
+/// mo rong nhanh nay cho kind khac — kind khac rong la loi cua lop goi (lvc-app phai dien
+/// `default_params` truoc khi goi `run_script`).
+fn effective_video_params(
+    video_kind: &str,
+    stored: &serde_json::Value,
+    defaults: &AppSettings,
+) -> serde_json::Value {
+    let is_empty = matches!(stored, serde_json::Value::Null)
+        || matches!(stored, serde_json::Value::String(s) if s.trim().is_empty());
+    if video_kind == "dola_video" && is_empty {
+        return serde_json::json!({
+            "mode": defaults.default_mode,
+            "model": defaults.default_model,
+            "ratio": defaults.default_ratio,
+            "duration": defaults.default_duration,
+            "logo": LogoMode::default(),
+            "account": "",
+        });
+    }
+    stored.clone()
+}
+
 /// `outputs.safe_folder_name` (Python `src/utils/outputs.py:23-27`): bo ky tu cam tren Windows,
 /// gop khoang trang lien tiep, bo dau cham/khoang trang dau-cuoi, toi da 60 ky tu.
 fn safe_folder_name(name: &str) -> String {
@@ -178,8 +206,9 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// `SCENE_INVALID`. Canh loi bi LOAI KHOI lan chay (khong dung ca lo, giong Python: moi canh
     /// doc lap).
     ///
-    /// Canh con lai (hop le) duoc `format_txt` thanh MOT node Prompt -> node Tao video (mac dinh
-    /// mode/model/ratio/duration tu `defaults`) -> node Luu (`dir` kich ban, rong -> thu muc con
+    /// Canh con lai (hop le) duoc `format_txt` thanh MOT node Prompt -> node Tao video (kind =
+    /// `video_kind`, tham so = `video_params`; xem [`effective_video_params`] ve ngoai le rong cho
+    /// `dola_video`) -> node Luu (`dir` kich ban, rong -> thu muc con
     /// cua `downloads_dir` dat theo ten kich ban) roi chay qua [`Engine::run_graph`] (tai su dung
     /// DAG, su kien, huy — R1). `run_graph` tra ve NGAY (chay nen — xem doc `dag.rs`); ham nay CHO
     /// `RunHandle::tasks_ready` thuc day (fix-round 1, I1 — thay poll ~2s truoc day: kenh `watch`
@@ -206,6 +235,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         scene_ids: &[String],
         style: &str,
         defaults: &AppSettings,
+        video_kind: &str,
+        video_params: &serde_json::Value,
     ) -> Result<ScriptRunReport, EngineError> {
         let repo = ScriptRepo::new(&self.db);
         let all_scenes = repo.list_scenes(script_id).await?;
@@ -315,15 +346,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 Node {
                     id: "video".to_string(),
                     kind: NodeData::new(
-                        "dola_video",
-                        serde_json::json!({
-                            "mode": defaults.default_mode,
-                            "model": defaults.default_model,
-                            "ratio": defaults.default_ratio,
-                            "duration": defaults.default_duration,
-                            "logo": LogoMode::default(),
-                            "account": "",
-                        }),
+                        video_kind,
+                        effective_video_params(video_kind, video_params, defaults),
                     ),
                     x: 380.0,
                     y: 80.0,
@@ -492,7 +516,8 @@ mod tests {
     use lvc_core::{Limits, Mode, Model, Ratio, TaskStatus};
     use lvc_store::{AccountRepo, BatchRef, Db, SceneIn, ScriptRepo, TaskRepo};
 
-    use super::{Engine, ScriptError};
+    use super::{Engine, SAFETY_TIMEOUT, ScriptError};
+    use crate::error::EngineError;
     use crate::generate::EngineConfig;
 
     /// Nhu `dag::tests::build_engine` (rieng ban cho `scripts.rs`, khong dung chung duoc vi
@@ -518,6 +543,32 @@ mod tests {
             .unwrap();
         let engine = Arc::new(engine);
         assert!(engine.set_registry(Arc::new(crate::test_support::test_registry())));
+        (dir, engine, db)
+    }
+
+    /// Nhu [`build_engine`] nhung registry co du veo3/google/seedance (xem
+    /// `test_support::test_registry_all_video`) — dung cho test chon provider khac
+    /// `dola_video` trong `run_script`.
+    async fn build_engine_all_video(
+        accounts: &[&str],
+        steps: Vec<FakeStep>,
+    ) -> (tempfile::TempDir, Arc<Engine<FakeDriver>>, Db) {
+        let db = Db::open_memory().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let accounts_dir = dir.path().join("accounts");
+        let repo = AccountRepo::new(&db);
+        for n in accounts {
+            std::fs::create_dir_all(accounts_dir.join(n)).unwrap();
+            repo.upsert(n).await.unwrap();
+        }
+        let mut cfg = EngineConfig::new(&accounts_dir, dir.path().join("downloads"));
+        cfg.logs_dir = dir.path().join("logs");
+        let driver = Arc::new(FakeDriver::new(steps));
+        let (engine, _handle) = Engine::new(driver, db.clone(), Limits::default(), cfg, 1)
+            .await
+            .unwrap();
+        let engine = Arc::new(engine);
+        assert!(engine.set_registry(Arc::new(crate::test_support::test_registry_all_video())));
         (dir, engine, db)
     }
 
@@ -598,7 +649,14 @@ mod tests {
             .unwrap();
 
         let report = engine
-            .run_script(&s.id, &[], "", &lvc_core::AppSettings::default())
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &lvc_core::AppSettings::default(),
+                "dola_video",
+                &serde_json::Value::Null,
+            )
             .await
             .unwrap();
         assert!(report.run_id.is_some());
@@ -664,7 +722,14 @@ mod tests {
             .unwrap();
 
         let report = engine
-            .run_script(&s.id, &[], "", &lvc_core::AppSettings::default())
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &lvc_core::AppSettings::default(),
+                "dola_video",
+                &serde_json::Value::Null,
+            )
             .await
             .unwrap();
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -743,6 +808,8 @@ mod tests {
                 std::slice::from_ref(&scenes[0].id),
                 "",
                 &lvc_core::AppSettings::default(),
+                "dola_video",
+                &serde_json::Value::Null,
             )
             .await
             .unwrap();
@@ -768,7 +835,14 @@ mod tests {
             .unwrap();
 
         let report = engine
-            .run_script(&s.id, &[], "", &lvc_core::AppSettings::default())
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &lvc_core::AppSettings::default(),
+                "dola_video",
+                &serde_json::Value::Null,
+            )
             .await
             .unwrap();
         assert!(report.run_id.is_none());
@@ -800,7 +874,14 @@ mod tests {
             .unwrap();
 
         let report = engine
-            .run_script(&s.id, &[], "Cinematic", &lvc_core::AppSettings::default())
+            .run_script(
+                &s.id,
+                &[],
+                "Cinematic",
+                &lvc_core::AppSettings::default(),
+                "dola_video",
+                &serde_json::Value::Null,
+            )
             .await
             .unwrap();
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -837,7 +918,17 @@ mod tests {
             default_duration: 15,
             ..lvc_core::AppSettings::default()
         };
-        let report = engine.run_script(&s.id, &[], "", &defaults).await.unwrap();
+        let report = engine
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &defaults,
+                "dola_video",
+                &serde_json::Value::Null,
+            )
+            .await
+            .unwrap();
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         let tasks = TaskRepo::new(&db);
         let row = tasks.get(&report.tasks[0].task_id).await.unwrap().unwrap();
@@ -865,7 +956,14 @@ mod tests {
             .unwrap();
 
         let report = engine
-            .run_script(&s.id, &[], "", &lvc_core::AppSettings::default())
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &lvc_core::AppSettings::default(),
+                "dola_video",
+                &serde_json::Value::Null,
+            )
             .await
             .unwrap();
         let run_id = report.run_id.unwrap();
@@ -955,5 +1053,86 @@ mod tests {
         assert!(scripts.get(&s.id).await.unwrap().is_none());
         // Xoa KHONG huy task (R3) — dong task van con nguyen.
         assert!(tasks.get("t1").await.unwrap().is_some());
+    }
+
+    /// Chon `video_kind != "dola_video"` khi chay kich ban: node `veo3_video` dung duoc (khac
+    /// hard-code `dola_video` cu). Dong `TaskRow` phai xuat hien NGAY (khong doi `SAFETY_TIMEOUT`,
+    /// xem fix 2026-10-11: `EngineVeoJobs::generate_videos` gio tao `TaskRow` + bao `tasks_ready`
+    /// SOM, truoc khi goi mang that — xem `apimedia::task_tracking`).
+    #[tokio::test]
+    async fn chon_provider_veo3_tra_task_ngay_khong_doi_het_safety_timeout() {
+        let (_dir, engine, db) = build_engine_all_video(&[], vec![]).await;
+        let scripts = ScriptRepo::new(&db);
+        let s = scripts.create("Demo", "").await.unwrap();
+        scripts
+            .replace_scenes(&s.id, vec![scene_in("canh 1"), scene_in("canh 2")])
+            .await
+            .unwrap();
+
+        let video_params = serde_json::json!({
+            "mode": "t2v",
+            "model": "",
+            "aspect": "portrait",
+            "seed_count": 1,
+            "account": "veo_acc_test",
+        });
+        let started = std::time::Instant::now();
+        let report = engine
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &lvc_core::AppSettings::default(),
+                "veo3_video",
+                &video_params,
+            )
+            .await
+            .unwrap();
+        let elapsed = started.elapsed();
+
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(report.tasks.len(), 2);
+        assert!(
+            elapsed < SAFETY_TIMEOUT / 2,
+            "phai tra ve NGAY sau khi tao xong TaskRow, khong doi video that (mat {elapsed:?})"
+        );
+
+        // Dong TaskRow da duoc tao that (du "video that" se that bai sau do vi khong co
+        // VeoCaptchaHost/VeoSessionHost that — khong quan tam ket qua cuoi, chi can dong ton tai
+        // NGAY va gan dung run_id/scene_id).
+        let tasks = TaskRepo::new(&db);
+        for t in &report.tasks {
+            assert!(tasks.get(&t.task_id).await.unwrap().is_some());
+        }
+    }
+
+    /// `video_kind` chon nhung registry CHUA dang ky kind do (vd dang chay tren `build_engine`
+    /// thuong, chi co `dola_video`) -> loi cau truc `EngineError::Graph`, khong panic, khong gia
+    /// mao thanh cong.
+    #[tokio::test]
+    async fn chon_provider_chua_dang_ky_bao_loi_graph_khong_panic() {
+        let (_dir, engine, db) = build_engine(&[], vec![]).await;
+        let scripts = ScriptRepo::new(&db);
+        let s = scripts.create("Demo", "").await.unwrap();
+        scripts
+            .replace_scenes(&s.id, vec![scene_in("canh 1")])
+            .await
+            .unwrap();
+
+        let video_params = serde_json::json!({
+            "mode": "t2v", "model": "", "aspect": "portrait", "seed_count": 1, "account": "a",
+        });
+        let err = engine
+            .run_script(
+                &s.id,
+                &[],
+                "",
+                &lvc_core::AppSettings::default(),
+                "veo3_video",
+                &video_params,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, EngineError::Graph(_)), "{err:?}");
     }
 }

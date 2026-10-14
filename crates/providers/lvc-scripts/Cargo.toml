@@ -1,0 +1,18 @@
+[package]
+name = "lvc-scripts"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Hop dong dich vu LUU kich ban (khong phai provider AI) — node `script_gen` lay qua
+# `ctx.services.get::<Arc<dyn ScriptSinkHost>>()` de luu ket qua sinh text thanh mot kich ban
+# trong tab "Kịch bản", KHONG tu dung `lvc-store`/`sqlx` (vi pham doc lap node, ADR-R014).
+# LUAT: KHONG biet khai niem node (khong phu thuoc lvc-node-api), KHONG phu thuoc
+# lvc-engine/store/browser/app/tauri. Engine impl trait nay (xem crates/lvc-engine/src/scriptsink.rs).
+[dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

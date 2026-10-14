@@ -8,6 +8,7 @@ import type { NodeKind, NodeKindTag } from "../src/ipc/types";
 
 const DATA: Record<NodeKindTag, NodeKind> = {
   prompt: { kind: "prompt", text: "" },
+  note: { kind: "note", text: "" },
   image_upload: { kind: "image_upload", paths: [] },
   load_video: { kind: "load_video", paths: [] },
   dola_video: { kind: "dola_video", mode: "fast", model: "seedance-2.0", ratio: "9:16", duration: 10, logo: "off", account: "" },
@@ -17,7 +18,8 @@ const DATA: Record<NodeKindTag, NodeKind> = {
   frame_capture: { kind: "frame_capture", time: 0 },
   audio_extract: { kind: "audio_extract", format: "mp3" },
   audio_split: { kind: "audio_split" },
-  script_gen: { kind: "script_gen", topic: "", num_scenes: 3, language: "vi", style: "", system: "", credential: "", provider: "gemini" },
+  script_gen: { kind: "script_gen", topic: "", num_scenes: 3, language: "vi", style: "", system: "", credential: "", provider: "gemini", save_as_script: false, script_name: "" },
+  script_agent: { kind: "script_agent", topic: "", num_scenes: 4, language: "vi", style: "", extra_instructions: "", credential: "", provider: "gemini", save_as_script: false, script_name: "" },
   veo3_image: { kind: "veo3_image", model: "GEM_PIX_2", aspect: "portrait", seed: null, account: "" },
   veo3_video: { kind: "veo3_video", mode: "t2v", model: "", aspect: "portrait", seed_count: 1, account: "" },
   google_image: { kind: "google_image", model: "", aspect: "portrait", credential: "" },
@@ -25,6 +27,9 @@ const DATA: Record<NodeKindTag, NodeKind> = {
   seedance_image: { kind: "seedance_image", model: "", aspect: "square", credential: "" },
   seedance_video: { kind: "seedance_video", mode: "t2v", model: "", aspect: "landscape", credential: "" },
   grok_image: { kind: "grok_image", model: "", credential: "" },
+  museai_video: { kind: "museai_video", account: "", aspect: "", duration: null },
+  museai_image: { kind: "museai_image", account: "" },
+  tts: { kind: "tts", provider: "elevenlabs", voice_id: "", model: "", speed: 1, credential: "" },
 };
 
 function node(id: string, kind: NodeKindTag): RFNode {

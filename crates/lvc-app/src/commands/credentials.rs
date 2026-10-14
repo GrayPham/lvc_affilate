@@ -2,9 +2,12 @@
 //! `credential_update`); ra ngoài chỉ [`CredentialView`] đã che. Xem quy ước `xxx_impl`/`xxx` ở
 //! đầu `commands/mod.rs`.
 
+use std::path::PathBuf;
+
 use lvc_browser::BrowserDriver;
 use lvc_vault::{AddCredential, CredentialView, VerifyOutcome};
 
+use super::login::platform::login_url;
 use super::{Ctx, IpcError};
 use crate::state::AppState;
 
@@ -102,6 +105,33 @@ pub async fn credential_update(
     credential_update_impl(&state, &id, secret, label, proxy, enabled).await
 }
 
+/// Dat TAG LOAI NODE cho mot credential (`"video"` | `"image"` | `"script"`) — node AI chi lay tai
+/// khoan/key co dung tag (ban ban giao UI). Gia tri la bi loai bo o tang vault.
+///
+/// # Errors
+/// `IpcError` `CRED_NOT_FOUND` khi `id` khong co; `STORE` khi ghi loi.
+pub async fn credential_set_node_types_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    id: &str,
+    node_types: &[String],
+) -> Result<(), IpcError> {
+    ctx.vault.set_node_types(id, node_types).await?;
+    Ok(())
+}
+
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan tham so JSON da giai ma so huu - bien gioi IPC"
+)]
+#[tauri::command]
+pub async fn credential_set_node_types(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    node_types: Vec<String>,
+) -> Result<(), IpcError> {
+    credential_set_node_types_impl(&state, &id, &node_types).await
+}
+
 /// Thân `credential_verify` — với `api_key` (openai/gemini) gọi list-models bằng key rồi ghi
 /// `status`; provider khác trả `unknown` (kiểm bằng trình duyệt để sau).
 ///
@@ -120,6 +150,41 @@ pub async fn credential_verify(
     id: String,
 ) -> Result<VerifyOutcome, IpcError> {
     credential_verify_impl(&state, &id).await
+}
+
+/// Thân `credential_open_viewer` — "Mở trình duyệt" cho tài khoản/credential (Google/Gemini/
+/// Facebook/Apple/ChatGPT/MuseAI...) ĐÃ có profile thật (xem `Phần A`: tiêm cookie → profile Chrome
+/// qua `lvc_engine::profiles::provision_profile`, ghi `meta.profile_dir`) — chưa có profile (vd
+/// credential chỉ dán cookie trước khi có Phần A, hoặc API key không có browser) thì báo rõ
+/// `PROFILE_NOT_FOUND` thay vì mở một profile RỖNG (gây hiểu lầm "đã đăng nhập mà sao trống").
+///
+/// # Errors
+/// - `CRED_NOT_FOUND`: không có credential nào với `id` này.
+/// - `PROFILE_NOT_FOUND`: credential này chưa có `meta.profile_dir`.
+/// - `INVALID_PROXY`/`BROWSER`/`IO`: từ [`lvc_engine::Engine::open_profile_viewer`].
+pub async fn credential_open_viewer_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    id: &str,
+) -> Result<(), IpcError> {
+    let (provider, profile_dir, proxy) = ctx.vault.profile_dir_and_proxy(id).await?;
+    let Some(profile_dir) = profile_dir else {
+        return Err(IpcError::new(
+            "PROFILE_NOT_FOUND",
+            "tài khoản này chưa có profile trình duyệt (chưa tiêm cookie thành công) — thêm lại cookie rồi thử lại",
+        ));
+    };
+    Ok(ctx
+        .engine
+        .open_profile_viewer(&PathBuf::from(profile_dir), login_url(&provider), &proxy)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn credential_open_viewer(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), IpcError> {
+    credential_open_viewer_impl(&state, &id).await
 }
 
 /// # Errors
@@ -141,8 +206,61 @@ pub async fn credential_delete(
 
 #[cfg(test)]
 mod tests {
+    use lvc_browser::FakeStep;
+
     use super::*;
     use crate::commands::test_support::ctx_with;
+
+    #[tokio::test]
+    async fn credential_open_viewer_impl_chua_co_profile_bao_profile_not_found() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let req = AddCredential {
+            provider: "google".into(),
+            kind: "session".into(),
+            label: "Gmail acc1".into(),
+            secret: "cookie-tho".into(),
+            meta: serde_json::json!({ "mode": "cookie" }),
+            proxy: String::new(),
+        };
+        let view = credential_add_impl(&ctx, req).await.unwrap();
+        let err = credential_open_viewer_impl(&ctx, &view.id)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "PROFILE_NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn credential_open_viewer_impl_khong_ton_tai_bao_cred_not_found() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let err = credential_open_viewer_impl(&ctx, "ghost")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "CRED_NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn credential_open_viewer_impl_co_profile_mo_duoc() {
+        let (dir, ctx, _driver) = ctx_with(vec![FakeStep::Launch(Ok(()))], &[]).await;
+        let profile_dir = dir
+            .path()
+            .join("accounts")
+            .join(".logins")
+            .join("google")
+            .join("acc1");
+        let req = AddCredential {
+            provider: "google".into(),
+            kind: "session".into(),
+            label: "Gmail acc1".into(),
+            secret: "cookie-tho".into(),
+            meta: serde_json::json!({
+                "mode": "cookie",
+                "profile_dir": profile_dir.to_string_lossy(),
+            }),
+            proxy: String::new(),
+        };
+        let view = credential_add_impl(&ctx, req).await.unwrap();
+        credential_open_viewer_impl(&ctx, &view.id).await.unwrap();
+    }
 
     #[tokio::test]
     async fn them_liet_ke_kiem_xoa_khong_lo_secret() {

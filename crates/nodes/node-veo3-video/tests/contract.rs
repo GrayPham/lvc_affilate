@@ -48,6 +48,37 @@ fn text_inputs(port: &str, lines: &[&str]) -> Inputs {
     i
 }
 
+/// Nhu `text_inputs` nhung moi dong kem `attrs` tuong ung (cung do dai voi `lines`) — dung cho
+/// test override TXT theo dong (`ratio=`/`refs=`/`account=`).
+fn text_inputs_with_attrs(port: &str, lines: &[(&str, &[(&str, &str)])]) -> Inputs {
+    let mut i = Inputs::new();
+    i.push(
+        port,
+        EdgeInput {
+            from_node: "p".into(),
+            from_port: "out".into(),
+            values: Some(
+                lines
+                    .iter()
+                    .enumerate()
+                    .map(|(k, (text, attrs))| {
+                        Value::Text(TextItem {
+                            text: (*text).into(),
+                            source_node: "p".into(),
+                            line: Some(k + 1),
+                            attrs: attrs
+                                .iter()
+                                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                                .collect(),
+                        })
+                    })
+                    .collect(),
+            ),
+        },
+    );
+    i
+}
+
 fn with_refs(mut inputs: Inputs, paths: &[&str]) -> Inputs {
     inputs.push(
         "refs",
@@ -195,7 +226,7 @@ fn aspect_la_bao_loi_param_aspect() {
 }
 
 #[test]
-fn account_rong_bao_loi_param_account() {
+fn account_rong_khong_loi_truyen_thang_cho_resolver_tu_chon() {
     let inputs = text_inputs("prompt", &["canh 1"]);
     let p = node_veo3_video::VideoParams {
         mode: "t2v".into(),
@@ -204,11 +235,8 @@ fn account_rong_bao_loi_param_account() {
         seed_count: 1,
         account: String::new(),
     };
-    let err = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap_err();
-    assert!(matches!(
-        &err[0],
-        GraphError::Param { node, field, .. } if node == "vid" && field == "account"
-    ));
+    let jobs = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap();
+    assert_eq!(jobs[0].credential_id, "");
 }
 
 #[test]
@@ -237,6 +265,116 @@ fn model_chi_dinh_thang_mac_dinh() {
     };
     let jobs = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap();
     assert_eq!(jobs[0].model, "model-tuy-chon");
+}
+
+#[test]
+fn txt_ratio_doi_apsect_dong_do_khong_doi_cac_dong_khac() {
+    let inputs = text_inputs_with_attrs(
+        "prompt",
+        &[("canh 1", &[("ratio", "16:9")][..]), ("canh 2", &[][..])],
+    );
+    let p = node_veo3_video::VideoParams {
+        mode: "t2v".into(),
+        model: String::new(),
+        aspect: "portrait".into(),
+        seed_count: 1,
+        account: "acc1".into(),
+    };
+    let jobs = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap();
+    assert_eq!(jobs[0].aspect, lvc_veo3::model::Aspect::Landscape);
+    assert_eq!(
+        jobs[1].aspect,
+        lvc_veo3::model::Aspect::Portrait,
+        "dong khong co attrs dung aspect tinh cua node"
+    );
+}
+
+#[test]
+fn txt_ratio_khong_nhan_dien_im_lang_dung_aspect_tinh() {
+    let inputs = text_inputs_with_attrs("prompt", &[("canh 1", &[("ratio", "1:1")][..])]);
+    let p = node_veo3_video::VideoParams {
+        mode: "t2v".into(),
+        model: String::new(),
+        aspect: "landscape".into(),
+        seed_count: 1,
+        account: "acc1".into(),
+    };
+    let jobs = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap();
+    assert_eq!(jobs[0].aspect, lvc_veo3::model::Aspect::Landscape);
+}
+
+#[test]
+fn txt_account_ghi_de_dong_khong_co_van_dung_tinh() {
+    let inputs = text_inputs_with_attrs(
+        "prompt",
+        &[
+            ("canh 1", &[("account", "acc_rieng")][..]),
+            ("canh 2", &[][..]),
+        ],
+    );
+    let p = node_veo3_video::VideoParams {
+        mode: "t2v".into(),
+        model: String::new(),
+        aspect: "portrait".into(),
+        seed_count: 1,
+        account: "acc_tinh".into(),
+    };
+    let jobs = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap();
+    assert_eq!(jobs[0].credential_id, "acc_rieng");
+    assert_eq!(jobs[1].credential_id, "acc_tinh");
+}
+
+#[test]
+fn txt_refs_gop_them_vao_cong_refs_chi_khi_r2v() {
+    let inputs = with_refs(
+        text_inputs_with_attrs("prompt", &[("canh 1", &[("refs", "c.jpg")][..])]),
+        &["a.jpg", "b.jpg"],
+    );
+    let p = node_veo3_video::VideoParams {
+        mode: "r2v".into(),
+        model: String::new(),
+        aspect: "portrait".into(),
+        seed_count: 1,
+        account: "acc1".into(),
+    };
+    let jobs = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap();
+    match &jobs[0].source {
+        VideoSource::Reference {
+            ref_image_paths, ..
+        } => assert_eq!(
+            ref_image_paths,
+            &[
+                std::path::PathBuf::from("a.jpg"),
+                std::path::PathBuf::from("b.jpg"),
+                std::path::PathBuf::from("c.jpg"),
+            ]
+        ),
+        VideoSource::Text { .. } => panic!("r2v phai dung VideoSource::Reference"),
+    }
+}
+
+#[test]
+fn txt_refs_vuot_gioi_han_sau_khi_gop_bao_loi_param_refs() {
+    let many = "1.jpg\n2.jpg\n3.jpg\n4.jpg\n5.jpg\n6.jpg\n7.jpg";
+    let inputs = text_inputs_with_attrs(
+        "prompt",
+        &[
+            ("canh qua tai", &[("refs", many)][..]),
+            ("canh binh thuong", &[][..]),
+        ],
+    );
+    let p = node_veo3_video::VideoParams {
+        mode: "r2v".into(),
+        model: String::new(),
+        aspect: "portrait".into(),
+        seed_count: 1,
+        account: "acc1".into(),
+    };
+    let err = node_veo3_video::build_jobs("vid", &p, &inputs).unwrap_err();
+    assert!(matches!(
+        &err[0],
+        GraphError::Param { node, field, .. } if node == "vid" && field == "refs"
+    ));
 }
 
 // ---- preview (thuần) ----

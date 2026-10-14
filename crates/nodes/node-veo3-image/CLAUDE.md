@@ -13,8 +13,9 @@ node khác, `lvc-engine`, `lvc-store`, `lvc-browser`, `tauri`. Node CHỈ biết
   dùng CHUNG cho MỌI ảnh, không có trần cứng riêng như R2V video).
 - Ra: `out: Image*` — `Asset.meta`: `node`, `index` (= `scene_index`), `width`/`height` (chỉ khi
   host trả kèm).
-- Tài khoản: `google/login` (`credential_id` truyền qua tham số `account`, BẮT BUỘC — chưa có
-  "auto" như Dola).
+- Tài khoản: `google/login` (`credential_id` truyền qua tham số `account` — rỗng = tự chọn tài
+  khoản đầu tiên còn dùng được trong kho, `VaultVeo3AccountResolver`, giống `dola_video`,
+  2026-10-13).
 
 ## Tham số
 `model` (`"NARWHAL"|"GEM_PIX_2"|"HARBOR_SEAL"`, mặc định `GEM_PIX_2`), `aspect`
@@ -25,7 +26,8 @@ node khác, `lvc-engine`, `lvc-store`, `lvc-browser`, `tauri`. Node CHỈ biết
   override TXT theo dòng (`attrs`) — khác `dola_video`, xem `MEMORY.md`.
 - Ảnh cổng `refs` dùng CHUNG cho MỌI job (không tách theo dòng TXT `refs=`).
 - `model`/`aspect` sai → `GraphError::Param{field:"model"|"aspect"}` (không panic).
-- `account` rỗng → `GraphError::Param{field:"account"}` (P5 chưa có tự chọn tài khoản).
+- `account` rỗng — KHÔNG lỗi (2026-10-13), truyền thẳng xuống `VeoAccountResolver` để tự chọn tài
+  khoản.
 - Không có ảnh nào (`prompt` rỗng) → `GraphError::Scene`.
 - Ảnh tạo ĐỒNG BỘ (không polling) — `run` gọi `VeoImageHost::generate_images` một lần rồi trả kết
   quả ngay, không tự lặp/tự huỷ theo `ctx.cancel` (đó là việc của host).

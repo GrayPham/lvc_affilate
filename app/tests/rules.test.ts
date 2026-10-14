@@ -27,6 +27,7 @@ describe("allowedDurations — mirror Mode::allowed_durations (mode.rs:53, ADR-0
 describe("isValidConnection — mirror validate() buoc kieu cong + cong don (validate.rs)", () => {
   const DUMMY_DATA: Record<NodeKindTag, NodeKind> = {
     prompt: { kind: "prompt", text: "canh 1" },
+    note: { kind: "note", text: "" },
     image_upload: { kind: "image_upload", paths: [] },
     load_video: { kind: "load_video", paths: [] },
     dola_video: {
@@ -53,6 +54,20 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
       system: "",
       credential: "",
       provider: "gemini",
+      save_as_script: false,
+      script_name: "",
+    },
+    script_agent: {
+      kind: "script_agent",
+      topic: "",
+      num_scenes: 4,
+      language: "vi",
+      style: "",
+      extra_instructions: "",
+      credential: "",
+      provider: "gemini",
+      save_as_script: false,
+      script_name: "",
     },
     veo3_image: { kind: "veo3_image", model: "GEM_PIX_2", aspect: "portrait", seed: null, account: "" },
     veo3_video: { kind: "veo3_video", mode: "t2v", model: "", aspect: "portrait", seed_count: 1, account: "" },
@@ -61,6 +76,9 @@ describe("isValidConnection — mirror validate() buoc kieu cong + cong don (val
     seedance_image: { kind: "seedance_image", model: "", aspect: "square", credential: "" },
     seedance_video: { kind: "seedance_video", mode: "t2v", model: "", aspect: "landscape", credential: "" },
     grok_image: { kind: "grok_image", model: "", credential: "" },
+    museai_video: { kind: "museai_video", account: "", aspect: "", duration: null },
+    museai_image: { kind: "museai_image", account: "" },
+    tts: { kind: "tts", provider: "elevenlabs", voice_id: "", model: "", speed: 1, credential: "" },
   };
 
   function node(id: string, kind: NodeKindTag): RFNode {

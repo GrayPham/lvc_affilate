@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { runList } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
+import RunLogDialog from "./RunLogDialog";
 import type { RunRow } from "../ipc/types";
 import { useTasksStore, type StatusFilter } from "../store/tasks";
 
@@ -38,6 +39,8 @@ export default function TaskFilters() {
 
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [runsError, setRunsError] = useState<string | null>(null);
+  /** Lan chay dang mo hop thoai "Chi tiết lần chạy"; `null` = dong. */
+  const [showLog, setShowLog] = useState<RunRow | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,40 +61,61 @@ export default function TaskFilters() {
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2">
-      <label className="flex items-center gap-1 text-xs text-slate-600">
+    <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-neutral-900/60 p-2">
+      <label className="flex items-center gap-1 text-xs text-neutral-300">
         Run
         <select
-          className="rounded border border-slate-300 px-2 py-1 text-xs"
+          className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-100"
           value={filter.runId ?? ""}
           onChange={(e) => setRunId(e.target.value === "" ? null : e.target.value)}
         >
-          <option value="">Tất cả</option>
+          <option value="" className="bg-neutral-900 text-neutral-100">Tất cả</option>
           {runs.map((run) => (
-            <option key={run.id} value={run.id}>
+            <option key={run.id} value={run.id} className="bg-neutral-900 text-neutral-100">
               {formatRunLabel(run)}
             </option>
           ))}
         </select>
       </label>
 
-      <label className="flex items-center gap-1 text-xs text-slate-600">
+      <label className="flex items-center gap-1 text-xs text-neutral-300">
         Trạng thái
         <select
-          className="rounded border border-slate-300 px-2 py-1 text-xs"
+          className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-100"
           value={filter.status}
           onChange={(e) => setStatus(e.target.value as StatusFilter)}
         >
           {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
+            <option key={opt.value} value={opt.value} className="bg-neutral-900 text-neutral-100">
               {opt.label}
             </option>
           ))}
         </select>
       </label>
 
-      {loading ? <span className="text-xs text-slate-400">Đang tải…</span> : null}
-      {runsError ? <span className="text-xs text-red-600">Không tải được danh sách run: {runsError}</span> : null}
+      <button
+        type="button"
+        disabled={filter.runId === null}
+        title={
+          filter.runId === null
+            ? "Chọn một lần chạy ở ô Run để xem chi tiết"
+            : "Xem dòng thời gian từng node của lần chạy này"
+        }
+        className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        onClick={() => {
+          const run = runs.find((r) => r.id === filter.runId);
+          if (run) {
+            setShowLog(run);
+          }
+        }}
+      >
+        Chi tiết lần chạy
+      </button>
+
+      {loading ? <span className="text-xs text-neutral-500">Đang tải…</span> : null}
+      {runsError ? <span className="text-xs text-red-400">Không tải được danh sách run: {runsError}</span> : null}
+
+      {showLog ? <RunLogDialog run={showLog} onClose={() => setShowLog(null)} /> : null}
     </div>
   );
 }

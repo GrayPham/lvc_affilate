@@ -26,9 +26,9 @@ pub use jobs::{MAX_REFERENCE_IMAGES, build_jobs};
 
 pub const KIND: &str = "veo3_video";
 
-/// Tham số node. `account` = `credential_id` (`google/login`), BẮT BUỘC không rỗng — P5 chưa có
-/// "auto" như Dola (xem spec mục 7). `model` rỗng = mặc định theo `mode`
-/// (`lvc_veo3::model::default_video_model`).
+/// Tham số node. `account` = `credential_id` (`google/login`) — rỗng = tự chọn tài khoản đầu tiên
+/// còn dùng được trong kho (`VaultVeo3AccountResolver`, `lvc-app`), giống `dola_video`. `model`
+/// rỗng = mặc định theo `mode` (`lvc_veo3::model::default_video_model`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct VideoParams {
     /// `"t2v"` (text-to-video) hoặc `"r2v"` (reference-to-video, 1-6 ảnh).
@@ -67,9 +67,9 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
             "model": { "type": "string", "title": "Model (rong = mac dinh theo mode)" },
             "aspect": { "type": "string", "title": "Ty le khung", "enum": ["portrait", "landscape"] },
             "seed_count": { "type": "integer", "title": "So bien the (seed_count)", "minimum": 1 },
-            "account": { "type": "string", "title": "Tai khoan (ten/label credential Google, bat buoc)" }
+            "account": { "type": "string", "title": "Tai khoan (rong = tu chon)" }
         },
-        "required": ["mode", "model", "aspect", "seed_count", "account"]
+        "required": ["mode", "model", "aspect", "seed_count"]
     }),
 });
 

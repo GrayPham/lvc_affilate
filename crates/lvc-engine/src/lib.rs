@@ -34,9 +34,15 @@ pub mod events;
 pub mod generate;
 pub mod limiter;
 pub mod login;
+// Dich vu MuseaiVideoHost (noi bo) — MuseaiAccountResolver (API cong khai cho lvc-app impl bang
+// Vault, dung y VeoAccountResolver) + EngineMuseaiJobs (noi bo). Setter
+// Engine::set_museai_account_resolver la API cong khai.
+pub mod museai;
 pub mod pool;
+pub mod profiles;
 pub mod resume;
 pub mod scripts;
+pub(crate) mod scriptsink;
 pub mod session_cache;
 pub mod settings;
 #[cfg(test)]
@@ -60,9 +66,11 @@ pub use error::EngineError;
 pub use events::{EVENT_CAPACITY, EngineEvent, EngineEvents, next_event};
 pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};
 pub use limiter::{DynamicLimiter, LimiterHandle, Permit};
+pub use museai::MuseaiAccountResolver;
 pub use pool::{AccountPool, Lease};
 pub use resume::RequeueReport;
 pub use scripts::{ScriptError, ScriptRunError, ScriptRunReport, ScriptRunTask};
 pub use session_cache::SessionCache;
+pub use settings::resolve_dir;
 pub use textgen::{ResolvedSecret, TextSecretResolver};
 pub use veo3::VeoAccountResolver;

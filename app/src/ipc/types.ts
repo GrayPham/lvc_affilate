@@ -44,6 +44,7 @@ export type PortType = z.infer<typeof PortTypeSchema>;
 // `crates/nodes/node-audio-extract`/`node-audio-split`.
 export const NodeKindTagSchema = z.enum([
   "prompt",
+  "note",
   "image_upload",
   "load_video",
   "dola_video",
@@ -54,6 +55,7 @@ export const NodeKindTagSchema = z.enum([
   "audio_extract",
   "audio_split",
   "script_gen",
+  "script_agent",
   "veo3_image",
   "veo3_video",
   "google_image",
@@ -61,6 +63,9 @@ export const NodeKindTagSchema = z.enum([
   "seedance_image",
   "seedance_video",
   "grok_image",
+  "museai_video",
+  "museai_image",
+  "tts",
 ]);
 export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 
@@ -69,6 +74,9 @@ export type NodeKindTag = z.infer<typeof NodeKindTagSchema>;
 export const NODE_KIND_ORDER: readonly NodeKindTag[] = NodeKindTagSchema.options;
 
 const PromptKindSchema = z.object({ kind: z.literal("prompt"), text: z.string() });
+// Node ghi chu tinh tren canvas (crates/nodes/node-note) — khong cong vao/ra, chi hien thi
+// luu y/cach dung/cac buoc setup template cho nguoi doc sau.
+const NoteKindSchema = z.object({ kind: z.literal("note"), text: z.string() });
 const ImageUploadKindSchema = z.object({
   kind: z.literal("image_upload"),
   paths: z.array(z.string()),
@@ -116,6 +124,24 @@ const ScriptGenKindSchema = z.object({
   system: z.string(),
   credential: z.string(),
   provider: z.enum(["gemini", "openai"]),
+  // Luu ket qua thanh kich ban moi trong tab "Kịch bản" khi chay (xem CLAUDE.md node-script-gen).
+  save_as_script: z.boolean(),
+  script_name: z.string(),
+});
+// Node "Agent kịch bản affiliate" (crates/nodes/node-script-agent) — hop dong giong het
+// `script_gen` ngoai tru doi ten `system` -> `extra_instructions` (noi THEM vao chi dan affiliate
+// co san, khong thay the - xem CLAUDE.md node-script-agent).
+const ScriptAgentKindSchema = z.object({
+  kind: z.literal("script_agent"),
+  topic: z.string(),
+  num_scenes: z.number(),
+  language: z.string(),
+  style: z.string(),
+  extra_instructions: z.string(),
+  credential: z.string(),
+  provider: z.enum(["gemini", "openai"]),
+  save_as_script: z.boolean(),
+  script_name: z.string(),
 });
 // P5: node doc lap Google Labs Flow/Veo3 (crates/nodes/node-veo3-image, node-veo3-video) — khop
 // dung ImageParams/VideoParams cua Rust (xem manifest.json cua tung crate). `account` la id
@@ -169,9 +195,37 @@ const GrokImageKindSchema = z.object({
   model: z.string(),
   credential: z.string(),
 });
+// Node MuseAI (muse.ai) — sinh video qua giao thuc Hatch/Noise that (xem CLAUDE.md
+// crates/providers/lvc-museai muc "Co che tao video"). `account` la id credential BAT BUOC
+// (`museai/login`), giong het `veo3_video` (chua co "auto" chon tai khoan).
+const MuseaiVideoKindSchema = z.object({
+  kind: z.literal("museai_video"),
+  account: z.string(),
+  // Chi CHEN THEM vao cau prompt (muse.ai khong co tham so API that — xac nhan qua GET /model) —
+  // rong = khong chen gi, xem lvc_museai::protocol::client::build_video_prompt.
+  aspect: z.string(),
+  duration: z.number().nullable(),
+});
+// Node MuseAI anh tinh — cung giao thuc/co che dang nhap voi museai_video, chi khac cong ra (image).
+const MuseaiImageKindSchema = z.object({
+  kind: z.literal("museai_image"),
+  account: z.string(),
+});
+// Node TTS (ElevenLabs/MiniMax, crates/nodes/node-tts) — cong `prompt` (Text*) -> `out` (Audio*),
+// moi TextItem noi vao la mot cau doc rieng (giong museai_video/grok_image). `credential` la TEN
+// (label) API key, BAT BUOC chon dung provider trong kho.
+const TtsKindSchema = z.object({
+  kind: z.literal("tts"),
+  provider: z.enum(["elevenlabs", "minimax"]),
+  voice_id: z.string(),
+  model: z.string(),
+  speed: z.number(),
+  credential: z.string(),
+});
 
 export const NodeKindSchema = z.discriminatedUnion("kind", [
   PromptKindSchema,
+  NoteKindSchema,
   ImageUploadKindSchema,
   LoadVideoKindSchema,
   DolaVideoKindSchema,
@@ -182,6 +236,7 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   AudioExtractKindSchema,
   AudioSplitKindSchema,
   ScriptGenKindSchema,
+  ScriptAgentKindSchema,
   Veo3ImageKindSchema,
   Veo3VideoKindSchema,
   GoogleImageKindSchema,
@@ -189,6 +244,9 @@ export const NodeKindSchema = z.discriminatedUnion("kind", [
   SeedanceImageKindSchema,
   SeedanceVideoKindSchema,
   GrokImageKindSchema,
+  MuseaiVideoKindSchema,
+  MuseaiImageKindSchema,
+  TtsKindSchema,
 ]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 
@@ -326,6 +384,15 @@ const RunDoneEventSchema = z.object({
   runId: z.string(),
   status: z.string(),
 });
+// P-lumina: node API (Veo3/Google/Seedance/Grok/MuseAI...) khong co dong `tasks` rieng nhu
+// dola_video — day la nguon DUY NHAT bao duong dan anh/video vua sinh de `OutputPreview` hien
+// (xem `crates/lvc-engine/src/dag.rs::emit_preview_if_media`).
+const NodeOutputsEventSchema = z.object({
+  type: z.literal("node_outputs"),
+  runId: z.string(),
+  nodeId: z.string(),
+  previewPath: z.string(),
+});
 
 export const EngineEventSchema = z.discriminatedUnion("type", [
   TaskStageEventSchema,
@@ -333,6 +400,7 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
   TaskFailedEventSchema,
   NodeStateEventSchema,
   RunDoneEventSchema,
+  NodeOutputsEventSchema,
 ]);
 export type EngineEvent = z.infer<typeof EngineEventSchema>;
 
@@ -420,9 +488,34 @@ export const AppSettingsSchema = z.object({
   defaultRatio: RatioSchema,
   defaultDuration: z.number(),
   dolaChannel: z.enum(["api", "browser"]),
+  // Nhom "Luu tru" (crates/lvc-core/src/settings/storage.rs).
+  subdirPattern: z.enum(["none", "workflow", "workflow_date", "date"]),
+  filenameTemplate: z.string(),
+  duplicatePolicy: z.enum(["number", "overwrite", "skip"]),
+  // Nhom "Chay tac vu" (crates/lvc-core/src/settings/run.rs). `restBetween` tinh bang GIAY, chi
+  // nhan mot trong `REST_CHOICES` = [0, 30, 60, 180].
+  onError: z.enum(["skip", "stop"]),
+  restBetween: z.number(),
+  missingAccount: z.enum(["skip", "wait"]),
 });
 export type AppSettings = z.infer<typeof AppSettingsSchema>;
 export type DolaChannel = AppSettings["dolaChannel"];
+export type SubdirPattern = AppSettings["subdirPattern"];
+export type DuplicatePolicy = AppSettings["duplicatePolicy"];
+export type OnErrorPolicy = AppSettings["onError"];
+export type MissingAccountPolicy = AppSettings["missingAccount"];
+
+/** `commands::cache::CacheInfo` — thong tin thu muc tam cho nhom "Luu tru". */
+export const CacheInfoSchema = z.object({
+  path: z.string(),
+  bytes: z.number(),
+  files: z.number(),
+  /** Moc quy chieu cua thanh do (10 GB) — backend gui de UI khong tu doan. */
+  barFullBytes: z.number(),
+  /** So ngay giu file truoc khi tu xoa luc khoi dong. */
+  maxAgeDays: z.number(),
+});
+export type CacheInfo = z.infer<typeof CacheInfoSchema>;
 
 export const RequeueReportSchema = z.object({
   requeued: z.array(z.string()),
@@ -635,6 +728,12 @@ export const ScriptMetaSchema = z.object({
   done: z.number(),
   failed: z.number(),
   running: z.number(),
+  /** `kind` node Video dung khi Chay (vd "dola_video"/"veo3_video"/...) — mac dinh "dola_video". */
+  videoKind: z.string(),
+  /** Chuoi JSON tho (rong = "chua dat") — xem `ScriptRowSchema.videoParams`. */
+  videoParams: z.string(),
+  /** Nhan phan loai tu do (vd "Affiliate") — rong = chua phan loai. */
+  category: z.string(),
 });
 export type ScriptMeta = z.infer<typeof ScriptMetaSchema>;
 
@@ -645,6 +744,10 @@ export const ScriptRowSchema = z.object({
   dir: z.string(),
   createdAt: z.number(),
   updatedAt: z.number(),
+  videoKind: z.string(),
+  /** Chuoi JSON tho (rong = "chua dat", xem `lvc_engine::scripts::effective_video_params"`). */
+  videoParams: z.string(),
+  category: z.string(),
 });
 export type ScriptRow = z.infer<typeof ScriptRowSchema>;
 
@@ -698,6 +801,11 @@ export const CredentialProviderSchema = z.enum([
   "apple",
   "seedance",
   "grok",
+  "museai",
+  "elevenlabs",
+  "minimax",
+  // Token publish workflow len kho cong dong (xem `crates/providers/lvc-github`).
+  "github",
 ]);
 export type CredentialProvider = z.infer<typeof CredentialProviderSchema>;
 
@@ -813,12 +921,13 @@ export type ScriptResetReport = z.infer<typeof ScriptResetReportSchema>;
 // `template_*`. Fixture nguon su that: `fixtures/template_list.json` (`TemplateMeta[]`) +
 // `fixtures/template_doc.json` (`TemplateDoc`). Toan bo camelCase.
 //
-// `scope` "public" (id bat dau "public:", CHI DOC — khong luu de/xoa) vs "private" (id "tpl_").
+// `scope` "public" (id bat dau "public:", CHI DOC — khong luu de/xoa) vs "private" (id "tpl_") vs
+// "remote" (id "remote:", P7 — kho CONG DONG tai qua mang, cache offline o tang Rust, CHI DOC).
 // `graph` trong `TemplateDoc` dung y het `GraphSchema` (dinh dang file workflow, version 2).
 // ---------------------------------------------------------------------------------------------
 
-/** Pham vi template — khop wire cua backend (P4d contract). */
-export const TemplateScopeSchema = z.enum(["public", "private"]);
+/** Pham vi template — khop wire cua backend (P4d + P7 contract). */
+export const TemplateScopeSchema = z.enum(["public", "private", "remote"]);
 export type TemplateScope = z.infer<typeof TemplateScopeSchema>;
 
 /** `TemplateMeta` — sieu du lieu mot mau (khong kem do thi). `thumbnail` co the rong (""). */
@@ -831,8 +940,41 @@ export const TemplateMetaSchema = z.object({
   category: z.string().default("Cơ bản"),
   thumbnail: z.string(),
   updatedAt: z.number(),
+  /** CHI muc cong dong co; rong voi mau dung san/rieng. Dung de ghi nguon goc khi luu workflow
+   * dung tu mau nay (`workflowSetOrigin`) -> ve sau biet co ban moi hay khong. */
+  version: z.string().default(""),
 });
 export type TemplateMeta = z.infer<typeof TemplateMetaSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Cap nhat workflow tu kho cong dong (`crates/lvc-app/src/commands/updates.rs`).
+// ---------------------------------------------------------------------------------------------
+
+export const ChangeLineSchema = z.object({
+  /** "Thêm" | "Sửa" | "Bỏ" tren thuc te, nhung backend khong gioi han nen de chuoi tu do. */
+  kind: z.string(),
+  text: z.string(),
+});
+export type ChangeLine = z.infer<typeof ChangeLineSchema>;
+
+export const WorkflowUpdateSchema = z.object({
+  workflowId: z.string(),
+  workflowName: z.string(),
+  sourceId: z.string(),
+  currentVersion: z.string(),
+  newVersion: z.string(),
+  author: z.string(),
+  thumbnail: z.string(),
+  updatedAt: z.number(),
+  changelog: z.array(ChangeLineSchema),
+  /** `true` = do thi tren may da khac luc tai ve -> phai hoi "Giu ca hai / Ghi de". */
+  locallyModified: z.boolean(),
+});
+export type WorkflowUpdate = z.infer<typeof WorkflowUpdateSchema>;
+
+/** `keep_both` = tao workflow MOI, giu ban cu; `overwrite` = de len ban cu. */
+export const UpdateModeSchema = z.enum(["keep_both", "overwrite"]);
+export type UpdateMode = z.infer<typeof UpdateModeSchema>;
 
 export const TemplateListSchema = z.array(TemplateMetaSchema);
 
@@ -842,3 +984,70 @@ export const TemplateDocSchema = z.object({
   graph: GraphSchema,
 });
 export type TemplateDoc = z.infer<typeof TemplateDocSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Kho kịch bản (`crates/lvc-app/src/commands/script_gallery.rs`) — 3 lệnh `script_gallery_*`.
+// Mirror kiến trúc Kho mẫu Ở TRÊN nhưng kèm `scenes` (mảng dòng prompt) thay cho `graph`. Quy ước
+// scope/label UI GIỮ Y HỆT Kho mẫu (xem `TemplateScopeSchema` — `scope="public"` hiện chữ
+// "Công khai" trong UI, `scope="remote"` hiện chữ "Miễn phí", `scope="private"` hiện "Của tôi").
+// ---------------------------------------------------------------------------------------------
+
+export const ScriptGalleryMetaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  scope: TemplateScopeSchema,
+  category: z.string().default("Affiliate"),
+  sceneCount: z.number(),
+  /** TEN anh bia (khong phai duong dan) — UI ghep `/covers/<cover>.svg`. Rong = chua co bia. */
+  cover: z.string().default(""),
+  updatedAt: z.number(),
+});
+export type ScriptGalleryMeta = z.infer<typeof ScriptGalleryMetaSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Hang cho workflow (`crates/lvc-app/src/commands/queue.rs`) — man "Tác vụ". 7 lenh `queue_*`.
+// Chay TUAN TU tung workflow; `graph` duoc CHUP lai luc them nen sua workflow goc khong lam doi
+// muc dang cho.
+// ---------------------------------------------------------------------------------------------
+
+/** Ket qua `publish_workflow` — PR vua mo tren kho cong dong. */
+export const PublishResultSchema = z.object({
+  pullRequestUrl: z.string(),
+  branch: z.string(),
+  /** `true` = thay the muc cung id, `false` = them muc moi. */
+  updatedExisting: z.boolean(),
+});
+export type PublishResult = z.infer<typeof PublishResultSchema>;
+
+export const QueueStatusSchema = z.enum(["waiting", "running", "done", "failed", "skipped"]);
+export type QueueStatus = z.infer<typeof QueueStatusSchema>;
+
+export const QueueItemSchema = z.object({
+  id: z.string(),
+  workflowId: z.string(),
+  name: z.string(),
+  position: z.number(),
+  status: QueueStatusSchema,
+  runId: z.string().nullable(),
+  error: z.string(),
+  createdAt: z.number(),
+  startedAt: z.number().nullable(),
+  finishedAt: z.number().nullable(),
+});
+export type QueueItem = z.infer<typeof QueueItemSchema>;
+
+export const QueueStateSchema = z.object({
+  items: z.array(QueueItemSchema),
+  /** Bo chay dang hoat dong (ke ca luc dang nghi giua hai workflow). */
+  running: z.boolean(),
+});
+export type QueueState = z.infer<typeof QueueStateSchema>;
+
+export const ScriptGalleryListSchema = z.array(ScriptGalleryMetaSchema);
+
+export const ScriptGalleryDocSchema = z.object({
+  meta: ScriptGalleryMetaSchema,
+  scenes: z.array(z.string()),
+});
+export type ScriptGalleryDoc = z.infer<typeof ScriptGalleryDocSchema>;

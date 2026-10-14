@@ -11,6 +11,9 @@ import { z } from "zod";
 import {
   AccountStatusSchema,
   AppSettingsSchema,
+  ScriptMetaSchema,
+  ScriptDocSchema,
+  ScriptRunReportSchema,
   CredentialListSchema,
   EngineEventSchema,
   GraphErrorSchema,
@@ -25,9 +28,6 @@ import {
   RequeueReportSchema,
   RunRowSchema,
   STAGES,
-  ScriptDocSchema,
-  ScriptMetaSchema,
-  ScriptRunReportSchema,
   StageSchema,
   TaskDtoSchema,
   TemplateDocSchema,
@@ -61,6 +61,9 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["graph.json", GraphSchema],
   ["graph_errors.json", z.array(GraphErrorSchema)],
   ["import_reports.json", ImportReportsFixtureSchema],
+  ["script_meta.json", ScriptMetaSchema],
+  ["script_doc.json", ScriptDocSchema],
+  ["script_run_report.json", ScriptRunReportSchema],
   ["ipc_error.json", IpcErrorSchema],
   ["plan_summary.json", PlanSummarySchema],
   ["ports.json", PortsFixtureSchema],
@@ -71,9 +74,6 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["workflow_meta.json", WorkflowMetaSchema],
   // P3c Task 2 (frontend): 3 fixture kich ban sinh boi Task 1 (Rust) — xem
   // task-1-report.md "DTO" + task-2-report.md.
-  ["script_meta.json", ScriptMetaSchema],
-  ["script_doc.json", ScriptDocSchema],
-  ["script_run_report.json", ScriptRunReportSchema],
   // P4a: manifest node (lenh `node_catalog`).
   ["catalog.json", NodeCatalogSchema],
   // P4c: kho tai khoan AI (lenh `credential_*`).
@@ -84,7 +84,7 @@ const FIXTURE_CASES: ReadonlyArray<readonly [string, AnySchema]> = [
   ["template_doc.json", TemplateDocSchema],
 ];
 
-describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c Task 1/2 kich ban + P4c credentials + P4d template) parse dung voi schema zod (Task 11/14)", () => {
+describe("fixture IPC (Task 9 + Task 10 tai khoan + P3c kich ban + P4c credentials + P4d template) parse dung voi schema zod (Task 11/14)", () => {
   it("bao phu dung 22 file da commit — khong sot, khong thua", () => {
     expect(FIXTURE_CASES).toHaveLength(22);
   });

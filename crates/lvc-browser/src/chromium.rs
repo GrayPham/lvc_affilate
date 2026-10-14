@@ -854,6 +854,10 @@ impl BrowserDriver for ChromiumDriver {
         Ok(())
     }
 
+    async fn cookies(&self, s: &ChromiumSession, url: &str) -> Result<Vec<Cookie>, BrowserError> {
+        ops::cookies_full(&s.page, url).await
+    }
+
     async fn goto(&self, s: &ChromiumSession, url: &str) -> Result<(), BrowserError> {
         // M-6: wait_for_navigation() khong co deadline rieng — no "park" toi lan `Page` load
         // KE TIEP (handler/target.rs), nen mot SPA khong bao gio phat su kien load lai (hoac

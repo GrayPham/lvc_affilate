@@ -48,8 +48,8 @@ fn parse_aspect(node: &str, raw: &str) -> Result<Aspect, Vec<GraphError>> {
 /// (xem `MEMORY.md`), để server tự chặn nếu vượt quá.
 ///
 /// # Errors
-/// `GraphError::Scene` (không có ảnh nào) / `GraphError::Param` (`model`/`aspect` sai, `account`
-/// rỗng).
+/// `GraphError::Scene` (không có ảnh nào) / `GraphError::Param` (`model`/`aspect` sai). `account`
+/// rỗng KHÔNG lỗi — truyền thẳng xuống `VeoAccountResolver` để tự chọn tài khoản (2026-10-13).
 pub fn build_jobs(
     node_id: &str,
     p: &ImageParams,
@@ -66,13 +66,6 @@ pub fn build_jobs(
 
     let model = parse_model(node_id, &p.model)?;
     let aspect = parse_aspect(node_id, &p.aspect)?;
-    if p.account.trim().is_empty() {
-        return Err(param_error(
-            node_id,
-            "account",
-            "account (ten/label credential Google) khong duoc rong - P5 chua ho tro auto-chon",
-        ));
-    }
 
     let refs: Vec<PathBuf> = inputs.assets("refs").map(|a| a.path.clone()).collect();
     let seed = p.seed.unwrap_or(0);

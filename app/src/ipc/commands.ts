@@ -7,6 +7,14 @@ import { invoke } from "./tauri";
 import {
   AccountStatusSchema,
   AppSettingsSchema,
+  CacheInfoSchema,
+  ScriptDocSchema,
+  ScriptMetaSchema,
+  ScriptResetReportSchema,
+  ScriptRowSchema,
+  ScriptRunReportSchema,
+  SceneRowSchema,
+  WorkflowUpdateSchema,
   CredentialListSchema,
   CredentialViewSchema,
   VerifyOutcomeSchema,
@@ -14,34 +22,24 @@ import {
   LegacyImportReportSchema,
   NodeCatalogSchema,
   PlanSummarySchema,
+  PublishResultSchema,
+  QueueItemSchema,
+  QueueStateSchema,
   RunInfoSchema,
   RunRowSchema,
-  ScriptDocSchema,
-  ScriptMetaSchema,
-  ScriptResetReportSchema,
-  ScriptRowSchema,
-  ScriptRunReportSchema,
-  SceneRowSchema,
   TaskDtoSchema,
   TaskResumeInfoSchema,
   TemplateDocSchema,
   TemplateListSchema,
   TemplateMetaSchema,
+  type TemplateScope,
   VerifyReportSchema,
   WorkflowDocSchema,
   WorkflowMetaSchema,
   IpcErrorSchema,
   type AccountStatus,
   type AppSettings,
-  type CredentialView,
-  type Graph,
-  type ImportCookiesReport,
-  type IpcError,
-  type LegacyImportReport,
-  type NodeCatalog,
-  type PlanSummary,
-  type RunInfo,
-  type RunRow,
+  type CacheInfo,
   type SceneIn,
   type SceneRow,
   type ScriptDoc,
@@ -49,6 +47,20 @@ import {
   type ScriptResetReport,
   type ScriptRow,
   type ScriptRunReport,
+  type UpdateMode,
+  type WorkflowUpdate,
+  type CredentialView,
+  type Graph,
+  type ImportCookiesReport,
+  type IpcError,
+  type LegacyImportReport,
+  type NodeCatalog,
+  type PlanSummary,
+  type PublishResult,
+  type QueueItem,
+  type QueueState,
+  type RunInfo,
+  type RunRow,
   type TaskDto,
   type TaskResumeInfo,
   type TemplateDoc,
@@ -172,6 +184,126 @@ export async function pickFiles(images: boolean): Promise<string[]> {
   return z.array(z.string()).parse(res);
 }
 
+// ---- scripts.rs (P3c Task 1/2) --------------------------------------------------------------
+// Xem task-1-report.md "Lenh IPC cho Task 2" cho bang doi chieu day du (tham so/ma loi). Tham so
+// Rust snake_case (`scene_ids`) -> JS camelCase (`sceneIds`) tu dong qua Tauri 2, giong moi lenh
+// khac trong file nay.
+
+export async function scriptList(): Promise<ScriptMeta[]> {
+  const res = await invoke<unknown>("script_list");
+  return z.array(ScriptMetaSchema).parse(res);
+}
+
+export async function scriptCreate(name: string, dir: string): Promise<ScriptRow> {
+  const res = await invoke<unknown>("script_create", { name, dir });
+  return ScriptRowSchema.parse(res);
+}
+
+/** `name`/`dir` luon duoc gui (khong `undefined`) — UI o day luon biet ca hai gia tri hien tai
+ * khi sua (khong co UI sua "chi mot truong, giu nguyen truong kia" nhu `Option<String>` phia
+ * Rust cho phep). */
+export async function scriptUpdate(id: string, name: string, dir: string): Promise<ScriptRow> {
+  const res = await invoke<unknown>("script_update", { id, name, dir });
+  return ScriptRowSchema.parse(res);
+}
+
+/** Lenh Rust tra `()` (unit) -> `null` qua JSON. */
+export async function scriptDelete(id: string): Promise<null> {
+  const res = await invoke<unknown>("script_delete", { id });
+  return z.null().parse(res);
+}
+
+export async function scriptGet(id: string): Promise<ScriptDoc> {
+  const res = await invoke<unknown>("script_get", { id });
+  return ScriptDocSchema.parse(res);
+}
+
+export async function scriptPutScenes(id: string, scenes: SceneIn[]): Promise<SceneRow[]> {
+  const res = await invoke<unknown>("script_put_scenes", { id, scenes });
+  return z.array(SceneRowSchema).parse(res);
+}
+
+/** `sceneIds` rong = moi canh chua chay/da that bai (R1); `style` rong = khong noi "Style: ...".
+ * Loi TUNG canh (`SCENE_RUNNING`/`SCENE_EMPTY`/`SCENE_INVALID`) nam trong `ScriptRunReport.errors`
+ * — KHONG lam `invoke()` nay reject. */
+export async function scriptRun(
+  id: string,
+  sceneIds: string[],
+  style: string,
+): Promise<ScriptRunReport> {
+  const res = await invoke<unknown>("script_run", { id, sceneIds, style });
+  return ScriptRunReportSchema.parse(res);
+}
+
+export async function scriptResetScenes(id: string, sceneIds: string[]): Promise<ScriptResetReport> {
+  const res = await invoke<unknown>("script_reset_scenes", { id, sceneIds });
+  return ScriptResetReportSchema.parse(res);
+}
+
+/** Thay TOAN BO canh cua kich ban bang noi dung TXT (R4) — tra ve so canh moi. */
+export async function scriptImportTxt(id: string, text: string): Promise<number> {
+  const res = await invoke<unknown>("script_import_txt", { id, text });
+  return z.number().parse(res);
+}
+
+// ---- updates.rs ---------------------------------------------------------------------------
+
+/** Cac ban cap nhat dang cho. Mang rong = khong co gi moi. KHONG goi mang: chi doc cache kho
+ * cong dong ma tab "Miễn phí" da nap. */
+export async function workflowUpdateList(): Promise<WorkflowUpdate[]> {
+  const res = await invoke<unknown>("workflow_update_list");
+  return z.array(WorkflowUpdateSchema).parse(res);
+}
+
+/** Ghi nho workflow nay dung tu mau cong dong nao, o phien ban nao — goi NGAY SAU khi luu
+ * workflow thanh cong, neu do thi tren canvas den tu mot mau cong dong co `version`. */
+export async function workflowSetOrigin(args: {
+  workflowId: string;
+  sourceId: string;
+  sourceVersion: string;
+  graph: Graph;
+}): Promise<void> {
+  await invoke<unknown>("workflow_set_origin", args);
+}
+
+/** Ap ban cap nhat -> tra ID workflow ket qua (`overwrite` tra id cu, `keep_both` tra id MOI). */
+export async function workflowApplyUpdate(
+  workflowId: string,
+  mode: UpdateMode,
+): Promise<string> {
+  const res = await invoke<unknown>("workflow_apply_update", { workflowId, mode });
+  return z.string().parse(res);
+}
+
+// ---- device.rs ---------------------------------------------------------------------------
+
+/** Ma thiet bi — on dinh cho MOT lan cai dat tren MOT may. Sinh lan dau roi giu nguyen.
+ * Dung de nguoi dung gui kem khi bao loi; KHONG phai bi mat. */
+export async function deviceId(): Promise<string> {
+  const res = await invoke<unknown>("device_id");
+  return z.string().parse(res);
+}
+
+// ---- cache.rs -----------------------------------------------------------------------------
+
+/** Thu muc tam dang chiem bao nhieu (nhom "Luu tru" tren man Cai dat). */
+export async function cacheInfo(): Promise<CacheInfo> {
+  const res = await invoke<unknown>("cache_info");
+  return CacheInfoSchema.parse(res);
+}
+
+/** Don thu muc tam -> so BYTE da giai phong. Khong cham vao thu muc ket qua (`downloads`). */
+export async function cacheClear(): Promise<number> {
+  const res = await invoke<unknown>("cache_clear");
+  return z.number().parse(res);
+}
+
+/** Mo thu muc bang trinh quan ly tep cua he dieu hanh. Chi hai dich den KIN — lenh nay KHONG
+ * nhan duong dan tu do, de khong tro thanh cach mo bat ky thu gi tren may. */
+export async function openAppFolder(which: "output" | "cache"): Promise<void> {
+  await invoke<unknown>("open_app_folder", { which });
+}
+
 /** Luu MOT khung hinh (PNG base64/dataURL, UI chup tu <video>) thanh file that -> tra duong dan. */
 export async function frameSavePng(data: string, nameHint?: string): Promise<string> {
   const res = await invoke<unknown>("frame_save_png", { data, nameHint: nameHint ?? null });
@@ -242,6 +374,18 @@ export async function loginImportCookieFiles(
   return z.array(LoginImportItemSchema).parse(res);
 }
 
+/** (A) Dan MOT doan cookie (khong qua file) cho nen tang bat ky KHAC Dola — tiem vao profile
+ * Chrome that roi luu credential kind `session` (xem `lvc_engine::Engine::provision_profile`). */
+export async function loginCookieText(
+  provider: string,
+  label: string,
+  cookieText: string,
+  proxy: string,
+): Promise<CredentialView> {
+  const res = await invoke<unknown>("login_cookie_text", { provider, label, cookieText, proxy });
+  return CredentialViewSchema.parse(res);
+}
+
 /** (B) Ket qua mo dang nhap thu cong (login_open_interactive). */
 export const InteractiveLoginResultSchema = z.object({
   label: z.string(),
@@ -283,72 +427,83 @@ export async function accountDelete(name: string): Promise<boolean> {
   return z.boolean().parse(res);
 }
 
+/** "Mo trinh duyet" (Dola) — mo cua so Chrome HIEN tren dung profile de nguoi dung tu xem/thao tac. */
+export async function accountOpenViewer(name: string): Promise<null> {
+  const res = await invoke<unknown>("account_open_viewer", { name });
+  return z.null().parse(res);
+}
+
 /** Nhap du lieu tu ban Python cu (thu muc goc chua `*.db`/`accounts/`) — dung boi man Cai dat. */
 export async function legacyImport(pythonDir: string): Promise<LegacyImportReport> {
   const res = await invoke<unknown>("legacy_import", { pythonDir });
   return LegacyImportReportSchema.parse(res);
 }
 
-// ---- scripts.rs (P3c Task 1/2) --------------------------------------------------------------
-// Xem task-1-report.md "Lenh IPC cho Task 2" cho bang doi chieu day du (tham so/ma loi). Tham so
-// Rust snake_case (`scene_ids`) -> JS camelCase (`sceneIds`) tu dong qua Tauri 2, giong moi lenh
-// khac trong file nay.
+// ---- publish.rs (publish workflow len kho cong dong GitHub) -------------------------------
+// Token GitHub do NGUOI DUNG tu tao, luu ma hoa o tab API key (`provider = "github"`); lenh nay
+// chi nhan ID credential, KHONG BAO GIO nhan/tra plaintext token.
 
-export async function scriptList(): Promise<ScriptMeta[]> {
-  const res = await invoke<unknown>("script_list");
-  return z.array(ScriptMetaSchema).parse(res);
+export async function publishWorkflow(
+  credentialId: string,
+  form: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    cover: string;
+    version: string;
+    author: string;
+    /** Moi DONG mot thay doi, dang `"Thêm: ..."`. Rong = khong ghi gi. Rust tu tach
+     * (`commands::publish::parse_changelog`). */
+    changelog: string;
+    graph: Graph;
+  },
+): Promise<PublishResult> {
+  const res = await invoke<unknown>("publish_workflow", { credentialId, form });
+  return PublishResultSchema.parse(res);
 }
 
-export async function scriptCreate(name: string, dir: string): Promise<ScriptRow> {
-  const res = await invoke<unknown>("script_create", { name, dir });
-  return ScriptRowSchema.parse(res);
+// ---- queue.rs (hang cho workflow, man "Tác vụ") -------------------------------------------
+
+export async function queueList(): Promise<QueueState> {
+  const res = await invoke<unknown>("queue_list");
+  return QueueStateSchema.parse(res);
 }
 
-/** `name`/`dir` luon duoc gui (khong `undefined`) — UI o day luon biet ca hai gia tri hien tai
- * khi sua (khong co UI sua "chi mot truong, giu nguyen truong kia" nhu `Option<String>` phia
- * Rust cho phep). */
-export async function scriptUpdate(id: string, name: string, dir: string): Promise<ScriptRow> {
-  const res = await invoke<unknown>("script_update", { id, name, dir });
-  return ScriptRowSchema.parse(res);
+/** Them workflow vao CUOI hang cho. Do thi hong -> backend tu choi ngay (GRAPH_INVALID). */
+export async function queueAdd(workflowId: string, name: string, graph: Graph): Promise<QueueItem> {
+  const res = await invoke<unknown>("queue_add", { workflowId, name, graph });
+  return QueueItemSchema.parse(res);
 }
 
-/** Lenh Rust tra `()` (unit) -> `null` qua JSON. */
-export async function scriptDelete(id: string): Promise<null> {
-  const res = await invoke<unknown>("script_delete", { id });
+/** `false` = khong co gi de xoa (idempotent). */
+export async function queueRemove(id: string): Promise<boolean> {
+  const res = await invoke<unknown>("queue_remove", { id });
+  return z.boolean().parse(res);
+}
+
+/** Sap lai toan bo thu tu chay theo danh sach id (keo tha). */
+export async function queueReorder(ids: string[]): Promise<null> {
+  const res = await invoke<unknown>("queue_reorder", { ids });
   return z.null().parse(res);
 }
 
-export async function scriptGet(id: string): Promise<ScriptDoc> {
-  const res = await invoke<unknown>("script_get", { id });
-  return ScriptDocSchema.parse(res);
-}
-
-export async function scriptPutScenes(id: string, scenes: SceneIn[]): Promise<SceneRow[]> {
-  const res = await invoke<unknown>("script_put_scenes", { id, scenes });
-  return z.array(SceneRowSchema).parse(res);
-}
-
-/** `sceneIds` rong = moi canh chua chay/da that bai (R1); `style` rong = khong noi "Style: ...".
- * Loi TUNG canh (`SCENE_RUNNING`/`SCENE_EMPTY`/`SCENE_INVALID`) nam trong `ScriptRunReport.errors`
- * — KHONG lam `invoke()` nay reject. */
-export async function scriptRun(
-  id: string,
-  sceneIds: string[],
-  style: string,
-): Promise<ScriptRunReport> {
-  const res = await invoke<unknown>("script_run", { id, sceneIds, style });
-  return ScriptRunReportSchema.parse(res);
-}
-
-export async function scriptResetScenes(id: string, sceneIds: string[]): Promise<ScriptResetReport> {
-  const res = await invoke<unknown>("script_reset_scenes", { id, sceneIds });
-  return ScriptResetReportSchema.parse(res);
-}
-
-/** Thay TOAN BO canh cua kich ban bang noi dung TXT (R4) — tra ve so canh moi. */
-export async function scriptImportTxt(id: string, text: string): Promise<number> {
-  const res = await invoke<unknown>("script_import_txt", { id, text });
+/** Xoa moi muc da ket thuc; tra so dong da xoa. */
+export async function queueClearFinished(): Promise<number> {
+  const res = await invoke<unknown>("queue_clear_finished");
   return z.number().parse(res);
+}
+
+/** `false` = bo chay von DA chay (khong tao vong thu hai). */
+export async function queueStart(): Promise<boolean> {
+  const res = await invoke<unknown>("queue_start");
+  return z.boolean().parse(res);
+}
+
+/** `false` = von khong chay. Workflow DANG chay van chay not. */
+export async function queueStop(): Promise<boolean> {
+  const res = await invoke<unknown>("queue_stop");
+  return z.boolean().parse(res);
 }
 
 // ---- credentials.rs (P4c kho tai khoan AI) --------------------------------------------------
@@ -412,14 +567,28 @@ export async function credentialDelete(id: string): Promise<boolean> {
   return z.boolean().parse(res);
 }
 
-// ---- templates.rs (P4d kho template) --------------------------------------------------------
-// 4 lenh `template_*`. Tham so Rust snake_case -> JS camelCase tu dong (giong moi lenh khac).
-// Mau Public (`id` bat dau "public:") CHI DOC — luu de/xoa se bi backend tu choi TEMPLATE_READONLY.
-// Ma loi rieng: TEMPLATE_NOT_FOUND/TEMPLATE_CORRUPT/TEMPLATE_READONLY/GRAPH_ENCODE/STORE (xem
-// `format/template.ts`).
+/** "Mo trinh duyet" (credential khac Dola) — loi `PROFILE_NOT_FOUND` neu credential nay chua co
+ * profile that (chua tiem cookie thanh cong qua `provision_profile`). */
+export async function credentialOpenViewer(id: string): Promise<null> {
+  const res = await invoke<unknown>("credential_open_viewer", { id });
+  return z.null().parse(res);
+}
 
-/** `scope` khong dat = lay CA public + private; nguoc lai loc theo mot pham vi. */
-export async function templateList(scope?: "public" | "private"): Promise<TemplateMeta[]> {
+/** Dat tag loai node cho credential (`video`/`image`/`script`) — node AI chi lay dung tag nay. */
+export async function credentialSetNodeTypes(id: string, nodeTypes: string[]): Promise<null> {
+  const res = await invoke<unknown>("credential_set_node_types", { id, nodeTypes });
+  return z.null().parse(res);
+}
+
+// ---- templates.rs (P4d kho template + P7 kho cong dong) --------------------------------------
+// 4 lenh `template_*`. Tham so Rust snake_case -> JS camelCase tu dong (giong moi lenh khac).
+// Mau Public/Remote (`id` bat dau "public:"/"remote:") CHI DOC — luu de/xoa se bi backend tu choi
+// TEMPLATE_READONLY. Ma loi rieng: TEMPLATE_NOT_FOUND/TEMPLATE_CORRUPT/TEMPLATE_READONLY/
+// GRAPH_ENCODE/STORE/TEMPLATE_REMOTE_UNAVAILABLE (xem `format/template.ts`).
+
+/** `scope` khong dat = lay public + private (KHONG remote — remote can goi mang, chi tai khi UI
+ * yeu cau dich danh `scope="remote"`); dat thi loc dung mot pham vi. */
+export async function templateList(scope?: TemplateScope): Promise<TemplateMeta[]> {
   const res = await invoke<unknown>("template_list", { scope: scope ?? null });
   return TemplateListSchema.parse(res);
 }

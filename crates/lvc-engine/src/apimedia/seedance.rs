@@ -10,9 +10,15 @@ use lvc_seedance::job::{
     ImageJob, ImageJobDone, ImageJobsReport, VideoJob, VideoJobDone, VideoJobsReport,
 };
 use lvc_seedance::{ImageReq, SeedanceClient, SeedanceImageHost, SeedanceVideoHost, VideoReq};
+use lvc_store::TaskRepo;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
+use super::task_tracking::{
+    announce_batch, create_pending_task, finish_task_done, finish_task_failed,
+};
 use super::util::{media_out_path, read_data_url, write_bytes};
+use crate::dag::TaskRef;
 use crate::textgen::TextSecretResolver;
 
 const PROVIDER_TAG: &str = "seedance";
@@ -92,6 +98,8 @@ pub(crate) struct EngineSeedanceVideo {
     resolver: Arc<dyn TextSecretResolver>,
     downloads_dir: PathBuf,
     cancel: CancellationToken,
+    tasks: TaskRepo,
+    tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
 }
 
 impl EngineSeedanceVideo {
@@ -100,12 +108,16 @@ impl EngineSeedanceVideo {
         resolver: Arc<dyn TextSecretResolver>,
         downloads_dir: PathBuf,
         cancel: CancellationToken,
+        tasks: TaskRepo,
+        tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
     ) -> Self {
         Self {
             client,
             resolver,
             downloads_dir,
             cancel,
+            tasks,
+            tasks_ready_tx,
         }
     }
 
@@ -178,6 +190,7 @@ impl EngineSeedanceVideo {
 
 #[async_trait]
 impl SeedanceVideoHost for EngineSeedanceVideo {
+    /// 2 giai đoạn — xem doc cùng tên ở `EngineGoogleVideo::generate_videos`/`task_tracking`.
     async fn generate_videos(
         &self,
         run_id: &str,
@@ -185,14 +198,46 @@ impl SeedanceVideoHost for EngineSeedanceVideo {
         jobs: Vec<VideoJob>,
     ) -> VideoJobsReport {
         let mut report = VideoJobsReport::default();
+
+        let mut pending: Vec<(VideoJob, String)> = Vec::with_capacity(jobs.len());
+        let mut refs: Vec<(u32, String)> = Vec::with_capacity(jobs.len());
         for job in jobs {
+            match create_pending_task(
+                &self.tasks,
+                run_id,
+                node_id,
+                job.scene_index,
+                &job.prompt,
+                &job.credential_name,
+            )
+            .await
+            {
+                Ok(task_id) => {
+                    refs.push((job.scene_index, task_id.clone()));
+                    pending.push((job, task_id));
+                }
+                Err(e) => report.failed.push(format!(
+                    "canh {}: khong tao duoc dong task: {e}",
+                    job.scene_index
+                )),
+            }
+        }
+        announce_batch(&self.tasks_ready_tx, node_id, &refs);
+
+        for (job, task_id) in pending {
             let scene_index = job.scene_index;
             match self.run_one(run_id, node_id, &job).await {
-                Ok(local_path) => report.done.push(VideoJobDone {
-                    scene_index,
-                    local_path,
-                }),
-                Err(msg) => report.failed.push(format!("canh {scene_index}: {msg}")),
+                Ok(local_path) => {
+                    finish_task_done(&self.tasks, &task_id, &local_path).await;
+                    report.done.push(VideoJobDone {
+                        scene_index,
+                        local_path,
+                    });
+                }
+                Err(msg) => {
+                    finish_task_failed(&self.tasks, &task_id, &msg).await;
+                    report.failed.push(format!("canh {scene_index}: {msg}"));
+                }
             }
         }
         report

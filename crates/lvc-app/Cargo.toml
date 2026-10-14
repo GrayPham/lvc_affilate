@@ -1,6 +1,6 @@
 [package]
 name = "lvc-app"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -20,9 +20,11 @@ lvc-store.workspace = true
 lvc-browser.workspace = true
 lvc-engine.workspace = true
 lvc-vault.workspace = true
+lvc-github.workspace = true
 # P4a (ADR-R014): registry node — MOI node module 1 dong o day + 1 dong o src/registry.rs.
 lvc-node-api.workspace = true
 node-prompt.workspace = true
+node-note.workspace = true
 node-image-upload.workspace = true
 node-save.workspace = true
 node-dola-video.workspace = true
@@ -33,6 +35,7 @@ node-load-video.workspace = true
 node-audio-extract.workspace = true
 node-audio-split.workspace = true
 node-script-gen.workspace = true
+node-script-agent.workspace = true
 node-veo3-image.workspace = true
 node-veo3-video.workspace = true
 node-google-image.workspace = true
@@ -40,11 +43,23 @@ node-google-video.workspace = true
 node-seedance-image.workspace = true
 node-seedance-video.workspace = true
 node-grok-image.workspace = true
+# MuseAI (muse.ai) — API Hatch/Noise that, dang nhap tay + bootstrap qua trinh duyet (xem
+# crates/providers/lvc-museai/CLAUDE.md).
+node-museai-video.workspace = true
+node-museai-image.workspace = true
+node-tts.workspace = true
+# P7 (commands/templates.rs): kho template CONG DONG — khong phai node, goi thang nhu lvc-store.
+lvc-template-registry.workspace = true
 # textgen.rs (P4d): impl `lvc_engine::TextSecretResolver` (trait #[async_trait]) bang Vault.
 async-trait.workspace = true
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
+# P8 (auto-update): check/tai/cai ban moi tu GitHub Releases (xem tauri.conf.json plugins.updater
+# + docs/superpowers/specs/2026-10-13-auto-update-design.md). App Windows-only: `install()` cua
+# plugin nay TU thoat + chay installer NSIS (installMode mac dinh tu relaunch app) — khong can
+# them `tauri-plugin-process`/relaunch() thu cong.
+tauri-plugin-updater = "2"
 # log.rs: ghi logs/app.log xoay theo ngay (chinh sach log, khong bao gio in cookie/prompt/proxy).
 tracing-appender = "0.2.5"
 # commands/mod.rs: Ctx.runs (run_id -> CancellationToken huy nhanh, fix-round 1 I1).
@@ -66,6 +81,8 @@ uuid.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+# commands/templates.rs: test scope="remote" voi server gia, khong bao gio goi GitHub that.
+wiremock.workspace = true
 
 # Task 12a (P3): che do dev khong ton credit — `cargo tauri dev --features fake-driver` doi
 # `AppDriver` (state.rs) tu `ChromiumDriver` sang `lvc_browser::fake::FakeDriver::endless_ok`

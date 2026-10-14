@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="640" height="400"><defs><linearGradient id="gm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1E1A2E"/><stop offset="1" stop-color="#0A0910"/></linearGradient>
+<radialGradient id="lm" cx=".5" cy=".35" r=".6"><stop offset="0" stop-color="#A78BFA" stop-opacity=".55"/><stop offset="1" stop-color="#A78BFA" stop-opacity="0"/></radialGradient></defs>
+<rect width="320" height="200" fill="url(#gm)"/><rect width="320" height="200" fill="url(#lm)"/>
+<ellipse cx="160" cy="168" rx="120" ry="16" fill="#000" opacity=".28"/><g transform="translate(120 0) scale(1.05) translate(-120 0)"><path d="M74 170 Q76 118 120 116 Q164 118 166 170Z" fill="#A78BFA"/>
+<rect x="112" y="100" width="16" height="20" fill="#E7B892"/><circle cx="120" cy="84" r="24" fill="#E7B892"/>
+<path d="M95 84 Q94 56 120 56 Q147 56 145 86 Q136 68 118 68 Q102 70 95 84Z" fill="#1A1020"/></g><path d="M206 60 l24 -10 l24 10 l-6 18 l-6 -4 l0 70 l-24 0 l0 -70 l-6 4z" fill="#F5A524"/><path d="M230 50 q0 8 -6 10" stroke="#fff" stroke-width="2" fill="none" opacity=".5"/></svg>

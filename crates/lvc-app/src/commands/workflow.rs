@@ -186,6 +186,12 @@ pub async fn workflow_delete_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
     id: &str,
 ) -> Result<bool, IpcError> {
+    // Xoá luôn dòng nguồn gốc (nếu có): còn sót thì "Cập nhật workflow" sẽ báo bản mới cho một
+    // workflow đã không còn tồn tại. Xoá TRƯỚC, vì bỏ sót một dòng trong bảng phụ còn nhẹ hơn là
+    // xoá được dòng phụ nhưng workflow chính vẫn nằm đó.
+    lvc_store::WorkflowOriginRepo::new(&ctx.db)
+        .remove(id)
+        .await?;
     Ok(WorkflowRepo::new(&ctx.db).delete(id).await?)
 }
 

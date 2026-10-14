@@ -1,5 +1,10 @@
 //! Dựng danh sách [`VideoJob`] (THUẦN). Mỗi `TextItem` cổng `prompt` = MỘT job. `mode="i2v"` lấy
-//! ảnh ĐẦU TIÊN cổng `ref` làm ảnh gốc (engine tự dựng data URL).
+//! ảnh ĐẦU TIÊN cổng `ref` làm ảnh gốc (engine tự dựng data URL), trừ dòng có override TXT.
+//!
+//! Override TXT theo dòng (`attrs`, khoá trùng `node_prompt::attrs` — không import để giữ node
+//! độc lập): `ratio` (chuyển sang `aspect`, giá trị không nhận diện được thì IM LẶNG bỏ qua),
+//! `refs` (ẢNH ĐẦU TIÊN sau khi tách `\n` thay cho ảnh của cổng `ref`), `account` (ghi đè
+//! `credential` khi dòng có giá trị khác rỗng). KHÔNG đọc `duration`/`model`/`mode` theo dòng.
 
 use std::path::PathBuf;
 
@@ -8,6 +13,11 @@ use lvc_seedance::job::VideoJob;
 use lvc_seedance::req::Aspect;
 
 use crate::VideoParams;
+
+/// Khoá `TextItem.attrs` dùng cho override theo dòng.
+const RATIO: &str = "ratio";
+const REFS: &str = "refs";
+const ACCOUNT: &str = "account";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModeKind {
@@ -25,12 +35,16 @@ impl ModeKind {
     }
 }
 
-fn param_error(node: &str, field: &str, message: impl Into<String>) -> Vec<GraphError> {
-    vec![GraphError::Param {
+fn param_error_single(node: &str, field: &str, message: impl Into<String>) -> GraphError {
+    GraphError::Param {
         node: node.to_string(),
         field: field.to_string(),
         message: message.into(),
-    }]
+    }
+}
+
+fn param_error(node: &str, field: &str, message: impl Into<String>) -> Vec<GraphError> {
+    vec![param_error_single(node, field, message)]
 }
 
 fn parse_aspect(node: &str, raw: &str) -> Result<Aspect, Vec<GraphError>> {
@@ -41,6 +55,25 @@ fn parse_aspect(node: &str, raw: &str) -> Result<Aspect, Vec<GraphError>> {
             format!("aspect khong hop le: '{raw}' (chi nhan portrait|landscape|square)"),
         )
     })
+}
+
+/// `"16:9"`/`"9:16"`/`"1:1"` (cú pháp `ratio=` của Dola/`node-prompt`) → [`Aspect`]. Giá trị không
+/// nhận diện được → `None` (im lặng bỏ qua, giữ `aspect` tĩnh của node).
+fn aspect_from_ratio_attr(raw: &str) -> Option<Aspect> {
+    match raw.trim() {
+        "16:9" => Aspect::from_tag("landscape"),
+        "9:16" => Aspect::from_tag("portrait"),
+        "1:1" => Aspect::from_tag("square"),
+        _ => None,
+    }
+}
+
+/// Ảnh ĐẦU TIÊN sau khi tách `refs=` TXT bằng `\n` (bỏ dòng rỗng).
+fn first_txt_ref(raw: &str) -> Option<PathBuf> {
+    raw.split('\n')
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(PathBuf::from)
 }
 
 /// # Errors
@@ -74,31 +107,58 @@ pub fn build_jobs(
         ));
     }
 
-    let ref_image_path: Option<PathBuf> = if mode == ModeKind::I2v {
-        let first = inputs.assets("ref").map(|a| a.path.clone()).next();
-        if first.is_none() {
-            return Err(param_error(
-                node_id,
-                "ref",
-                "mode i2v nhung cong 'ref' khong co anh nao",
-            ));
-        }
-        first
+    let port_ref: Option<PathBuf> = if mode == ModeKind::I2v {
+        inputs.assets("ref").map(|a| a.path.clone()).next()
     } else {
         None
     };
 
-    let jobs = items
-        .into_iter()
-        .enumerate()
-        .map(|(idx, item)| VideoJob {
-            scene_index: u32::try_from(idx + 1).unwrap_or(u32::MAX),
-            credential_name: p.credential.clone(),
+    let mut errors = Vec::new();
+    let mut jobs = Vec::with_capacity(items.len());
+    for (idx, item) in items.into_iter().enumerate() {
+        let scene_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+
+        let item_aspect = item
+            .attrs
+            .get(RATIO)
+            .and_then(|r| aspect_from_ratio_attr(r))
+            .unwrap_or(aspect);
+
+        let item_credential = item
+            .attrs
+            .get(ACCOUNT)
+            .map(|a| a.trim())
+            .filter(|a| !a.is_empty())
+            .map_or_else(|| p.credential.clone(), str::to_string);
+
+        let ref_image_path = if mode == ModeKind::I2v {
+            let txt_ref = item.attrs.get(REFS).and_then(|r| first_txt_ref(r));
+            let resolved = txt_ref.or_else(|| port_ref.clone());
+            if resolved.is_none() {
+                errors.push(param_error_single(
+                    node_id,
+                    "ref",
+                    format!("mode i2v nhung canh {scene_index} khong co anh goc (cong 'ref' rong, khong co refs= TXT)"),
+                ));
+                continue;
+            }
+            resolved
+        } else {
+            None
+        };
+
+        jobs.push(VideoJob {
+            scene_index,
+            credential_name: item_credential,
             prompt: item.text.clone(),
             model: p.model.clone(),
-            aspect,
-            ref_image_path: ref_image_path.clone(),
-        })
-        .collect();
-    Ok(jobs)
+            aspect: item_aspect,
+            ref_image_path,
+        });
+    }
+    if errors.is_empty() {
+        Ok(jobs)
+    } else {
+        Err(errors)
+    }
 }

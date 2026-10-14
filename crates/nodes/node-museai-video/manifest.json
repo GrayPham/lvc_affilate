@@ -1,0 +1,61 @@
+{
+  "kind": "museai_video",
+  "version": 1,
+  "category": "video",
+  "labelVi": "Tạo video MuseAI",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "many": true,
+      "required": true,
+      "collect": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "type": "video",
+      "many": true,
+      "required": false,
+      "collect": false
+    }
+  ],
+  "credential": {
+    "provider": "museai",
+    "kinds": [
+      "login"
+    ]
+  },
+  "defaultParams": {
+    "account": "",
+    "aspect": "",
+    "duration": null
+  },
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "account": {
+        "type": "string",
+        "title": "Tài khoản (rỗng = tự chọn)"
+      },
+      "aspect": {
+        "type": "string",
+        "title": "Tỉ lệ khung hình (chỉ chèn vào prompt — muse.ai không có API, không đảm bảo)",
+        "enum": [
+          "",
+          "16:9",
+          "9:16",
+          "1:1"
+        ]
+      },
+      "duration": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "title": "Thời lượng giây (chỉ chèn vào prompt, không đảm bảo)"
+      }
+    }
+  }
+}

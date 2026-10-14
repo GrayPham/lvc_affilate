@@ -42,7 +42,11 @@ use crate::generate::{Engine, EngineConfig};
 /// Giai MOT duong dan cai dat: rong (sau `trim`) → `app_data_dir/<default_subdir>`; tuyet doi →
 /// giu nguyen; tuong doi (khac rong) → noi vao `app_data_dir` (review vong 1 I2/M3 — `accounts_dir`
 /// va `output_dir` gio dung CHUNG mot quy tac, chi khac ten thu muc con mac dinh).
-fn resolve_dir(raw: &str, app_data_dir: &Path, default_subdir: &str) -> PathBuf {
+///
+/// `pub` vi `lvc-app` (lenh "Mo thu muc" trong man Cai dat) phai tinh RA DUNG duong dan ma engine
+/// dang ghi vao — chep lai quy tac nay o do se lech ngay khi quy tac doi.
+#[must_use]
+pub fn resolve_dir(raw: &str, app_data_dir: &Path, default_subdir: &str) -> PathBuf {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return app_data_dir.join(default_subdir);

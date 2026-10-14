@@ -11,6 +11,8 @@ license.workspace = true
 lvc-node-api.workspace = true
 # Provider sinh text dùng chung (trait `TextGenHost` + kiểu `TextGenReq`); host do engine cấp.
 lvc-genai.workspace = true
+# Dich vu luu kich ban (trait `ScriptSinkHost`) — dung khi tham so `save_as_script` duoc bat.
+lvc-scripts.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true

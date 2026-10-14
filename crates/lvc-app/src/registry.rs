@@ -9,6 +9,7 @@ use lvc_node_api::Registry;
 pub fn build_registry() -> Registry {
     Registry::new()
         .with(node_prompt::node())
+        .with(node_note::node())
         .with(node_image_upload::node())
         .with(node_save::node())
         .with(node_dola_video::node())
@@ -19,6 +20,7 @@ pub fn build_registry() -> Registry {
         .with(node_audio_extract::node())
         .with(node_audio_split::node())
         .with(node_script_gen::node())
+        .with(node_script_agent::node())
         .with(node_veo3_image::node())
         .with(node_veo3_video::node())
         .with(node_google_image::node())
@@ -26,6 +28,9 @@ pub fn build_registry() -> Registry {
         .with(node_seedance_image::node())
         .with(node_seedance_video::node())
         .with(node_grok_image::node())
+        .with(node_museai_video::node())
+        .with(node_museai_image::node())
+        .with(node_tts::node())
 }
 
 #[cfg(test)]
@@ -52,12 +57,17 @@ mod tests {
                 "grok_image",
                 "image_upload",
                 "load_video",
+                "museai_image",
+                "museai_video",
+                "note",
                 "prompt",
                 "save",
+                "script_agent",
                 "script_gen",
                 "seedance_image",
                 "seedance_video",
                 "trim",
+                "tts",
                 "veo3_image",
                 "veo3_video"
             ]

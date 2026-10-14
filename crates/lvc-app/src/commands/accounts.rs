@@ -152,6 +152,24 @@ pub async fn account_verify(
 }
 
 /// # Errors
+/// `IpcError` ma `INVALID_NAME`/`ACCOUNT_NOT_FOUND`/`INVALID_PROXY`/`PROFILE_BUSY`/`BROWSER`/`IO` —
+/// xem `lvc_engine::accounts::Engine::open_account_viewer`.
+pub async fn account_open_viewer_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    name: &str,
+) -> Result<(), IpcError> {
+    Ok(ctx.engine.open_account_viewer(name).await?)
+}
+
+#[tauri::command]
+pub async fn account_open_viewer(
+    state: tauri::State<'_, AppState>,
+    name: String,
+) -> Result<(), IpcError> {
+    account_open_viewer_impl(&state, &name).await
+}
+
+/// # Errors
 /// `IpcError` ma `STORE`/`ENGINE` khi ghi DB hoac dem lai so tai khoan cho limiter loi.
 pub async fn account_set_scheduling_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
@@ -281,6 +299,19 @@ mod tests {
         .await;
         let report = account_verify_impl(&ctx, "acc1").await.unwrap();
         assert_eq!(report.login_ok, Some(false));
+    }
+
+    #[tokio::test]
+    async fn account_open_viewer_impl_mo_duoc_tai_khoan_da_co() {
+        let (_dir, ctx, _driver) = ctx_with(vec![FakeStep::Launch(Ok(()))], &["acc1"]).await;
+        account_open_viewer_impl(&ctx, "acc1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn account_open_viewer_impl_khong_ton_tai_bao_ma_dung() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let err = account_open_viewer_impl(&ctx, "ghost").await.unwrap_err();
+        assert_eq!(err.code, "ACCOUNT_NOT_FOUND");
     }
 
     #[tokio::test]

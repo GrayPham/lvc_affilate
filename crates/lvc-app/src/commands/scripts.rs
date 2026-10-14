@@ -240,11 +240,23 @@ pub async fn script_run_impl<D: BrowserDriver + 'static>(
     scene_ids: &[String],
     style: &str,
 ) -> Result<ScriptRunReport, IpcError> {
-    require_script(&ScriptRepo::new(&ctx.db), id).await?;
+    let repo = ScriptRepo::new(&ctx.db);
+    let row = require_script(&repo, id).await?;
     let defaults = ctx.settings.read().await.clone();
+    // Engine Video + tham so cua CHINH kich ban nay (cot `video_kind`/`video_params`, migration
+    // `0006`) — kich ban cu chua co thi `ScriptRepo` da tra mac dinh san.
+    let video_params: serde_json::Value =
+        serde_json::from_str(&row.video_params).unwrap_or(serde_json::Value::Null);
     Ok(ctx
         .engine
-        .run_script(id, scene_ids, style, &defaults)
+        .run_script(
+            id,
+            scene_ids,
+            style,
+            &defaults,
+            &row.video_kind,
+            &video_params,
+        )
         .await?)
 }
 

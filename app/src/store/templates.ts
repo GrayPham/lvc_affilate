@@ -7,7 +7,7 @@ import { create } from "zustand";
 import { templateDelete, templateGet, templateSavePrivate } from "../ipc/commands";
 import { templateList } from "../ipc/commands";
 import { describeTemplateError } from "../format/template";
-import type { Graph, TemplateDoc, TemplateMeta } from "../ipc/types";
+import type { Graph, TemplateDoc, TemplateMeta, TemplateScope } from "../ipc/types";
 
 /** Tham so `save` — `id` null = tao mau moi; nguoc lai luu de mau private do. */
 export interface TemplateSaveInput {
@@ -23,8 +23,9 @@ interface TemplatesState {
   loading: boolean;
   error: string | null;
 
-  /** Tai danh sach theo pham vi (khong dat = ca hai) — dat lai `items` va map loi sang tieng Viet. */
-  load: (scope?: "public" | "private") => Promise<void>;
+  /** Tai danh sach theo pham vi (khong dat = public+private) — dat lai `items` va map loi sang
+   * tieng Viet. `scope="remote"` goi mang (xem `commands.ts::templateList`). */
+  load: (scope?: TemplateScope) => Promise<void>;
   /** Lay do thi day du cua mot mau (dung cho "Dùng mẫu"). */
   getDoc: (id: string) => Promise<TemplateDoc>;
   /** Luu mau private (tao moi hoac luu de) — tra ve meta vua luu. */

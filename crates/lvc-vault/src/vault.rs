@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{SecretBox, VaultError, mask};
 
 /// Loại provider hỗ trợ (mở rộng dần). `kind` hợp lệ theo provider kiểm ở [`Vault::add`].
-pub const PROVIDERS: [&str; 9] = [
+pub const PROVIDERS: [&str; 13] = [
     "dola",
     "google",
     "chatgpt_web",
@@ -20,6 +20,16 @@ pub const PROVIDERS: [&str; 9] = [
     // P6: nha cung cap API chinh thuc moi (chi api_key) cho node seedance_*/grok_image.
     "seedance",
     "grok",
+    // P-affiliate-multi-engine: kho tai khoan cho MuseAI (dang nhap/cookie, giong Google/Facebook —
+    // CHUA co trang dang nhap thu cong (login_url) vi chua ro URL that, xem
+    // `commands::login::platform`; chi dung duoc qua nap cookie hang loat/dan tay).
+    "museai",
+    // P-tts: API key cho node tts (text-to-speech) — chi api_key, giong seedance/grok.
+    "elevenlabs",
+    "minimax",
+    // Publish workflow len kho cong dong: personal access token do CHINH nguoi dung tao, luu ma
+    // hoa nhu API key (xem `crates/providers/lvc-github`).
+    "github",
 ];
 
 /// Lỗi kho tài khoản (có `code()` ổn định để map sang IPC như `AccountError`).
@@ -102,10 +112,12 @@ fn valid_label(s: &str) -> bool {
 fn kind_ok(provider: &str, kind: &str) -> bool {
     match provider {
         "dola" => kind == "session",
-        "openai" | "seedance" | "grok" => kind == "api_key",
+        "openai" | "seedance" | "grok" | "elevenlabs" | "minimax" | "github" => kind == "api_key",
         // Gemini: API key (chính thức/endpoint) HOẶC đăng nhập/cookie (lấy profile Google).
         "gemini" => kind == "api_key" || kind == "login" || kind == "session",
-        "google" | "chatgpt_web" | "facebook" | "apple" => kind == "login" || kind == "session",
+        "google" | "chatgpt_web" | "facebook" | "apple" | "museai" => {
+            kind == "login" || kind == "session"
+        }
         _ => false,
     }
 }
@@ -270,6 +282,39 @@ impl Vault {
         Ok(())
     }
 
+    /// Đặt TAG LOẠI NODE (`"video"` | `"image"` | `"script"`) cho credential — node AI chỉ lấy tài
+    /// khoản/key có đúng tag (bản bàn giao UI, mục "Quy tắc nghiệp vụ"). Lưu vào `meta.node_types`
+    /// (cột `meta` đã là JSON nên KHÔNG cần migration); giá trị lạ bị loại bỏ, trùng bị gộp.
+    ///
+    /// Ghi `meta` qua [`crate::repo::VaultRepo::update_secret`] với ciphertext CŨ — không đụng tới
+    /// bí mật, không cần giải mã (đúng luật "nơi duy nhất chạm plaintext").
+    ///
+    /// # Errors
+    /// [`VaultRepoError::NotFound`] khi `id` không có; lỗi ghi DB.
+    pub async fn set_node_types(&self, id: &str, kinds: &[String]) -> Result<(), VaultRepoError> {
+        let row = self.repo.get(id).await?.ok_or(VaultRepoError::NotFound)?;
+        let mut meta: serde_json::Value =
+            serde_json::from_str(&row.meta).unwrap_or(serde_json::Value::Null);
+        if !meta.is_object() {
+            meta = serde_json::json!({});
+        }
+        let mut clean: Vec<String> = Vec::new();
+        for k in kinds {
+            let k = k.trim();
+            if matches!(k, "video" | "image" | "script") && !clean.iter().any(|c| c == k) {
+                clean.push(k.to_string());
+            }
+        }
+        // `as_object_mut` chắc chắn `Some` vì vừa ép thành object ở trên.
+        if let Some(obj) = meta.as_object_mut() {
+            obj.insert("node_types".to_string(), serde_json::json!(clean));
+        }
+        self.repo
+            .update_secret(id, &row.secret, &meta.to_string())
+            .await?;
+        Ok(())
+    }
+
     /// # Errors
     /// [`VaultRepoError`] khi xoá lỗi.
     pub async fn delete(&self, id: &str) -> Result<bool, VaultRepoError> {
@@ -322,6 +367,27 @@ impl Vault {
         self.repo.touch_used(id).await?;
         let meta = serde_json::from_str(&row.meta).unwrap_or(serde_json::Value::Null);
         Ok((String::from_utf8_lossy(&plain).into_owned(), meta))
+    }
+
+    /// `provider` + thư mục profile (từ `meta.profile_dir`, `None` nếu credential này chưa từng
+    /// tiêm cookie vào profile thật — xem `lvc-engine::profiles`) + proxy THÔ (chưa che) của
+    /// credential — dùng cho "Mở trình duyệt xem". KHÔNG chạm bí mật (không giải mã `secret`,
+    /// không `touch_used` — xem profile không phải "dùng" bí mật theo nghĩa [`Self::lease_secret`]).
+    ///
+    /// # Errors
+    /// [`VaultRepoError::NotFound`] nếu không có credential nào với `id` này.
+    pub async fn profile_dir_and_proxy(
+        &self,
+        id: &str,
+    ) -> Result<(String, Option<String>, String), VaultRepoError> {
+        let row = self.repo.get(id).await?.ok_or(VaultRepoError::NotFound)?;
+        let meta: serde_json::Value =
+            serde_json::from_str(&row.meta).unwrap_or(serde_json::Value::Null);
+        let profile_dir = meta
+            .get("profile_dir")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        Ok((row.provider, profile_dir, row.proxy))
     }
 }
 
@@ -406,6 +472,90 @@ mod tests {
         let (plain, meta) = v.lease_secret(&view.id).await.unwrap();
         assert_eq!(plain, "AIzaKEY");
         assert_eq!(meta["base_url"], "x");
+    }
+
+    #[tokio::test]
+    async fn profile_dir_and_proxy_doc_tu_meta_khong_cham_secret() {
+        let v = vault().await;
+        let mut req = add("google", "session", "cookie-that-su-nhay-cam");
+        req.meta = serde_json::json!({"mode": "cookie", "profile_dir": "/tmp/profile-x"});
+        req.proxy = "1.2.3.4:8080".to_string();
+        let view = v.add(&req).await.unwrap();
+
+        let (provider, profile_dir, proxy) = v.profile_dir_and_proxy(&view.id).await.unwrap();
+        assert_eq!(provider, "google");
+        assert_eq!(profile_dir, Some("/tmp/profile-x".to_string()));
+        assert_eq!(proxy, "1.2.3.4:8080");
+    }
+
+    #[tokio::test]
+    async fn set_node_types_loc_gia_tri_la_va_gop_trung() {
+        let v = vault().await;
+        let view = v.add(&add("gemini", "api_key", "AIzaKEY")).await.unwrap();
+
+        v.set_node_types(
+            &view.id,
+            &[
+                "image".to_string(),
+                "khong-ton-tai".to_string(),
+                "image".to_string(),
+                "script".to_string(),
+            ],
+        )
+        .await
+        .unwrap();
+
+        let rows = v.list(Some("gemini")).await.unwrap();
+        assert_eq!(
+            rows[0].meta["node_types"],
+            serde_json::json!(["image", "script"])
+        );
+    }
+
+    #[tokio::test]
+    async fn set_node_types_giu_nguyen_bi_mat_va_meta_cu() {
+        let v = vault().await;
+        let mut req = add("gemini", "api_key", "AIzaKEY-rat-nhay-cam");
+        req.meta = serde_json::json!({"base_url": "https://vi.du"});
+        let view = v.add(&req).await.unwrap();
+
+        v.set_node_types(&view.id, &["video".to_string()])
+            .await
+            .unwrap();
+
+        // Bi mat van giai ma lai dung (khong bi ghi de boi buoc cap nhat meta).
+        let (plain, meta) = v.lease_secret(&view.id).await.unwrap();
+        assert_eq!(plain, "AIzaKEY-rat-nhay-cam");
+        // Truong meta cu con nguyen, truong moi duoc them.
+        assert_eq!(meta["base_url"], "https://vi.du");
+        assert_eq!(meta["node_types"], serde_json::json!(["video"]));
+    }
+
+    #[tokio::test]
+    async fn set_node_types_id_khong_co_bao_not_found() {
+        let v = vault().await;
+        let err = v
+            .set_node_types("khong-co", &["video".to_string()])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, VaultRepoError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn profile_dir_and_proxy_chua_co_profile_tra_none() {
+        let v = vault().await;
+        let view = v.add(&add("gemini", "api_key", "AIzaKEY")).await.unwrap();
+        let (_, profile_dir, _) = v.profile_dir_and_proxy(&view.id).await.unwrap();
+        assert_eq!(profile_dir, None);
+    }
+
+    #[tokio::test]
+    async fn profile_dir_and_proxy_khong_ton_tai_bao_not_found() {
+        let v = vault().await;
+        assert!(matches!(
+            v.profile_dir_and_proxy("ghost").await.unwrap_err(),
+            VaultRepoError::NotFound
+        ));
     }
 
     #[tokio::test]

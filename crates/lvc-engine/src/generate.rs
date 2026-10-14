@@ -192,6 +192,8 @@ pub struct Engine<D: BrowserDriver + 'static> {
     /// P6: client HTTP Seedance/Seedream (Volcengine) + Grok (xAI) — dung chung cho host tuong ung.
     pub(crate) seedance_client: Arc<lvc_seedance::SeedanceClient>,
     pub(crate) grok_client: Arc<lvc_grok::GrokClient>,
+    /// P-tts: client HTTP text-to-speech (`ElevenLabs`/`MiniMax`) — dung chung cho dich vu `TtsHost`.
+    pub(crate) tts_client: Arc<lvc_tts::TtsClient>,
     /// P4d: nguon API key cho `TextGenHost` — `lvc-app` dat MOT LAN qua
     /// [`Engine::set_text_secret_resolver`] (backed by Vault). Chua dat = [`NoResolver`] (node bao
     /// loi ro rang). Bi mat KHONG bao gio ra event/log/UI.
@@ -208,6 +210,10 @@ pub struct Engine<D: BrowserDriver + 'static> {
     /// cap MOT LAN qua [`Engine::set_veo3_account_resolver`]. `pub(crate)`: `dag.rs` doc truc tiep
     /// khi chen dich vu vao `Services` trong `start_run`, giong cach doc `veo3_captcha`.
     pub(crate) veo3_session: crate::veo3::EngineVeoSession,
+    /// Nguồn `profile_dir` cho dịch vụ `MuseaiVideoHost` (`credential_id` -> `profile_dir`) do
+    /// `lvc-app` cấp MỘT LẦN qua [`Engine::set_museai_account_resolver`]. Chưa đặt =
+    /// [`crate::museai::NoAccountResolver`] (lỗi rõ ràng, không panic) — dùng ý `text_resolver`.
+    museai_resolver: OnceLock<Arc<dyn crate::museai::MuseaiAccountResolver>>,
 }
 
 /// P3 Task 4: adapter hooks cua MOT lan `generate_video` — thuc hien ca [`PollHooks`] lan
@@ -388,9 +394,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             google_client: Arc::new(lvc_google::GoogleClient::new()),
             seedance_client: Arc::new(lvc_seedance::SeedanceClient::new()),
             grok_client: Arc::new(lvc_grok::GrokClient::new()),
+            tts_client: Arc::new(lvc_tts::TtsClient::new()),
             text_resolver: OnceLock::new(),
             veo3_captcha: EngineVeoCaptcha::new(),
             veo3_session: crate::veo3::EngineVeoSession::new(),
+            museai_resolver: OnceLock::new(),
         };
         engine.refresh_account_count().await?;
         Ok((engine, handle))
@@ -444,6 +452,25 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         resolver: Arc<dyn crate::veo3::VeoAccountResolver>,
     ) -> bool {
         self.veo3_session.set_resolver(resolver)
+    }
+
+    /// Đặt nguồn `profile_dir` cho dịch vụ `MuseaiVideoHost` (MỘT LẦN; lần sau bị bỏ qua, trả
+    /// `false`). `lvc-app` cấp resolver backed by `Vault` (đọc `credential.meta.profile_dir` của
+    /// credential `museai/login`) — dùng ý [`Engine::set_veo3_account_resolver`].
+    pub fn set_museai_account_resolver(
+        &self,
+        resolver: Arc<dyn crate::museai::MuseaiAccountResolver>,
+    ) -> bool {
+        self.museai_resolver.set(resolver).is_ok()
+    }
+
+    /// `pub(crate)`: `dag.rs` đọc trực tiếp khi chèn dịch vụ vào `Services` trong `start_run`,
+    /// giống cách đọc `text_resolver()`.
+    pub(crate) fn museai_resolver(&self) -> Arc<dyn crate::museai::MuseaiAccountResolver> {
+        self.museai_resolver
+            .get()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(crate::museai::NoAccountResolver))
     }
 
     /// P3 Task 4 (R5): kenh su kien — Tauri bridge `subscribe()`.

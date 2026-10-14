@@ -18,6 +18,7 @@ export const TEMPLATE_ERROR_VI: Record<string, string> = {
   TEMPLATE_READONLY: "Mẫu công khai chỉ đọc — không thể lưu đè hoặc xoá.",
   GRAPH_ENCODE: "Lỗi mã hoá đồ thị của mẫu.",
   STORE: "Lỗi lưu dữ liệu.",
+  TEMPLATE_REMOTE_UNAVAILABLE: "Không tải được kho mẫu miễn phí — kiểm tra kết nối mạng rồi thử lại.",
 };
 
 /** Thong diep tieng Viet cho `IpcError` cua kho template — roi ve `err.message` neu ma la. */

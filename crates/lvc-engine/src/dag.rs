@@ -108,9 +108,12 @@ use lvc_dola::{DolaVideoHost, JobsReport, SceneJob, VideoDone};
 use lvc_genai::TextGenHost;
 use lvc_google::{GoogleImageHost, GoogleVideoHost};
 use lvc_grok::GrokImageHost;
-use lvc_node_api::{NodeCtx, Outputs, Prepared, Registry, Services, gather_inputs};
+use lvc_museai::{MuseaiImageHost, MuseaiVideoHost};
+use lvc_node_api::{NodeCtx, Outputs, Prepared, Registry, Services, Value, gather_inputs};
+use lvc_scripts::ScriptSinkHost;
 use lvc_seedance::{SeedanceImageHost, SeedanceVideoHost};
 use lvc_store::{BatchRef, RunStatus};
+use lvc_tts::TtsHost;
 use lvc_veo3::flow::Flow;
 use lvc_veo3::{VeoCaptchaHost, VeoImageHost, VeoSessionHost, VeoVideoHost};
 use tokio::sync::watch;
@@ -119,12 +122,14 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::apimedia::{
-    EngineGoogleImage, EngineGoogleVideo, EngineGrokImage, EngineSeedanceImage, EngineSeedanceVideo,
+    EngineGoogleImage, EngineGoogleVideo, EngineGrokImage, EngineSeedanceImage,
+    EngineSeedanceVideo, EngineTts,
 };
 use crate::error::EngineError;
 use crate::events::EngineEvent;
 use crate::generate::{Engine, GenerateOutcome};
 use crate::now_unix;
+use crate::scriptsink::EngineScriptSinkHost;
 use crate::textgen::EngineTextGenHost;
 
 /// Tu vung trang thai node phat qua `EngineEvent::NodeState::state` (khop doc cua bien the do).
@@ -351,6 +356,26 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         });
     }
 
+    /// P-lumina: phat [`EngineEvent::NodeOutputs`] khi `outputs` co it nhat MOT asset anh/video —
+    /// cho cac node API (Veo3/Google/Seedance/Grok/MuseAI...) khong di qua `run_video_jobs`/dong
+    /// `tasks` rieng (chi `dola_video` co) — UI preview (`OutputPreview.tsx`) khong co nguon nao
+    /// khac de biet duong dan. Lay asset DAU TIEN tim thay (duyet cac cong theo thu tu `BTreeMap`,
+    /// trong tung cong theo thu tu item) — du cho mot "dai dien" preview, khop cach `OutputPreview`
+    /// chi hien MOT anh/video moi node. Khong co asset nao (vd node Text/Save) -> khong phat gi.
+    fn emit_preview_if_media(&self, run_id: &str, node_id: &str, outputs: &Outputs) {
+        let Some(path) = outputs.values().flatten().find_map(|v| match v {
+            Value::Image(a) | Value::Video(a) => Some(a.path.to_string_lossy().into_owned()),
+            Value::Text(_) | Value::Audio(_) => None,
+        }) else {
+            return;
+        };
+        self.events().emit(EngineEvent::NodeOutputs {
+            run_id: run_id.to_string(),
+            node_id: node_id.to_string(),
+            preview_path: path,
+        });
+    }
+
     /// `counts = (done, total, ok, failed)` — buoc khong mang thong diep loi (`error: None`).
     fn emit_node_state(
         &self,
@@ -390,6 +415,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             Arc::clone(&self.text_client),
             self.text_resolver(),
         )));
+        // Luu kich ban (node `script_gen`, tham so `save_as_script`) VO DIEU KIEN, cung khuon cac
+        // dich vu khac (engine KHONG `match` theo kind). Dung thang `self.db` (Engine da giu san,
+        // xem doc `scripts.rs`) — khong can resolver nhu TextGenHost vi khong co bi mat de giu kin.
+        services.insert::<Arc<dyn ScriptSinkHost>>(Arc::new(EngineScriptSinkHost::new(
+            self.db.clone(),
+        )));
         // P5 Task 9 (ADR-R014): chen dich vu mint reCAPTCHA Veo3 VO DIEU KIEN (engine KHONG `match`
         // theo kind) — node `veo3_image`/`veo3_video` lay qua `ctx.services.get::<Arc<dyn
         // VeoCaptchaHost>>()`. Chua goi `set_veo3_guest_root_dir` thi `mint_token` tra loi ro rang
@@ -416,6 +447,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             self.cfg.downloads_dir.clone(),
             flow,
             cancel.clone(),
+            self.tasks.clone(),
+            tasks_ready_tx.clone(),
         ));
         services.insert::<Arc<dyn VeoImageHost>>(Arc::clone(&veo_jobs) as Arc<dyn VeoImageHost>);
         services.insert::<Arc<dyn VeoVideoHost>>(veo_jobs as Arc<dyn VeoVideoHost>);
@@ -434,6 +467,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             Arc::clone(&text_resolver),
             self.cfg.downloads_dir.clone(),
             cancel.clone(),
+            self.tasks.clone(),
+            tasks_ready_tx.clone(),
         )));
         // P6: Seedance (Volcengine) — anh + video (poll task), dung lai text_resolver (tag "seedance").
         services.insert::<Arc<dyn SeedanceImageHost>>(Arc::new(EngineSeedanceImage::new(
@@ -446,13 +481,39 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             Arc::clone(&text_resolver),
             self.cfg.downloads_dir.clone(),
             cancel.clone(),
+            self.tasks.clone(),
+            tasks_ready_tx.clone(),
         )));
         // P6: Grok (xAI) — chi anh (tag "grok").
         services.insert::<Arc<dyn GrokImageHost>>(Arc::new(EngineGrokImage::new(
             Arc::clone(&self.grok_client),
+            Arc::clone(&text_resolver),
+            self.cfg.downloads_dir.clone(),
+        )));
+        // P-tts: ElevenLabs/MiniMax — node `tts` chon provider qua tham so, tag resolve lay tu
+        // `TtsJob::provider` (khac Grok/Google/Seedance tag co dinh mot dong).
+        services.insert::<Arc<dyn TtsHost>>(Arc::new(EngineTts::new(
+            Arc::clone(&self.tts_client),
             text_resolver,
             self.cfg.downloads_dir.clone(),
         )));
+        // MuseAI — chen VO DIEU KIEN (engine KHONG `match` theo kind, dung khuon cac dich vu
+        // tren). Chua goi `set_museai_account_resolver` thi node bao loi ro rang (xem
+        // `crate::museai::NoAccountResolver`), khong thieu service tham lang.
+        services.insert::<Arc<dyn MuseaiVideoHost>>(Arc::new(
+            crate::museai::EngineMuseaiJobs::new(
+                self.cfg.downloads_dir.clone(),
+                self.cfg.logs_dir.clone(),
+                self.museai_resolver(),
+            ),
+        ));
+        services.insert::<Arc<dyn MuseaiImageHost>>(Arc::new(
+            crate::museai::EngineMuseaiImageJobs::new(
+                self.cfg.downloads_dir.clone(),
+                self.cfg.logs_dir.clone(),
+                self.museai_resolver(),
+            ),
+        ));
         (services, Arc::new(self.limits.clone()))
     }
 
@@ -613,6 +674,9 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     );
                     if let Some(f) = res.failure {
                         failures.push(f);
+                    }
+                    if !failed {
+                        self.emit_preview_if_media(&run_id, node_id, &res.outputs);
                     }
                     outputs.insert(node_id.clone(), res.outputs);
                 }
@@ -1532,6 +1596,46 @@ mod tests {
 
         let recent = engine.run_repo.list_recent(10).await.unwrap();
         assert!(recent.is_empty(), "{recent:?}");
+    }
+
+    // ---- P-lumina: NodeOutputs preview cho node KHONG di qua dong `tasks` rieng ----
+
+    /// `image_upload` khong phai `dola_video` (khong co `run_video_jobs`/dong `tasks` rieng) —
+    /// trươc fix nay UI preview (`OutputPreview.tsx`) khong co cach nao biet duong dan asset da
+    /// sinh. Xac nhan `emit_preview_if_media` phat dung `NodeOutputs` voi path cua anh dau tien.
+    #[tokio::test]
+    async fn node_khong_fan_out_sinh_anh_phat_node_outputs_preview() {
+        let (dir, engine, _db, _driver) = build_engine(&[], 1, vec![]).await;
+        let img_path = dir.path().join("ref.jpg");
+        std::fs::write(&img_path, b"fake-jpg-bytes").unwrap();
+
+        let graph = Graph {
+            version: 2,
+            nodes: vec![node("im", upload_kind(&[img_path.display().to_string()]))],
+            edges: vec![],
+        };
+
+        let mut rx = engine.events().subscribe();
+        let handle = engine
+            .run_graph("wf1", &graph, noop_hooks_factory())
+            .await
+            .unwrap();
+        handle.join.await.unwrap();
+
+        let mut found: Option<(String, String)> = None;
+        while let Ok(ev) = rx.try_recv() {
+            if let EngineEvent::NodeOutputs {
+                node_id,
+                preview_path,
+                ..
+            } = ev
+            {
+                found = Some((node_id, preview_path));
+            }
+        }
+        let (node_id, preview_path) = found.expect("phai phat NodeOutputs cho node im");
+        assert_eq!(node_id, "im");
+        assert_eq!(preview_path, img_path.display().to_string());
     }
 
     // ---- (5) ImageUpload thieu file: run failed, khong tao task video nao ----

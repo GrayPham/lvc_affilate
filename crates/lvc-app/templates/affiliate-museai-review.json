@@ -1,0 +1,17 @@
+{
+  "name": "Video affiliate MuseAI (mô tả sản phẩm)",
+  "category": "Affiliate",
+  "description": "Mẫu affiliate dùng MuseAI: chỉ cần mô tả sản phẩm bằng chữ (MuseAI v1 chưa nhận ảnh tham chiếu) → video quảng cáo sản phẩm, lưu ra thư mục. Tài khoản MuseAI để trống sẽ tự chọn từ kho — điền tên cụ thể nếu muốn ép dùng đúng một tài khoản.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "Một sản phẩm đặt trên bàn với ánh sáng studio ấm áp, nền mờ trang trí tinh tế, phong cách quảng cáo sản phẩm cao cấp, cận cảnh sản phẩm xoay nhẹ khoe chi tiết" }, "x": 60, "y": 240 },
+      { "id": "video", "kind": { "kind": "museai_video", "account": "", "aspect": "", "duration": null }, "x": 470, "y": 240 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 240 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e2", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

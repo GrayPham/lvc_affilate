@@ -19,6 +19,7 @@ mod bootstrap;
 mod commands;
 mod events;
 mod log;
+mod museai;
 mod paths;
 pub mod registry;
 mod state;
@@ -50,6 +51,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        // P8 (auto-update): check()/downloadAndInstall() goi tu frontend qua
+        // @tauri-apps/plugin-updater — xem tauri.conf.json plugins.updater.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -84,6 +88,15 @@ pub fn run() {
             commands::tasks::task_cancel,
             commands::tasks::task_resume,
             commands::tasks::task_open_file,
+            commands::scripts::script_list,
+            commands::scripts::script_create,
+            commands::scripts::script_update,
+            commands::scripts::script_delete,
+            commands::scripts::script_get,
+            commands::scripts::script_put_scenes,
+            commands::scripts::script_run,
+            commands::scripts::script_reset_scenes,
+            commands::scripts::script_import_txt,
             commands::settings::settings_get,
             commands::settings::settings_set,
             commands::settings::pick_directory,
@@ -97,27 +110,37 @@ pub fn run() {
             commands::accounts::account_set_scheduling,
             commands::accounts::account_set_proxy,
             commands::accounts::account_delete,
+            commands::accounts::account_open_viewer,
             commands::accounts::legacy_import,
             commands::credentials::credential_list,
             commands::credentials::credential_add,
             commands::credentials::credential_update,
             commands::credentials::credential_verify,
             commands::credentials::credential_delete,
+            commands::credentials::credential_open_viewer,
+            commands::credentials::credential_set_node_types,
             commands::login::cookie::login_import_cookie_files,
+            commands::login::cookie::login_cookie_text,
             commands::login::interactive::login_open_interactive,
             commands::templates::template_list,
             commands::templates::template_get,
             commands::templates::template_save_private,
             commands::templates::template_delete_private,
-            commands::scripts::script_list,
-            commands::scripts::script_create,
-            commands::scripts::script_update,
-            commands::scripts::script_delete,
-            commands::scripts::script_get,
-            commands::scripts::script_put_scenes,
-            commands::scripts::script_run,
-            commands::scripts::script_reset_scenes,
-            commands::scripts::script_import_txt,
+            commands::publish::publish_workflow,
+            commands::updates::workflow_update_list,
+            commands::updates::workflow_set_origin,
+            commands::updates::workflow_apply_update,
+            commands::device::device_id,
+            commands::cache::cache_info,
+            commands::cache::cache_clear,
+            commands::cache::open_app_folder,
+            commands::queue::queue_list,
+            commands::queue::queue_add,
+            commands::queue::queue_remove,
+            commands::queue::queue_reorder,
+            commands::queue::queue_clear_finished,
+            commands::queue::queue_start,
+            commands::queue::queue_stop,
         ])
         .run(tauri::generate_context!())
         .expect("loi khi chay ung dung Tauri");

@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { confirmDialog } from "../store/dialog";
 
-import { useGraphStore } from "../store/graph";
+import { useGraphStore, useGraphStoreApi } from "../store/graph";
 import { useTemplatesStore } from "../store/templates";
 import { describeTemplateError } from "../format/template";
 import type { TemplateMeta, TemplateScope } from "../ipc/types";
@@ -25,6 +25,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
   const remove = useTemplatesStore((s) => s.remove);
 
   const loadGraph = useGraphStore((s) => s.loadGraph);
+  const graphApi = useGraphStoreApi();
 
   const [scope, setScope] = useState<TemplateScope>("public");
   const [query, setQuery] = useState("");
@@ -78,12 +79,21 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
     try {
       const doc = await getDoc(meta.id);
       // Kiem tra TRUC TIEP tu store (khong subscribe node vao component nay cho re-render vo ich).
-      const hasNodes = useGraphStore.getState().nodes.length > 0;
+      const hasNodes = graphApi.getState().nodes.length > 0;
       if (hasNodes && !(await confirmDialog({ title: "Dùng mẫu", message: "Thay đồ thị hiện tại bằng mẫu này?", okText: "Thay", danger: true }))) {
         setBusyId(null);
         return;
       }
       loadGraph(doc.graph);
+      // Mẫu CỘNG ĐỒNG có phiên bản -> nhớ nguồn gốc để lúc lưu workflow còn ghi lại được (xem
+      // `GraphStoreState.templateOrigin`). `loadGraph` đã tự xoá nguồn gốc cũ nên mẫu dựng sẵn/
+      // riêng (không có `version`) không cần làm gì thêm.
+      if (meta.scope === "remote" && meta.version !== "") {
+        graphApi.getState().setTemplateOrigin({
+          sourceId: meta.id,
+          sourceVersion: meta.version,
+        });
+      }
       onApplied?.(meta.name);
       onClose();
     } catch (e) {
@@ -112,30 +122,37 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
   const error = localError ?? storeError;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="flex max-h-[80vh] w-[42rem] max-w-full flex-col rounded-lg bg-white p-4 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="flex max-h-[80vh] w-[42rem] max-w-full flex-col rounded-lg border border-white/10 bg-neutral-900 p-4 shadow-2xl">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Kho mẫu</h2>
-          <button type="button" className="text-slate-400 hover:text-slate-700" onClick={onClose}>
+          <h2 className="text-sm font-semibold text-white">Kho mẫu</h2>
+          <button type="button" className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
             Đóng
           </button>
         </div>
 
         <div className="mb-2 flex items-center gap-2">
-          <div className="flex rounded border border-slate-200 p-0.5 text-xs">
+          <div className="flex rounded border border-white/10 p-0.5 text-xs">
             <button
               type="button"
-              className={`rounded px-3 py-1 ${scope === "public" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              className={`rounded px-3 py-1 ${scope === "public" ? "bg-amber-600 text-neutral-950 shadow-sm" : "text-neutral-300 hover:bg-white/10"}`}
               onClick={() => setScope("public")}
             >
               Công khai
             </button>
             <button
               type="button"
-              className={`rounded px-3 py-1 ${scope === "private" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              className={`rounded px-3 py-1 ${scope === "private" ? "bg-amber-600 text-neutral-950 shadow-sm" : "text-neutral-300 hover:bg-white/10"}`}
               onClick={() => setScope("private")}
             >
               Của tôi
+            </button>
+            <button
+              type="button"
+              className={`rounded px-3 py-1 ${scope === "remote" ? "bg-amber-600 text-neutral-950 shadow-sm" : "text-neutral-300 hover:bg-white/10"}`}
+              onClick={() => setScope("remote")}
+            >
+              Miễn phí
             </button>
           </div>
           <input
@@ -143,7 +160,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tìm theo tên hoặc mô tả…"
-            className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+            className="flex-1 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-100 placeholder:text-neutral-500"
           />
         </div>
 
@@ -151,7 +168,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
           <div className="mb-2 flex flex-wrap items-center gap-1">
             <button
               type="button"
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === "all" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"}`}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === "all" ? "border-amber-600 bg-amber-600 text-neutral-950 shadow-sm" : "border-white/10 text-neutral-300 hover:bg-white/10"}`}
               onClick={() => setCategory("all")}
             >
               Tất cả
@@ -160,7 +177,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
               <button
                 key={c}
                 type="button"
-                className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:bg-slate-100"}`}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-amber-600 bg-amber-600 text-neutral-950 shadow-sm" : "border-white/10 text-neutral-300 hover:bg-white/10"}`}
                 onClick={() => setCategory(c)}
               >
                 {c}
@@ -169,20 +186,20 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
           </div>
         ) : null}
 
-        {error ? <p className="mb-2 text-xs text-red-600">{error}</p> : null}
+        {error ? <p className="mb-2 text-xs text-red-400">{error}</p> : null}
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <p className="text-xs text-slate-500">Đang tải…</p>
+            <p className="text-xs text-neutral-500">Đang tải…</p>
           ) : filtered.length === 0 ? (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-neutral-500">
               {query.trim() !== "" ? "Không có mẫu nào khớp." : "Chưa có mẫu nào."}
             </p>
           ) : (
             <div className="flex flex-col gap-3">
               {groups.map((group) => (
                 <section key={group.category} className="flex flex-col gap-1.5">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
                     {group.category}
                   </h3>
                   <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -192,9 +209,9 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                       return (
                         <li
                           key={meta.id}
-                          className="flex flex-col overflow-hidden rounded border border-slate-200"
+                          className="flex flex-col overflow-hidden rounded border border-white/10 bg-white/[0.02]"
                         >
-                    <div className="flex aspect-video items-center justify-center bg-slate-50 p-2 text-center">
+                    <div className="flex aspect-video items-center justify-center bg-white/5 p-2 text-center">
                       {meta.thumbnail ? (
                         <img
                           src={meta.thumbnail}
@@ -202,13 +219,13 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-xs font-medium text-slate-400">{meta.name}</span>
+                        <span className="text-xs font-medium text-neutral-400">{meta.name}</span>
                       )}
                     </div>
                     <div className="flex flex-1 flex-col gap-1 p-2">
-                      <span className="text-xs font-medium text-slate-800">{meta.name}</span>
+                      <span className="text-xs font-medium text-neutral-100">{meta.name}</span>
                       {meta.description ? (
-                        <span className="line-clamp-2 text-[10px] text-slate-500">
+                        <span className="line-clamp-2 text-[10px] text-neutral-500">
                           {meta.description}
                         </span>
                       ) : null}
@@ -216,7 +233,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                         <button
                           type="button"
                           disabled={busy}
-                          className="rounded bg-slate-900 px-2 py-1 text-[11px] text-white hover:bg-slate-700 disabled:opacity-50"
+                          className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-neutral-950 shadow-sm shadow-amber-600/25 hover:bg-amber-500 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
                           onClick={() => void handleUse(meta)}
                         >
                           Dùng mẫu
@@ -228,7 +245,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                             className={`rounded border px-2 py-1 text-[11px] disabled:opacity-50 ${
                               confirmDeleteId === meta.id
                                 ? "border-red-500 bg-red-600 text-white hover:bg-red-500"
-                                : "border-red-300 text-red-700 hover:bg-red-50"
+                                : "border-red-500/30 text-red-300 hover:bg-red-500/10"
                             }`}
                             onClick={() => void handleDelete(meta)}
                           >

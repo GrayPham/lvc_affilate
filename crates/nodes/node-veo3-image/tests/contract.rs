@@ -156,14 +156,11 @@ fn aspect_khong_hop_le_bao_loi_param_aspect() {
 }
 
 #[test]
-fn account_rong_bao_loi_param_account() {
+fn account_rong_khong_loi_truyen_thang_cho_resolver_tu_chon() {
     let inputs = text_inputs("prompt", &["canh 1"]);
     let p = image_params("GEM_PIX_2", "portrait", None, "");
-    let err = node_veo3_image::build_jobs("img", &p, &inputs).unwrap_err();
-    assert!(matches!(
-        &err[0],
-        GraphError::Param { node, field, .. } if node == "img" && field == "account"
-    ));
+    let jobs = node_veo3_image::build_jobs("img", &p, &inputs).unwrap();
+    assert_eq!(jobs[0].credential_id, "");
 }
 
 #[test]
@@ -315,7 +312,7 @@ async fn run_tham_so_sai_la_loi_khong_nghiem_trong() {
     let e = node_veo3_image::node()
         .run(
             &c,
-            &params("GEM_PIX_2", "portrait", None, ""),
+            &params("khong-hop-le", "portrait", None, "acc1"),
             text_inputs("prompt", &["a"]),
         )
         .await

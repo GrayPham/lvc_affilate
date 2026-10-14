@@ -1,5 +1,5 @@
-//! P6: dịch vụ host cho các node gọi **API chính thức** (Google, Seedance, Grok). Khác `veo3.rs`
-//! (điều khiển trình duyệt Flow): ở đây chỉ HTTP thuần qua client provider.
+//! P6: dịch vụ host cho các node gọi **API chính thức** (Google, Seedance, Grok, TTS `ElevenLabs`/
+//! `MiniMax`). Khác `veo3.rs` (điều khiển trình duyệt Flow): ở đây chỉ HTTP thuần qua client provider.
 //!
 //! Ranh giới bí mật (giống `textgen.rs`): node chỉ truyền TÊN credential trong job. Engine resolve
 //! tên đó → API key qua [`TextSecretResolver`] (lvc-app impl bằng `Vault`), rồi gọi client. API key
@@ -13,8 +13,11 @@
 mod google;
 mod grok;
 mod seedance;
+pub(crate) mod task_tracking;
+mod tts;
 mod util;
 
 pub(crate) use google::{EngineGoogleImage, EngineGoogleVideo};
 pub(crate) use grok::EngineGrokImage;
 pub(crate) use seedance::{EngineSeedanceImage, EngineSeedanceVideo};
+pub(crate) use tts::EngineTts;

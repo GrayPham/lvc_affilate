@@ -35,7 +35,8 @@ fn default_aspect() -> String {
 
 /// Tham số node (khớp bảng "Node & credential" của spec — `model`/`aspect` là chuỗi thô, node tự
 /// `parse` trong `jobs.rs` để báo lỗi rõ tại đúng field). `account` = `credential_id`
-/// (`google/login`), BẮT BUỘC không rỗng — P5 chưa có "auto" như Dola (xem spec mục 7).
+/// (`google/login`) — rỗng = tự chọn tài khoản đầu tiên còn dùng được trong kho
+/// (`VaultVeo3AccountResolver`, `lvc-app`), giống `dola_video`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ImageParams {
     #[serde(default = "default_model")]
@@ -73,9 +74,9 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
             "model": { "type": "string", "title": "Model", "enum": ["NARWHAL", "GEM_PIX_2", "HARBOR_SEAL"] },
             "aspect": { "type": "string", "title": "Ty le khung", "enum": ["portrait", "landscape"] },
             "seed": { "type": ["integer", "null"], "title": "Seed (rong = 0)" },
-            "account": { "type": "string", "title": "Tai khoan (ten/label credential Google, bat buoc)", "minLength": 1 }
+            "account": { "type": "string", "title": "Tai khoan (rong = tu chon)" }
         },
-        "required": ["model", "aspect", "account"]
+        "required": ["model", "aspect"]
     }),
 });
 

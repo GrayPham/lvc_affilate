@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "quyen mac dinh cho cua so chinh (Task 8: chua co lenh Tauri rieng, T9-10 se them)",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "shell:allow-open"]
+  "permissions": [
+    "core:default",
+    "core:app:default",
+    "dialog:default",
+    "shell:allow-open",
+    "updater:default"
+  ]
 }

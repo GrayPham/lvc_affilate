@@ -33,6 +33,9 @@ function meta(overrides: Partial<ScriptMeta> = {}): ScriptMeta {
     done: 0,
     failed: 0,
     running: 0,
+    videoKind: "dola_video",
+    videoParams: "",
+    category: "",
     ...overrides,
   };
 }

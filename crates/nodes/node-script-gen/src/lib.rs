@@ -17,6 +17,7 @@ use lvc_node_api::{
     NodeManifest, NodeResult, Outputs, Params, PortSpec, PortType, Preview, PreviewCtx, TextItem,
     Value, parse_params,
 };
+use lvc_scripts::{ScriptDraft, ScriptSinkHost};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -43,6 +44,14 @@ pub struct ScriptParams {
     /// `"gemini"` | `"openai"`.
     #[serde(default = "default_provider")]
     pub provider: String,
+    /// Bật thì lưu luôn kết quả thành một kịch bản mới trong tab "Kịch bản" khi `run` thành công
+    /// (xem [`lvc_scripts::ScriptSinkHost`]) — KHÔNG đổi đầu ra `out` (vẫn chảy xuống node sau
+    /// như cũ), chỉ thêm một bản lưu phụ.
+    #[serde(default)]
+    pub save_as_script: bool,
+    /// Tên kịch bản khi lưu (rỗng = host tự đặt "Kịch bản {n}"). Bỏ qua khi `save_as_script=false`.
+    #[serde(default)]
+    pub script_name: String,
 }
 
 fn default_num_scenes() -> u32 {
@@ -71,7 +80,8 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
     }),
     default_params: json!({
         "topic": "", "num_scenes": 3, "language": "vi", "style": "",
-        "system": "", "credential": "", "provider": "gemini"
+        "system": "", "credential": "", "provider": "gemini",
+        "save_as_script": false, "script_name": ""
     }),
     params_schema: json!({
         "type": "object",
@@ -82,7 +92,9 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
             "style": { "type": "string", "title": "Phong cách" },
             "system": { "type": "string", "title": "Chỉ dẫn hệ thống (tuỳ chọn)", "format": "textarea" },
             "credential": { "type": "string", "title": "Tên API key" },
-            "provider": { "type": "string", "title": "Nhà cung cấp", "enum": ["gemini", "openai"] }
+            "provider": { "type": "string", "title": "Nhà cung cấp", "enum": ["gemini", "openai"] },
+            "save_as_script": { "type": "boolean", "title": "Lưu thành kịch bản khi chạy" },
+            "script_name": { "type": "string", "title": "Tên kịch bản (rỗng = tự đặt tên)" }
         },
         "required": ["num_scenes", "provider"]
     }),
@@ -139,6 +151,28 @@ fn validate(node_id: &str, p: &ScriptParams) -> Result<Provider, GraphError> {
         field: "provider".to_string(),
         message: format!("nhà cung cấp không hỗ trợ: {}", p.provider),
     })
+}
+
+/// Luu `scenes` thanh mot kich ban moi qua [`ScriptSinkHost`] — tra `Some(message)` khi thieu
+/// dich vu HOAC luu loi (xem doc goi noi `run`), `None` khi luu thanh cong (khong can bao gi them
+/// vao `failure`, id kich ban moi khong duoc dung toi o day).
+async fn save_as_script(
+    ctx: &NodeCtx,
+    node_id: &str,
+    name: &str,
+    scenes: &[String],
+) -> Option<String> {
+    let Some(host) = ctx.services.get::<Arc<dyn ScriptSinkHost>>() else {
+        return Some(format!("node {node_id}: thiếu dịch vụ lưu kịch bản"));
+    };
+    let draft = ScriptDraft {
+        name: name.trim().to_string(),
+        scenes: scenes.to_vec(),
+    };
+    match host.save_script(draft).await {
+        Ok(_id) => None,
+        Err(e) => Some(format!("node {node_id}: lưu kịch bản thất bại: {e}")),
+    }
 }
 
 #[async_trait]
@@ -207,6 +241,15 @@ impl NodeExecutor for ScriptGenNode {
             )));
         }
         let n = u32::try_from(scenes.len()).unwrap_or(u32::MAX);
+        // Luu kich ban la tac vu PHU (tuy chon, bat qua tham so `save_as_script`) — sinh canh da
+        // thanh cong roi nen KHONG lam that bai ca node vi mot loi luu kho; bao qua `failure`
+        // (vao `runs.error`, giong cac loi mot-phan khac) de nguoi dung thay ma output van chay
+        // xuong node sau nhu thuong.
+        let failure = if p.save_as_script {
+            save_as_script(ctx, node_id, &p.script_name, &scenes).await
+        } else {
+            None
+        };
         Ok(NodeResult {
             outputs: to_outputs(node_id, &scenes),
             counts: Counts {
@@ -215,7 +258,7 @@ impl NodeExecutor for ScriptGenNode {
                 ok: n,
                 failed: 0,
             },
-            failure: None,
+            failure,
         })
     }
 }
@@ -264,6 +307,43 @@ mod tests {
             limits: Arc::new(Limits::default()),
             services,
         }
+    }
+
+    /// Host GIẢ cho `ScriptSinkHost` — ghi lại `ScriptDraft` cuối, trả lỗi cố định nếu `fail`.
+    struct FakeSink {
+        seen: Mutex<Option<ScriptDraft>>,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl ScriptSinkHost for FakeSink {
+        async fn save_script(
+            &self,
+            draft: ScriptDraft,
+        ) -> Result<String, lvc_scripts::ScriptSinkError> {
+            *self.seen.lock().unwrap() = Some(draft);
+            if self.fail {
+                return Err(lvc_scripts::ScriptSinkError::Save("disk full".into()));
+            }
+            Ok("script-1".to_string())
+        }
+    }
+
+    fn ctx_with_sink(host: Arc<FakeHost>, sink: Arc<FakeSink>) -> NodeCtx {
+        let mut ctx = ctx_with(host);
+        ctx.services.insert::<Arc<dyn ScriptSinkHost>>(sink);
+        ctx
+    }
+
+    fn params_save_as(topic: &str, n: u32, save_as_script: bool, script_name: &str) -> Params {
+        json!({
+            "topic": topic, "num_scenes": n, "language": "vi", "style": "",
+            "system": "", "credential": "khoa-1", "provider": "gemini",
+            "save_as_script": save_as_script, "script_name": script_name
+        })
+        .as_object()
+        .unwrap()
+        .clone()
     }
 
     #[test]
@@ -321,6 +401,68 @@ mod tests {
         assert_eq!(seen.credential_name, "khoa-1");
         assert_eq!(seen.provider, Provider::Gemini);
         assert_eq!(seen.prompt, "giày chạy bộ");
+    }
+
+    #[tokio::test]
+    async fn run_save_as_script_goi_dung_sink_voi_cac_canh() {
+        let host = Arc::new(FakeHost {
+            reply: Ok("1. Cảnh mở đầu\n2. Cao trào".to_string()),
+            seen: Mutex::new(None),
+        });
+        let sink = Arc::new(FakeSink {
+            seen: Mutex::new(None),
+            fail: false,
+        });
+        let ctx = ctx_with_sink(host, Arc::clone(&sink));
+        let r = node()
+            .run(
+                &ctx,
+                &params_save_as("giày chạy bộ", 2, true, "Kịch bản giày"),
+                Inputs::new(),
+            )
+            .await
+            .unwrap();
+        assert!(!r.is_failed(), "loi khi luu khong duoc tinh vao node");
+        let draft = sink.seen.lock().unwrap().clone().unwrap();
+        assert_eq!(draft.name, "Kịch bản giày");
+        assert_eq!(draft.scenes, vec!["Cảnh mở đầu", "Cao trào"]);
+    }
+
+    #[tokio::test]
+    async fn run_khong_bat_save_as_script_thi_khong_cham_sink() {
+        let host = Arc::new(FakeHost {
+            reply: Ok("canh 1".to_string()),
+            seen: Mutex::new(None),
+        });
+        // Khong insert ScriptSinkHost het — neu `run` co dung toi se panic vi thieu service,
+        // chung minh nhanh `save_as_script=false` (mac dinh) khong goi toi sink.
+        let ctx = ctx_with(host);
+        let r = node()
+            .run(&ctx, &params("giày", "gemini", 1), Inputs::new())
+            .await
+            .unwrap();
+        assert!(!r.is_failed());
+    }
+
+    #[tokio::test]
+    async fn run_save_as_script_loi_sink_bao_failure_khong_fatal() {
+        let host = Arc::new(FakeHost {
+            reply: Ok("canh 1".to_string()),
+            seen: Mutex::new(None),
+        });
+        let sink = Arc::new(FakeSink {
+            seen: Mutex::new(None),
+            fail: true,
+        });
+        let ctx = ctx_with_sink(host, sink);
+        let r = node()
+            .run(&ctx, &params_save_as("giày", 1, true, ""), Inputs::new())
+            .await
+            .unwrap();
+        // Output van chay binh thuong xuong node sau du luu kich ban that bai.
+        assert_eq!(r.outputs["out"].len(), 1);
+        assert!(r.is_failed());
+        assert!(r.failure.unwrap().contains("lưu kịch bản thất bại"));
     }
 
     #[tokio::test]

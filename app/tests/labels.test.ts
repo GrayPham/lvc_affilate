@@ -9,6 +9,7 @@ import { NODE_KIND_ORDER } from "../src/ipc/types";
 /** Sao chep dung tung ky tu tu `labelVi` cua manifest node (P4a, `fixtures/catalog.json`). */
 const RUST_LABEL_VI: Record<string, string> = {
   prompt: "Prompt",
+  note: "Ghi chú",
   image_upload: "Tải ảnh lên",
   load_video: "Tải video lên",
   dola_video: "Tạo video Dola",
@@ -19,6 +20,7 @@ const RUST_LABEL_VI: Record<string, string> = {
   audio_extract: "Tách audio",
   audio_split: "Tách audio↔video",
   script_gen: "Kịch bản AI",
+  script_agent: "Agent kịch bản affiliate",
   veo3_image: "Tạo ảnh Veo3 (Google Labs Flow)",
   veo3_video: "Tạo video Veo3",
   google_image: "Tạo ảnh Google (API Imagen)",
@@ -26,6 +28,9 @@ const RUST_LABEL_VI: Record<string, string> = {
   seedance_image: "Tạo ảnh Seedance (API Seedream)",
   seedance_video: "Tạo video Seedance (API)",
   grok_image: "Tạo ảnh Grok (API xAI)",
+  museai_video: "Tạo video MuseAI",
+  museai_image: "Tạo ảnh MuseAI",
+  tts: "Tạo giọng đọc AI (TTS)",
 };
 
 describe("NODE_LABEL_VI khop dung labelVi cua manifest node (Rust, P4a)", () => {

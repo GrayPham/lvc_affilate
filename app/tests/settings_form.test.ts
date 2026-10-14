@@ -1,14 +1,14 @@
-// TDD Task 13 buoc 1: `validateSettings` (src/components/SettingsForm.tsx) mirror hai dieu kien
-// server CHAC CHAN se bac (`crates/lvc-core/src/settings.rs::parse_threads`/`parse_duration`, xem
-// doc dau file SettingsForm.tsx) + `toAppSettings` (src/store/settings.ts, chuyen sang day o fix
-// round 1 — review task-13-review.md Minor #2) chuan hoa phong thu truoc khi goi `settingsSet`.
+// `validateSettings` (src/components/settings/validate.ts) mirror hai dieu kien server CHAC CHAN
+// se bac (`crates/lvc-core/src/settings/mod.rs::parse_threads`/`parse_duration`) + `toAppSettings`
+// (src/store/settings.ts) chuan hoa phong thu truoc khi goi `settingsSet`.
 import { describe, expect, it } from "vitest";
 
-import { validateSettings } from "../src/components/SettingsForm";
+import { validateSettings } from "../src/components/settings/validate";
 import { THREADS_MAX, toAppSettings } from "../src/store/settings";
 import type { AppSettings } from "../src/ipc/types";
 
-/** Khop `AppSettings::default()` (crates/lvc-core/src/settings.rs, fixtures/app_settings.json). */
+/** Khop `AppSettings::default()` (crates/lvc-core/src/settings/mod.rs,
+ * fixtures/app_settings.json). */
 function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     threads: 1,
@@ -21,6 +21,12 @@ function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultRatio: "9:16",
     defaultDuration: 10,
     dolaChannel: "api",
+    subdirPattern: "workflow_date",
+    filenameTemplate: "{workflow}_{gio}_{stt}",
+    duplicatePolicy: "number",
+    onError: "skip",
+    restBetween: 30,
+    missingAccount: "skip",
     ...overrides,
   };
 }

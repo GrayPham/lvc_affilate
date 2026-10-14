@@ -122,6 +122,46 @@ describe("applyEvent — reducer thuan cho EngineEvent (store/run.ts)", () => {
     expect(s2.nodes["n1"]).toEqual({ nodeId: "n1", state: "running", done: 2, total: 3, ok: 1, failed: 1, error: null });
   });
 
+  it("node_outputs: ghi preview path theo nodeId vao nodeVideos, suy runId neu chua co", () => {
+    const s1 = applyEvent(EMPTY_RUN_STATE, {
+      type: "node_outputs",
+      runId: "r1",
+      nodeId: "n1",
+      previewPath: "C:\\out\\a.mp4",
+    });
+    expect(s1.runId).toBe("r1");
+    expect(s1.nodeVideos["n1"]).toBe("C:\\out\\a.mp4");
+
+    const s2 = applyEvent(s1, {
+      type: "node_outputs",
+      runId: "r1",
+      nodeId: "n2",
+      previewPath: "C:\\out\\b.png",
+    });
+    expect(s2.nodeVideos).toEqual({ n1: "C:\\out\\a.mp4", n2: "C:\\out\\b.png" });
+  });
+
+  it("node_outputs cua RUN KHAC bi bo qua hoan toan, khong hijack runId/nodeVideos", () => {
+    const tracking = applyEvent(EMPTY_RUN_STATE, {
+      type: "node_state",
+      runId: "r1",
+      nodeId: "n1",
+      state: "running",
+      done: 0,
+      total: 1,
+      ok: 0,
+      failed: 0,
+      error: null,
+    });
+    const after = applyEvent(tracking, {
+      type: "node_outputs",
+      runId: "r2",
+      nodeId: "n1",
+      previewPath: "C:\\out\\other.mp4",
+    });
+    expect(after).toBe(tracking);
+  });
+
   it("run_done: ghi status ket thuc, la trang thai TERMINAL (khong bi su kien khac ghi de nguoc)", () => {
     const running = applyEvent(EMPTY_RUN_STATE, {
       type: "node_state",

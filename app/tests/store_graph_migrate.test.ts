@@ -1,9 +1,12 @@
 // P4a: canvas autosave trong localStorage ("lvc.workflow.canvas.v1") tu ban UI cu (Graph v1, kind
-// `video`, co the kem kind P4 da xoa) phai khoi phuc duoc qua `loadPersistedGraph` — migrate
+// `video`, co the kem kind P4 da xoa) phai khoi phuc duoc qua `loadPersistedCanvas` — migrate
 // TRUOC zod, khong mat ca canvas.
+//
+// Ban cu luu MOT `Graph` tran; ban hien tai luu `{graph, workflowId, workflowName, workflowSaved}`
+// de mo lai app khong mat danh tinh workflow dang mo. Ca hai dinh dang deu phai doc duoc.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { loadPersistedGraph, useGraphStore } from "../src/store/graph";
+import { createGraphStore, loadPersistedCanvas } from "../src/store/graph";
 
 function memoryStorage(initial: Record<string, string>): Storage {
   const data = new Map(Object.entries(initial));
@@ -27,7 +30,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("loadPersistedGraph (P4a migrate)", () => {
+describe("loadPersistedCanvas (P4a migrate)", () => {
   it("canvas v1 (kind video + concat) -> Graph v2 dola_video, bo concat + canh cua no", () => {
     const v1 = {
       version: 1,
@@ -56,13 +59,49 @@ describe("loadPersistedGraph (P4a migrate)", () => {
     };
     vi.stubGlobal("localStorage", memoryStorage({ "lvc.workflow.canvas.v1": JSON.stringify(v1) }));
 
-    const g = loadPersistedGraph();
-    expect(g).not.toBeNull();
-    expect(g!.version).toBe(2);
-    expect(g!.nodes.map((n) => n.kind.kind)).toEqual(["prompt", "dola_video"]);
-    expect(g!.edges.map((e) => e.id)).toEqual(["e1"]);
+    const loaded = loadPersistedCanvas();
+    expect(loaded).not.toBeNull();
+    const g = loaded!.graph;
+    expect(g.version).toBe(2);
+    expect(g.nodes.map((n) => n.kind.kind)).toEqual(["prompt", "dola_video"]);
+    expect(g.edges.map((e) => e.id)).toEqual(["e1"]);
+    // Dinh dang cu khong co danh tinh -> coi nhu chua dat ten, chua luu.
+    expect(loaded!.workflowName).toBe("");
+    expect(loaded!.workflowSaved).toBe(false);
 
-    useGraphStore.getState().loadGraph(g!);
-    expect(useGraphStore.getState().nodes.map((n) => n.type)).toEqual(["prompt", "dola_video"]);
+    const store = createGraphStore({ workflowId: "test", workflowName: "test" });
+    store.getState().loadGraph(g);
+    expect(store.getState().nodes.map((n) => n.type)).toEqual(["prompt", "dola_video"]);
+  });
+
+  it("dinh dang moi: giu nguyen danh tinh workflow dang mo", () => {
+    const payload = {
+      graph: { version: 2, nodes: [], edges: [] },
+      workflowId: "wf-that",
+      workflowName: "Review sản phẩm",
+      workflowSaved: true,
+    };
+    vi.stubGlobal(
+      "localStorage",
+      memoryStorage({ "lvc.workflow.canvas.v1": JSON.stringify(payload) }),
+    );
+
+    const loaded = loadPersistedCanvas();
+    expect(loaded!.workflowId).toBe("wf-that");
+    expect(loaded!.workflowName).toBe("Review sản phẩm");
+    expect(loaded!.workflowSaved).toBe(true);
+  });
+
+  it("chua tung luu gi -> null, khong nem loi", () => {
+    vi.stubGlobal("localStorage", memoryStorage({}));
+    expect(loadPersistedCanvas()).toBeNull();
+  });
+
+  it("du lieu hong -> null thay vi lam vo app", () => {
+    vi.stubGlobal(
+      "localStorage",
+      memoryStorage({ "lvc.workflow.canvas.v1": "{khong-phai-json" }),
+    );
+    expect(loadPersistedCanvas()).toBeNull();
   });
 });

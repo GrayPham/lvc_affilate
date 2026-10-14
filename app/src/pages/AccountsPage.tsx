@@ -1,55 +1,135 @@
-// Man Tai khoan (Task 14) — bang danh sach + toolbar "Nạp cookie"/"Làm mới". Logic IPC/optimistic
-// nam trong `store/accounts.ts`; dong bang la `components/AccountRow.tsx` (proxy inline qua
-// `ProxyEditor`); hop thoai nap cookie la `components/CookieImport.tsx`.
-import { useEffect, useState } from "react";
+// Man "Tài khoản AI" — dung theo ban ban giao `references/lvc-ui-design/screens/Main.dc.html`.
+//
+// MOT bang thong nhat gop tai khoan Dola (`useAccountsStore`, kho rieng co lich/han muc) + tai khoan
+// dang nhap/cookie nen tang khac (`useCredentialsStore`, kho dung chung P4c) — hai nguon du lieu
+// THAT SU khac nhau phia backend, trang nay chi la lop HIEN THI hop nhat.
+//
+// CHUA CO BACKEND (hien dung gia tri rong, KHONG bia so lieu):
+// - `nodeTypes` (tag Video/Hình ảnh/Tạo kịch bản tren tung tai khoan) — ban ban giao ghi ro
+//   "Backend cần thêm trường này". Doc tam tu `meta.node_types`; chua co thi khong hien tag nao.
+// - Chip loc "Nền tảng: Tất cả" va cot trinh duyet cho credential (Dola co `browser` that).
+import { useEffect, useMemo, useState } from "react";
 
-import AccountRow from "../components/AccountRow";
-import CookieImport from "../components/CookieImport";
-import { LoginCookieManager } from "./CredentialsPage";
+import AddAccountDialog from "../components/AddAccountDialog";
+import EditAccountDialog, { type EditTarget } from "../components/EditAccountDialog";
 import { useAccountsStore } from "../store/accounts";
+import { useCredentialsStore } from "../store/credentials";
+import { accountOpenViewer, credentialOpenViewer, isIpcError } from "../ipc/commands";
+import {
+  ACCOUNT_STATE_ORDER,
+  ACCOUNT_STATE_VI,
+  accountState,
+  accountStateDetail,
+  proxyKindLabel,
+  type AccountState,
+} from "../format/accountRow";
+import { platformBadgeBg, platformLook } from "../format/platform";
+import {
+  Button,
+  Chip,
+  NodeTag,
+  NODE_TYPE_VI,
+  SearchInput,
+  Switch,
+  type NodeTypeKey,
+} from "../ui/primitives";
 
-const NOW_REFRESH_MS = 30_000;
+/** Mau cham theo trang thai — bien CSS doi theo theme (xem `index.css`). */
+const STATE_COLOR: Record<AccountState, string> = {
+  active: "var(--ok)",
+  relogin: "var(--warn)",
+  resting: "var(--rest)",
+  limited: "var(--limit)",
+  no_credit: "var(--nocredit)",
+  unknown: "var(--unknown)",
+};
+
+interface UnifiedRow {
+  key: string;
+  platformKey: string;
+  label: string;
+  /** Dong phu duoi ten (email Dola / goi y bi mat da che). */
+  sublabel: string;
+  nodeTypes: NodeTypeKey[];
+  state: AccountState;
+  stateDetail: string;
+  proxy: string;
+  proxyKind: string;
+  browser: string;
+  enabled: boolean;
+  lastUsedAt: number;
+  canOpenViewer: boolean;
+  target: EditTarget;
+}
+
+/** Doc tag loai node tu `meta.node_types` (backend CHUA co truong nay — rong la binh thuong). */
+function readNodeTypes(meta: Record<string, unknown>): NodeTypeKey[] {
+  const raw = meta.node_types;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter((v): v is NodeTypeKey => v === "video" || v === "image" || v === "script");
+}
+
+/** "Hôm nay 13:42" / "Hôm qua 21:16" / "3 ngày trước" / "10-04 14:32"; `0` = "—". */
+function formatLastUsed(epochSeconds: number, now: number): string {
+  if (epochSeconds <= 0) {
+    return "—";
+  }
+  const d = new Date(epochSeconds * 1000);
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const startOfToday = new Date(now * 1000);
+  startOfToday.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor(
+    (startOfToday.getTime() - new Date(d).setHours(0, 0, 0, 0)) / 86_400_000,
+  );
+  if (diffDays <= 0) {
+    return `Hôm nay ${hhmm}`;
+  }
+  if (diffDays === 1) {
+    return `Hôm qua ${hhmm}`;
+  }
+  if (diffDays < 7) {
+    return `${diffDays} ngày trước`;
+  }
+  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hhmm}`;
+}
 
 export default function AccountsPage() {
-  const rows = useAccountsStore((s) => s.rows);
-  const loading = useAccountsStore((s) => s.loading);
-  const error = useAccountsStore((s) => s.error);
-  const busy = useAccountsStore((s) => s.busy);
-  const load = useAccountsStore((s) => s.load);
-  const verify = useAccountsStore((s) => s.verify);
-  const setScheduling = useAccountsStore((s) => s.setScheduling);
-  const setProxy = useAccountsStore((s) => s.setProxy);
-  const remove = useAccountsStore((s) => s.remove);
+  const dolaRows = useAccountsStore((s) => s.rows);
+  const dolaLoading = useAccountsStore((s) => s.loading);
+  const dolaError = useAccountsStore((s) => s.error);
+  const loadDola = useAccountsStore((s) => s.load);
+  const verifyDola = useAccountsStore((s) => s.verify);
+  const setSchedulingDola = useAccountsStore((s) => s.setScheduling);
+  const removeDola = useAccountsStore((s) => s.remove);
 
-  const [showImport, setShowImport] = useState(false);
-  // Epoch giay dung chung cho tinh "con lai bao nhieu phut" cua ca bang — lam moi dinh ky de
-  // dong ho khong dung im, khong can chinh xac tung giay cho muc dich nay.
-  const [now, setNow] = useState(() => Date.now() / 1000);
+  const credRows = useCredentialsStore((s) => s.rows);
+  const credLoading = useCredentialsStore((s) => s.loading);
+  const credError = useCredentialsStore((s) => s.error);
+  const loadCred = useCredentialsStore((s) => s.load);
+  const verifyCred = useCredentialsStore((s) => s.verify);
+  const updateCred = useCredentialsStore((s) => s.update);
+  const removeCred = useCredentialsStore((s) => s.remove);
 
-  // Chon nhieu dong theo `row.name` + menu chuot phai (theo mau CredentialArea).
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [pendingVerify, setPendingVerify] = useState<string | null>(null);
+  const [pendingViewer, setPendingViewer] = useState<string | null>(null);
+  const [viewerError, setViewerError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
+  const [query, setQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState<AccountState | "all">("all");
+  const [nodeFilter, setNodeFilter] = useState<NodeTypeKey | "all">("all");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadDola();
+    void loadCred();
+  }, [loadDola, loadCred]);
 
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now() / 1000), NOW_REFRESH_MS);
-    return () => clearInterval(id);
-  }, []);
-
-  // Bo chon nhung ten khong con trong danh sach (vd sau khi xoa/lam moi).
-  useEffect(() => {
-    setSelected((prev) => {
-      const names = new Set(rows.map((r) => r.name));
-      const next = new Set([...prev].filter((n) => names.has(n)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [rows]);
-
-  // Dong menu chuot phai khi bam ra ngoai / cuon.
   useEffect(() => {
     if (!menu) {
       return;
@@ -63,39 +143,175 @@ export default function AccountsPage() {
     };
   }, [menu]);
 
-  const selCount = rows.filter((r) => selected.has(r.name)).length;
-  const allSel = selCount === rows.length && rows.length > 0;
+  const loading = dolaLoading || credLoading;
+  const now = useMemo(() => Math.floor(Date.now() / 1000), [dolaRows, credRows]);
 
-  function toggleOne(name: string, on: boolean): void {
+  const rows: UnifiedRow[] = useMemo(() => {
+    const fromDola: UnifiedRow[] = dolaRows.map((row) => ({
+      key: `dola:${row.name}`,
+      platformKey: "dola",
+      label: row.name,
+      sublabel: row.email,
+      nodeTypes: [],
+      state: accountState(row),
+      stateDetail: accountStateDetail(row, now),
+      proxy: row.proxy,
+      proxyKind: proxyKindLabel(row.proxy, row.proxySet),
+      browser: row.browser,
+      enabled: row.scheduling,
+      lastUsedAt: row.lastUsedAt,
+      canOpenViewer: true,
+      target: { source: "dola", row },
+    }));
+    const fromCred: UnifiedRow[] = credRows
+      .filter((r) => r.kind !== "api_key")
+      .map((row) => ({
+        key: `cred:${row.id}`,
+        platformKey: row.provider,
+        label: row.label,
+        sublabel: row.secretHint,
+        nodeTypes: readNodeTypes(row.meta),
+        state:
+          row.status === "ok"
+            ? "active"
+            : row.status === "expired" || row.status === "banned"
+              ? "relogin"
+              : row.status === "quota"
+                ? "no_credit"
+                : "unknown",
+        stateDetail: row.status === "banned" ? "Tài khoản bị khoá" : "",
+        proxy: row.proxyMasked,
+        proxyKind: proxyKindLabel(row.proxyMasked, row.proxyMasked.trim() !== ""),
+        browser: typeof row.meta.profile_dir === "string" ? "Chrome" : "",
+        enabled: row.enabled,
+        lastUsedAt: row.lastUsedAt,
+        canOpenViewer: typeof row.meta.profile_dir === "string",
+        target: { source: "credential", row },
+      }));
+    return [...fromDola, ...fromCred].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  }, [dolaRows, credRows, now]);
+
+  const stateCounts = useMemo(() => {
+    const m = new Map<AccountState, number>();
+    for (const r of rows) {
+      m.set(r.state, (m.get(r.state) ?? 0) + 1);
+    }
+    return m;
+  }, [rows]);
+
+  const nodeCounts = useMemo(() => {
+    const m = new Map<NodeTypeKey, number>();
+    for (const r of rows) {
+      for (const k of r.nodeTypes) {
+        m.set(k, (m.get(k) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (stateFilter !== "all" && r.state !== stateFilter) {
+        return false;
+      }
+      if (nodeFilter !== "all" && !r.nodeTypes.includes(nodeFilter)) {
+        return false;
+      }
+      if (q === "") {
+        return true;
+      }
+      return (
+        r.label.toLowerCase().includes(q) ||
+        r.sublabel.toLowerCase().includes(q) ||
+        r.proxy.toLowerCase().includes(q) ||
+        platformLook(r.platformKey as never).name.toLowerCase().includes(q)
+      );
+    });
+  }, [rows, query, stateFilter, nodeFilter]);
+
+  const activeCount = stateCounts.get("active") ?? 0;
+  const selectedRows = visible.filter((r) => selected.has(r.key));
+  const allVisibleSelected = visible.length > 0 && selectedRows.length === visible.length;
+
+  function toggleSelect(key: string): void {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (on) {
-        next.add(name);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.delete(name);
+        next.add(key);
       }
       return next;
     });
   }
-  function toggleAll(on: boolean): void {
-    setSelected(on ? new Set(rows.map((r) => r.name)) : new Set());
+
+  async function handleVerify(row: UnifiedRow): Promise<void> {
+    setPendingVerify(row.key);
+    try {
+      if (row.target.source === "dola") {
+        await verifyDola(row.target.row.name);
+      } else {
+        await verifyCred(row.target.row.id);
+      }
+    } finally {
+      setPendingVerify(null);
+    }
   }
 
-  async function bulkSchedule(on: boolean): Promise<void> {
+  async function handleOpenViewer(row: UnifiedRow): Promise<void> {
+    setPendingViewer(row.key);
+    setViewerError(null);
+    try {
+      if (row.target.source === "dola") {
+        await accountOpenViewer(row.target.row.name);
+      } else {
+        await credentialOpenViewer(row.target.row.id);
+      }
+    } catch (e) {
+      setViewerError(
+        isIpcError(e) && e.code === "PROFILE_NOT_FOUND"
+          ? `"${row.label}" chưa có profile trình duyệt — thêm lại cookie rồi thử lại.`
+          : `Không mở được trình duyệt cho "${row.label}": ${isIpcError(e) ? e.message : String(e)}`,
+      );
+    } finally {
+      setPendingViewer(null);
+    }
+  }
+
+  async function handleToggle(row: UnifiedRow, on: boolean): Promise<void> {
+    if (row.target.source === "dola") {
+      await setSchedulingDola(row.target.row.name, on);
+    } else {
+      await updateCred(row.target.row.id, { enabled: on });
+    }
+  }
+
+  async function removeRow(row: UnifiedRow): Promise<void> {
+    if (row.target.source === "dola") {
+      await removeDola(row.target.row.name);
+    } else {
+      await removeCred(row.target.row.id);
+    }
+  }
+
+  /** Kiem tra TUAN TU — tranh ban song song N lenh mo trinh duyet cung luc. */
+  async function handleBulkVerify(): Promise<void> {
     setBulkBusy(true);
     try {
-      for (const r of rows.filter((x) => selected.has(x.name))) {
-        await setScheduling(r.name, on);
+      for (const row of selectedRows) {
+        await handleVerify(row);
       }
     } finally {
       setBulkBusy(false);
     }
   }
-  async function bulkDelete(): Promise<void> {
+
+  async function handleBulkDelete(): Promise<void> {
     setBulkBusy(true);
     try {
-      for (const r of rows.filter((x) => selected.has(x.name))) {
-        await remove(r.name);
+      for (const row of selectedRows) {
+        await removeRow(row);
       }
       setSelected(new Set());
     } finally {
@@ -103,149 +319,307 @@ export default function AccountsPage() {
     }
   }
 
-  const menuRow = menu ? rows.find((r) => r.name === menu.name) : undefined;
+  const menuRow = menu ? rows.find((r) => r.key === menu.key) : undefined;
+  const TH = "border-b border-line px-2 py-3 text-left text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink3";
+  const TD = "border-b border-line px-2 py-3.5 align-top";
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-auto p-3">
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-slate-800">Tài khoản</h2>
-        <button
-          type="button"
-          className="rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
-          onClick={() => setShowImport(true)}
-        >
-          Nạp cookie Dola
-        </button>
-        <button
-          type="button"
-          disabled={loading}
-          className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
-          onClick={() => void load()}
-        >
-          Làm mới
-        </button>
-        {loading ? <span className="text-xs text-slate-400">Đang tải…</span> : null}
+    <div className="flex h-full flex-col overflow-hidden">
+      <header className="flex flex-col gap-3.5 border-b border-line px-6 pb-4 pt-5">
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="min-w-[200px] flex-1">
+            <h1 className="text-[20px] font-bold tracking-[-.01em]">Tài khoản AI</h1>
+            <p className="mt-1 text-[13px] text-ink3">
+              {rows.length} tài khoản · {activeCount} đang hoạt động
+            </p>
+          </div>
+          <Button variant="primary" onClick={() => setShowAdd(true)}>
+            + Thêm tài khoản
+          </Button>
+          <Button
+            disabled={loading}
+            onClick={() => {
+              void loadDola();
+              void loadCred();
+            }}
+          >
+            Làm mới
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="w-[120px] shrink-0 text-[10.5px] font-semibold uppercase tracking-[.1em] text-ink3">
+            Trạng thái
+          </span>
+          <Chip label="Tất cả" count={rows.length} on={stateFilter === "all"} onClick={() => setStateFilter("all")} />
+          {ACCOUNT_STATE_ORDER.map((s) => (
+            <Chip
+              key={s}
+              label={ACCOUNT_STATE_VI[s]}
+              count={stateCounts.get(s) ?? 0}
+              dotColor={STATE_COLOR[s]}
+              on={stateFilter === s}
+              onClick={() => setStateFilter(s)}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="w-[120px] shrink-0 text-[10.5px] font-semibold uppercase tracking-[.1em] text-ink3">
+            Dùng cho node
+          </span>
+          <Chip label="Tất cả" count={rows.length} on={nodeFilter === "all"} onClick={() => setNodeFilter("all")} />
+          {(Object.keys(NODE_TYPE_VI) as NodeTypeKey[]).map((k) => (
+            <Chip
+              key={k}
+              label={NODE_TYPE_VI[k]}
+              count={nodeCounts.get(k) ?? 0}
+              dotColor={`var(--tag-${k === "script" ? "script" : k})`}
+              squareSwatch
+              on={nodeFilter === k}
+              onClick={() => setNodeFilter(k)}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            label="Tìm tài khoản"
+            placeholder="Tìm theo tên, email hoặc proxy…"
+          />
+          {selectedRows.length > 0 ? (
+            <>
+              <span className="text-[12.5px] font-bold text-accent-text">
+                {selectedRows.length} đã chọn
+              </span>
+              <Button disabled={bulkBusy} onClick={() => void handleBulkVerify()}>
+                {bulkBusy ? "Đang kiểm tra…" : "Kiểm tra"}
+              </Button>
+              <Button variant="danger" disabled={bulkBusy} onClick={() => void handleBulkDelete()}>
+                Xoá
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-auto px-6 pb-6 pt-2">
+        {dolaError ? <p className="mb-2 text-xs text-rose">Không tải được tài khoản Dola: {dolaError}</p> : null}
+        {credError ? <p className="mb-2 text-xs text-rose">Không tải được tài khoản khác: {credError}</p> : null}
+        {viewerError ? <p className="mb-2 text-xs text-rose">{viewerError}</p> : null}
+
+        {visible.length === 0 && !loading ? (
+          <p className="rounded-lg border border-dashed border-line2 px-3 py-10 text-center text-[13px] text-ink3">
+            {rows.length === 0
+              ? 'Chưa có tài khoản nào — bấm "+ Thêm tài khoản" để nạp cookie hoặc đăng nhập.'
+              : "Không có tài khoản nào khớp bộ lọc."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] border-collapse text-[13px]">
+              <thead>
+                <tr>
+                  <th className={`${TH} w-8`}>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={() =>
+                        setSelected(allVisibleSelected ? new Set() : new Set(visible.map((r) => r.key)))
+                      }
+                      aria-label="Chọn tất cả"
+                      className="h-4 w-4 accent-[#F5A524]"
+                    />
+                  </th>
+                  <th className={TH}>Tài khoản</th>
+                  <th className={TH}>Nền tảng</th>
+                  <th className={TH}>Dùng cho node</th>
+                  <th className={TH}>Trạng thái</th>
+                  <th className={TH}>Lịch</th>
+                  <th className={TH}>Proxy</th>
+                  <th className={TH}>Gần nhất</th>
+                  <th className={TH}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((row) => {
+                  const look = platformLook(row.platformKey as never);
+                  const isSel = selected.has(row.key);
+                  return (
+                    <tr
+                      key={row.key}
+                      style={isSel ? { background: "rgb(245 165 36 / .05)" } : undefined}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setMenu({ key: row.key, x: e.clientX, y: e.clientY });
+                      }}
+                    >
+                      <td className={TD}>
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => toggleSelect(row.key)}
+                          aria-label={`Chọn ${row.label}`}
+                          className="mt-0.5 h-4 w-4 accent-[#F5A524]"
+                        />
+                      </td>
+                      <td className={TD}>
+                        <span className="font-semibold text-ink">{row.label}</span>
+                        {row.sublabel ? (
+                          <span className="mt-0.5 block text-[12px] text-ink3">{row.sublabel}</span>
+                        ) : null}
+                      </td>
+                      <td className={TD}>
+                        <span className="flex items-center gap-2.5 whitespace-nowrap">
+                          <span
+                            className="grid h-7 w-7 shrink-0 place-items-center rounded-sm text-[12px] font-bold"
+                            style={{ color: look.color, background: platformBadgeBg(look.color) }}
+                          >
+                            {look.letter}
+                          </span>
+                          <span className="flex flex-col leading-[1.3]">
+                            <span className="font-semibold text-ink">{look.name}</span>
+                            <span className="text-[11.5px] text-ink3">{look.sub}</span>
+                          </span>
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        {row.nodeTypes.length === 0 ? (
+                          <span className="text-ink3">—</span>
+                        ) : (
+                          <span className="flex max-w-[190px] flex-wrap gap-1.5">
+                            {row.nodeTypes.map((k) => (
+                              <NodeTag key={k} kind={k} />
+                            ))}
+                          </span>
+                        )}
+                      </td>
+                      <td className={TD}>
+                        <span
+                          className="inline-flex items-center gap-[7px] whitespace-nowrap font-semibold"
+                          style={{ color: STATE_COLOR[row.state] }}
+                        >
+                          <span
+                            className="h-[7px] w-[7px] rounded-[4px]"
+                            style={{ background: STATE_COLOR[row.state] }}
+                          />
+                          {ACCOUNT_STATE_VI[row.state]}
+                        </span>
+                        {row.stateDetail && row.stateDetail !== "—" ? (
+                          <span className="mt-[3px] block max-w-[200px] text-[12px] leading-[1.45] text-ink3">
+                            {row.stateDetail}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={TD}>
+                        <Switch
+                          checked={row.enabled}
+                          onChange={(on) => void handleToggle(row, on)}
+                          label={`Lịch chạy ${row.label}`}
+                        />
+                      </td>
+                      <td className={`${TD} whitespace-nowrap`}>
+                        <span className="rounded-sm bg-fill px-[7px] py-0.5 text-[11px] text-ink2">
+                          {row.proxyKind}
+                        </span>
+                        <span className="ml-1 font-mono text-[12px] text-ink2">
+                          {row.proxy === "" ? "—" : row.proxy}
+                        </span>
+                        {row.browser ? (
+                          <span className="mt-[3px] block text-[12px] text-ink3">{row.browser}</span>
+                        ) : null}
+                      </td>
+                      <td className={`${TD} whitespace-nowrap text-ink2`}>
+                        {formatLastUsed(row.lastUsedAt, now)}
+                      </td>
+                      <td className={`${TD} whitespace-nowrap`}>
+                        <div className="flex gap-1.5">
+                          <Button
+                            small
+                            disabled={pendingViewer === row.key || !row.canOpenViewer}
+                            title={row.canOpenViewer ? undefined : "Chưa có profile trình duyệt — thêm cookie trước"}
+                            onClick={() => void handleOpenViewer(row)}
+                          >
+                            {pendingViewer === row.key ? "…" : "Mở"}
+                          </Button>
+                          <Button
+                            small
+                            disabled={pendingVerify === row.key}
+                            onClick={() => void handleVerify(row)}
+                          >
+                            {pendingVerify === row.key ? "…" : "Kiểm tra"}
+                          </Button>
+                          {confirmingDelete === row.key ? (
+                            <span className="flex items-center gap-1 text-[12.5px]">
+                              Xoá?
+                              <Button
+                                small
+                                variant="danger"
+                                onClick={() => {
+                                  void removeRow(row);
+                                  setConfirmingDelete(null);
+                                }}
+                              >
+                                Có
+                              </Button>
+                              <Button small onClick={() => setConfirmingDelete(null)}>
+                                Không
+                              </Button>
+                            </span>
+                          ) : (
+                            <Button
+                              small
+                              aria-label="Thêm thao tác: Proxy, Xoá"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenu({ key: row.key, x: e.clientX, y: e.clientY });
+                              }}
+                            >
+                              ⋯
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {error ? (
-        <p className="text-xs text-red-600">Không tải được danh sách tài khoản: {error}</p>
-      ) : null}
-
-      {selCount > 0 ? (
-        <div className="flex items-center gap-2 rounded bg-slate-100 px-2 py-1 text-xs">
-          <span className="text-slate-600">Đã chọn {selCount}</span>
-          <button
-            type="button"
-            disabled={bulkBusy}
-            className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50"
-            onClick={() => void bulkSchedule(true)}
-          >
-            Bật lịch
-          </button>
-          <button
-            type="button"
-            disabled={bulkBusy}
-            className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50"
-            onClick={() => void bulkSchedule(false)}
-          >
-            Tắt lịch
-          </button>
-          <button
-            type="button"
-            disabled={bulkBusy}
-            className="rounded border border-red-300 bg-white px-2 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-50"
-            onClick={() => void bulkDelete()}
-          >
-            {bulkBusy ? "Đang xoá…" : "Xoá đã chọn"}
-          </button>
-          <button
-            type="button"
-            className="ml-auto text-slate-400 hover:text-slate-700"
-            onClick={() => setSelected(new Set())}
-          >
-            Bỏ chọn
-          </button>
-        </div>
-      ) : null}
-
-      {rows.length === 0 && !loading ? (
-        <p className="text-sm text-slate-400">Chưa có tài khoản nào — bấm "Nạp cookie" để thêm.</p>
-      ) : (
-        <div className="overflow-auto rounded border border-slate-200">
-          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500">
-              <tr>
-                <th className="w-8 px-2 py-1.5">
-                  <input
-                    type="checkbox"
-                    checked={allSel}
-                    onChange={(e) => toggleAll(e.target.checked)}
-                    aria-label="Chọn tất cả"
-                  />
-                </th>
-                <th className="px-2 py-1.5 font-medium">Tên</th>
-                <th className="px-2 py-1.5 font-medium">Đăng nhập</th>
-                <th className="px-2 py-1.5 font-medium">Lịch</th>
-                <th className="px-2 py-1.5 font-medium">Proxy</th>
-                <th className="px-2 py-1.5 font-medium">Dùng hôm nay/hạn mức</th>
-                <th className="px-2 py-1.5 font-medium">Còn lại</th>
-                <th className="px-2 py-1.5 font-medium">Hành động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <AccountRow
-                  key={row.name}
-                  row={row}
-                  busy={(busy[row.name] ?? 0) > 0}
-                  now={now}
-                  selected={selected.has(row.name)}
-                  onSelect={toggleOne}
-                  onContext={(name, x, y) => setMenu({ name, x, y })}
-                  onVerify={verify}
-                  onToggleScheduling={setScheduling}
-                  onSaveProxy={setProxy}
-                  onDelete={remove}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Menu chuot phai cho mot dong Dola */}
       {menu && menuRow ? (
         <div
-          className="fixed z-50 min-w-[140px] rounded-md border border-slate-200 bg-white py-1 text-xs shadow-lg"
+          className="fixed z-50 min-w-[170px] rounded-md border border-line2 bg-panel py-1 text-xs shadow-lg"
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
+          {[
+            ["Kiểm tra", () => void handleVerify(menuRow)],
+            ["Mở trình duyệt", () => void handleOpenViewer(menuRow)],
+            [menuRow.enabled ? "Tắt lịch chạy" : "Bật lịch chạy", () => void handleToggle(menuRow, !menuRow.enabled)],
+            ["Proxy & trình duyệt", () => setEditing(menuRow.target)],
+          ].map(([label, fn]) => (
+            <button
+              key={label as string}
+              type="button"
+              className="block w-full px-3 py-1.5 text-left text-ink2 hover:bg-fill hover:text-ink"
+              onClick={() => {
+                setMenu(null);
+                (fn as () => void)();
+              }}
+            >
+              {label as string}
+            </button>
+          ))}
           <button
             type="button"
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
+            className="block w-full px-3 py-1.5 text-left text-rose hover:bg-rose/10"
             onClick={() => {
               setMenu(null);
-              void verify(menuRow.name);
-            }}
-          >
-            Kiểm tra
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
-            onClick={() => {
-              setMenu(null);
-              void setScheduling(menuRow.name, !menuRow.scheduling);
-            }}
-          >
-            {menuRow.scheduling ? "Tắt lịch" : "Bật lịch"}
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left text-red-700 hover:bg-red-50"
-            onClick={() => {
-              setMenu(null);
-              void remove(menuRow.name);
+              setConfirmingDelete(menuRow.key);
             }}
           >
             Xoá
@@ -253,13 +627,8 @@ export default function AccountsPage() {
         </div>
       ) : null}
 
-      {/* Gộp: tài khoản đăng nhập/cookie các nền tảng khác (Google/Facebook/Apple/Gemini/ChatGPT)
-          vào CÙNG tab "Tài khoản" — API key ở tab riêng. */}
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <LoginCookieManager />
-      </div>
-
-      {showImport ? <CookieImport onClose={() => setShowImport(false)} /> : null}
+      {showAdd ? <AddAccountDialog onClose={() => setShowAdd(false)} /> : null}
+      {editing ? <EditAccountDialog target={editing} onClose={() => setEditing(null)} /> : null}
     </div>
   );
 }

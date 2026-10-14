@@ -1,0 +1,107 @@
+// Hộp thoại "Thêm workflow vào hàng chờ" (src/components/AddWorkflowDialog.tsx) — hai phép ghi đè
+// áp cho RIÊNG lần thêm này.
+//
+// Cả hai đều sửa ẢNH CHỤP đồ thị đưa vào hàng chờ, KHÔNG sửa workflow gốc: sửa gốc sẽ đổi cả
+// những lần chạy sau, không phải ý người dùng.
+import { describe, expect, it } from "vitest";
+
+import {
+  countPromptNodes,
+  countSaveNodes,
+  countScenes,
+  withOutDir,
+  withPromptText,
+} from "../src/components/AddWorkflowDialog";
+import type { Graph } from "../src/ipc/types";
+
+function graph(): Graph {
+  return {
+    version: 2,
+    nodes: [
+      { id: "p", kind: { kind: "prompt", text: "canh 1" }, x: 0, y: 0 },
+      { id: "s1", kind: { kind: "save", out_dir: "cu" }, x: 0, y: 0 },
+      { id: "s2", kind: { kind: "save", out_dir: "" }, x: 0, y: 0 },
+    ],
+    edges: [],
+  } as unknown as Graph;
+}
+
+describe("withOutDir", () => {
+  it("doi out_dir cua MOI node save", () => {
+    const out = withOutDir(graph(), "D:/moi");
+    const saves = out.nodes.filter((n) => n.kind.kind === "save");
+    expect(saves.length).toBe(2);
+    for (const s of saves) {
+      expect((s.kind as { out_dir: string }).out_dir).toBe("D:/moi");
+    }
+  });
+
+  it("KHONG sua do thi goc (tra ban sao)", () => {
+    const g = graph();
+    withOutDir(g, "D:/moi");
+    expect((g.nodes[1]!.kind as { out_dir: string }).out_dir).toBe("cu");
+  });
+
+  it("khong cham vao node khac save", () => {
+    const out = withOutDir(graph(), "D:/moi");
+    expect(out.nodes[0]!.kind).toEqual({ kind: "prompt", text: "canh 1" });
+  });
+
+  it("duong dan rong/toan khoang trang -> giu nguyen do thi", () => {
+    expect(withOutDir(graph(), "")).toEqual(graph());
+    expect(withOutDir(graph(), "   ")).toEqual(graph());
+  });
+
+  it("trim hai dau truoc khi ghi", () => {
+    const out = withOutDir(graph(), "  D:/moi  ");
+    expect((out.nodes[1]!.kind as { out_dir: string }).out_dir).toBe("D:/moi");
+  });
+});
+
+// "Tác vụ là nơi nhập đầu vào để chạy workflow" (quyết định 2026-10-14).
+describe("withPromptText", () => {
+  it("thay text cua MOI node prompt", () => {
+    const out = withPromptText(graph(), "canh A\ncanh B");
+    const p = out.nodes.find((n) => n.kind.kind === "prompt")!;
+    expect((p.kind as { text: string }).text).toBe("canh A\ncanh B");
+  });
+
+  it("KHONG sua do thi goc (tra ban sao)", () => {
+    const g = graph();
+    withPromptText(g, "canh moi");
+    expect((g.nodes[0]!.kind as { text: string }).text).toBe("canh 1");
+  });
+
+  it("bo dong trong — dong trong khong phai mot canh", () => {
+    const out = withPromptText(graph(), "A\n\n   \nB\n");
+    const p = out.nodes.find((n) => n.kind.kind === "prompt")!;
+    expect((p.kind as { text: string }).text).toBe("A\nB");
+  });
+
+  it("text rong -> giu nguyen do thi (dung prompt da luu trong workflow)", () => {
+    expect(withPromptText(graph(), "")).toEqual(graph());
+    expect(withPromptText(graph(), "   ")).toEqual(graph());
+  });
+
+  it("khong cham node khac prompt", () => {
+    const out = withPromptText(graph(), "x");
+    expect(out.nodes[1]!.kind).toEqual({ kind: "save", out_dir: "cu" });
+  });
+});
+
+describe("dem", () => {
+  it("countScenes dem dong khac rong", () => {
+    expect(countScenes("A\nB\nC")).toBe(3);
+    expect(countScenes("A\n\n  \nB")).toBe(2);
+    expect(countScenes("")).toBe(0);
+    expect(countScenes("   ")).toBe(0);
+  });
+
+  it("countSaveNodes / countPromptNodes", () => {
+    expect(countSaveNodes(graph())).toBe(2);
+    expect(countPromptNodes(graph())).toBe(1);
+    const trong = { version: 2, nodes: [], edges: [] } as unknown as Graph;
+    expect(countSaveNodes(trong)).toBe(0);
+    expect(countPromptNodes(trong)).toBe(0);
+  });
+});

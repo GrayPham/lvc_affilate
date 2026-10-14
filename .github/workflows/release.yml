@@ -1,0 +1,66 @@
+# P8 (auto-update): build + ky + publish ban cai dat Windows sang repo RELEASE cong khai rieng
+# (xem docs/superpowers/specs/2026-10-13-auto-update-design.md, ADR-R023). Kich hoat bang tag
+# "vX.Y.Z" (tao boi scripts/bump-version.ps1 -> git push --tags).
+#
+# Secret can co tren repo NAY (Settings -> Secrets and variables -> Actions) truoc khi chay:
+#   TAURI_SIGNING_PRIVATE_KEY           noi dung file .key (sinh boi `cargo tauri signer generate`)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  mat khau cua key o tren
+#   RELEASE_REPO_TOKEN                  PAT fine-grained, CHI quyen "Contents: write" tren DUNG
+#                                        repo release (vd GrayPham/lvc-affiliate-releases) -
+#                                        KHONG dung token co quyen tren repo source nay.
+#
+# Doi ten repo release? Sua ca 2 input "owner"/"repo" duoi day VA endpoint trong
+# crates/lvc-app/tauri.conf.json (plugins.updater.endpoints) cho khop.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    # App + bundle hien chi nham Windows (xem CLAUDE.md goc) - chi build mot runner.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cai Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cai Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cai pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Cai dependency frontend
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # tauri-action tu doc crates/lvc-app/tauri.conf.json (build.beforeBuildCommand se goi
+      # "pnpm -C ../app build" - da cai o buoc tren), ky bang 2 secret TAURI_SIGNING_*, sinh
+      # latest.json, roi tao/cap nhat GitHub Release TREN REPO "owner/repo" duoi day (khac repo
+      # dang chay workflow nay) bang GITHUB_TOKEN = RELEASE_REPO_TOKEN.
+      - name: Build + ky + publish sang repo release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: crates/lvc-app
+          owner: GrayPham
+          repo: lvc-affiliate-releases
+          tagName: ${{ github.ref_name }}
+          releaseName: "LVC Affiliate ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true

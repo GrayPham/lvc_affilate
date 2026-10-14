@@ -1,0 +1,26 @@
+[package]
+name = "lvc-github"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Provider GHI len kho cong dong GitHub (doi xung voi `lvc-template-registry` chi DOC). Mo mot
+# Pull Request them/sua mot muc trong `index.json` — KHONG day thang vao nhanh chinh, de chu repo
+# duyet truoc.
+# BI MAT: token do NGUOI DUNG dan (luu ma hoa trong `lvc-vault`), chi di qua THAM SO ham, KHONG
+# luu vao struct, KHONG log. Xem CLAUDE.md.
+# LUAT (ADR-R014 style): KHONG phu thuoc lvc-node-api/lvc-engine/lvc-store/lvc-browser/tauri/lvc-core.
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio = { workspace = true }
+
+[dev-dependencies]
+wiremock.workspace = true
+
+[lints]
+workspace = true
