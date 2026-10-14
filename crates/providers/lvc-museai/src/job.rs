@@ -20,6 +20,12 @@ pub struct VideoJob {
     pub aspect: Option<String>,
     /// Thời lượng MONG MUỐN (giây) — cùng cảnh báo như `aspect`, chỉ là chỉ thị trong prompt.
     pub duration_secs: Option<u32>,
+    /// Ảnh tham chiếu (nhân vật/sản phẩm) gửi kèm prompt, DÙNG CHUNG cho mọi cảnh của node — giống
+    /// cổng `refs` của `veo3_video`.
+    ///
+    /// Cùng cảnh báo như `aspect`: muse.ai nhận ảnh làm NGỮ CẢNH, không phải tham số ràng buộc —
+    /// không đảm bảo giữ đúng nhân vật.
+    pub images: Vec<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone)]

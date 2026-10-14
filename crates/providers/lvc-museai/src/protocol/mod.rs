@@ -6,6 +6,7 @@
 //! THUẦN) · [`media`] (trích xuất `VideoRef`/session id từ JSON, THUẦN) · [`filesystem`] (tải file
 //! qua `fs.*`/`idea-cards`).
 
+pub mod attachments;
 pub mod auth;
 pub mod client;
 pub mod errors;

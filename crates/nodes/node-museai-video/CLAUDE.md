@@ -105,3 +105,23 @@ sau khi sửa câu — xem `MEMORY.md` provider nếu cần lịch sử đầy �
 - `cargo test -p node-museai-video`
 - Đổi manifest: `LVC_WRITE_FIXTURES=1 cargo test -p node-museai-video` rồi sinh lại fixture UI
   `LVC_WRITE_FIXTURES=1 cargo test -p lvc-app commands::fixtures`.
+
+
+## Ảnh tham chiếu (cổng `refs`) — 2026-10-14
+
+muse.ai KHÔNG có endpoint tải ảnh riêng: web client nhúng ảnh base64 thẳng vào mảng `items` của
+`/chat/stream`, ảnh đứng TRƯỚC item text. Port từ `attachments.py` của bản tham chiếu sang
+`lvc_museai::protocol::attachments`.
+
+Hai điều phải nhớ:
+
+1. **Ngân sách ~11 MB ảnh thô cho cả yêu cầu.** Gói Noise ráp lại có hạn ~16 MB và base64 phình
+   dữ liệu lên ~4/3. Vượt ngưỡng thì `/chat/stream` hỏng giữa chừng với lỗi khó hiểu, nên
+   `build_items` chặn ngay với câu nói rõ người dùng cần làm gì. Mỗi ảnh ≤ 3,5 MB.
+
+2. **KHÔNG tự nén/thu nhỏ ảnh quá cỡ** (bản Python làm bằng PIL). Workspace không có thư viện xử
+   lý ảnh, kéo cả bộ codec vào chỉ để co một tấm ảnh là cái giá quá đắt cho việc người dùng tự làm
+   được. Ảnh quá cỡ bị từ chối kèm hướng dẫn.
+
+Cảnh báo giống `aspect`/`duration`: muse.ai nhận ảnh làm NGỮ CẢNH cho mô hình, không phải tham số
+ràng buộc — gửi được ảnh lên KHÔNG đảm bảo giữ đúng nhân vật. Chưa kiểm chứng trên tài khoản thật.

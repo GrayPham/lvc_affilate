@@ -19,9 +19,9 @@ import NodeStatusBadge from "./NodeStatusBadge";
 import type { NodeKindTag, TaskDto } from "../ipc/types";
 
 const TASK_STATUS_CLASS: Record<string, string> = {
-  completed: "text-emerald-300",
+  completed: "text-ok",
   failed: "text-rose",
-  processing: "text-sky-300",
+  processing: "text-rest",
   queued: "text-ink2",
 };
 
@@ -118,13 +118,13 @@ export default function NodeLogPanel() {
               Hoàn tất <span className="text-ink">{runState.done}/{runState.total}</span>
             </span>
           ) : null}
-          {runState.ok > 0 ? <span className="text-emerald-300">✓ {runState.ok}</span> : null}
+          {runState.ok > 0 ? <span className="text-ok">✓ {runState.ok}</span> : null}
           {runState.failed > 0 ? <span className="text-rose">✗ {runState.failed}</span> : null}
         </div>
 
         {/* Lỗi cấp node (nhật ký chính cho node không fan-out) */}
         {runState.error ? (
-          <div className="whitespace-pre-wrap break-words rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-red-200">
+          <div className="whitespace-pre-wrap break-words rounded-md border border-rose/35 bg-rose/10 px-2 py-1.5 text-[11px] leading-relaxed text-rose">
             {runState.error}
           </div>
         ) : null}
@@ -152,7 +152,7 @@ export default function NodeLogPanel() {
                     </div>
                   ) : null}
                   {t.localPath ? (
-                    <div className="mt-0.5 truncate text-emerald-300/80" title={t.localPath}>{t.localPath}</div>
+                    <div className="mt-0.5 truncate text-ok/80" title={t.localPath}>{t.localPath}</div>
                   ) : null}
                 </div>
               );

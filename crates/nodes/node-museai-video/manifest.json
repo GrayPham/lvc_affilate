@@ -10,6 +10,13 @@
       "many": true,
       "required": true,
       "collect": false
+    },
+    {
+      "name": "refs",
+      "type": "image",
+      "many": true,
+      "required": false,
+      "collect": false
     }
   ],
   "outputs": [

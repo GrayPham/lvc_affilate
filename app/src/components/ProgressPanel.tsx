@@ -33,11 +33,15 @@ function statusOf(dtoStatus: string | undefined, failureCode: string | null | un
   return "running";
 }
 
-// P-lumina: bang tien do nam trong aside nen toi -> dung nen mo theo trang thai (khac ban sang cu).
+// Nen mo theo trang thai + CHU theo token `--rest`/`--ok`/`--rose` (doi theo theme).
+//
+// Truoc day chu la `text-sky-100`/`text-emerald-100` — gan TRANG, dung cho nen toi. Tren giao dien
+// sang, chu trang nam tren nen mo 10% = khong doc duoc gi (bang tien do trong rong). Token thi
+// moi theme co mot gia tri rieng nen doc duoc o ca hai.
 const ROW_CLASS: Record<DisplayStatus, string> = {
-  running: "border-sky-500/30 bg-sky-500/10 text-sky-100",
-  done: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
-  failed: "border-red-500/30 bg-red-500/10 text-red-100",
+  running: "border-rest/35 bg-rest/10 text-rest",
+  done: "border-ok/35 bg-ok/10 text-ok",
+  failed: "border-rose/35 bg-rose/10 text-rose",
 };
 
 /** `node_state` tho tu Rust (`NODE_*` o `dag.rs`) -> mau hang, khop tinh than `ROW_CLASS`. */
@@ -106,7 +110,7 @@ export default function ProgressPanel() {
 
   return (
     <div className="flex flex-col gap-1 overflow-auto p-2">
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {error ? <p className="text-xs text-rose">{error}</p> : null}
       {ids.length === 0 && nodeOnlyIds.length === 0 ? <p className="text-xs text-ink2">Chưa có tác vụ nào.</p> : null}
       {nodeOnlyIds.map((nid) => {
         const n = nodeStates[nid];

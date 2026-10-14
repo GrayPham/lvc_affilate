@@ -24,7 +24,7 @@ function ToolButton({
       onClick={onClick}
       className={
         "flex h-9 w-9 items-center justify-center rounded-lg transition-colors " +
-        (active ? "bg-sky-500/20 text-sky-300" : "text-ink2 hover:bg-fill2 hover:text-ink")
+        (active ? "bg-rest/20 text-rest" : "text-ink2 hover:bg-fill2 hover:text-ink")
       }
     >
       {children}

@@ -1,6 +1,6 @@
 // Node "Tạo video MuseAI" (kind `museai_video`) — prompt (bắt buộc, cổng `prompt`) -> 1 video
 // (cổng `out`). `account` là id credential MuseAI (`login`) trong kho Tài khoản AI — rỗng = tự
-// chọn. Chưa hỗ trợ ảnh tham chiếu (v1 chỉ prompt văn bản — xem `node-museai-video/CLAUDE.md` mục
+// chọn. Cổng `refs` nhận ảnh tham chiếu dùng chung cho mọi cảnh (xem `node-museai-video/CLAUDE.md` mục
 // "Tham số").
 // Thân node chỉ là THẺ MEDIA (preview kết quả), khớp `Veo3VideoNode`/`VideoNode` (Dola) — tham số
 // đầy đủ ở `components/ApiNodeParamsPanel.tsx` (hiện khi node được chọn). Thanh công cụ nổi dùng
@@ -51,7 +51,9 @@ export default function MuseaiVideoNode({ id, selected }: NodeProps<MuseaiVideoR
   return (
     <>
       <NodeFloatingToolbar nodeId={id} actions={actions} />
-      <Handle type="target" position={Position.Left} id="prompt" style={{ background: PORT_TYPE_COLOR.text }} />
+      <Handle type="target" position={Position.Left} id="prompt" style={{ top: "30%", background: PORT_TYPE_COLOR.text }} />
+      {/* Ảnh tham chiếu — dùng CHUNG cho mọi cảnh của node, giống cổng `refs` của Veo3. */}
+      <Handle type="target" position={Position.Left} id="refs" style={{ top: "70%", background: PORT_TYPE_COLOR.image }} />
       <MediaCard label={NODE_LABEL_VI.museai_video} kind="museai_video" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="video" path={outputPath} label="Video" />
       </MediaCard>

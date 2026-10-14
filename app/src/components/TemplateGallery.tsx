@@ -245,7 +245,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                             className={`rounded border px-2 py-1 text-[11px] disabled:opacity-50 ${
                               confirmDeleteId === meta.id
                                 ? "border-red-500 bg-red-600 text-ink hover:bg-red-500"
-                                : "border-red-500/30 text-rose hover:bg-red-500/10"
+                                : "border-rose/35 text-rose hover:bg-rose/10"
                             }`}
                             onClick={() => void handleDelete(meta)}
                           >

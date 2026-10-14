@@ -259,6 +259,7 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
                 min_videos: 1,
                 aspect: job.aspect.as_deref(),
                 duration_secs: job.duration_secs,
+                images: &job.images,
             };
             match generate_video(&conn, &params).await {
                 Ok(result) if !result.downloaded.is_empty() => {

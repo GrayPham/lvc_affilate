@@ -5,10 +5,12 @@
 //! bước trước, xem `CLAUDE.md` "Cơ chế tạo video") — module này không tự đăng nhập/bootstrap gì.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use super::attachments::build_items;
 use super::errors::MuseError;
 use super::filesystem::MuseFilesystem;
 use super::media::{
@@ -74,21 +76,22 @@ async fn sessions_list(conn: &HatchConnection, timeout: Duration) -> Result<Valu
         .ok_or_else(|| MuseError::Protocol("/api/session/list tra ve body rong".into()))
 }
 
-/// Gửi prompt (chỉ văn bản — xem doc đầu file) qua `/chat/stream`, thu mọi event trong
-/// `stream_timeout` (hết hạn KHÔNG phải lỗi — endpoint xác nhận, có thể đóng trễ hơn tiến trình
-/// sinh thật, xem doc [`HatchConnection::subscribe_collect`]).
+/// Gửi prompt (kèm ảnh tham chiếu nếu có) qua `/chat/stream`, thu mọi event trong `stream_timeout`
+/// (hết hạn KHÔNG phải lỗi — endpoint xác nhận, có thể đóng trễ hơn tiến trình sinh thật, xem doc
+/// [`HatchConnection::subscribe_collect`]).
+///
+/// Ảnh đi THẲNG trong `items` dưới dạng base64 — muse.ai không có endpoint tải ảnh riêng (xem
+/// `protocol::attachments`).
 async fn chat_stream(
     conn: &HatchConnection,
     device_id: &str,
     prompt: &str,
+    images: &[PathBuf],
     session_id: Option<&str>,
     stream_timeout: Duration,
 ) -> Result<Vec<Value>> {
     let mut payload = serde_json::Map::new();
-    payload.insert(
-        "items".to_string(),
-        json!([{ "type": "text", "text": prompt }]),
-    );
+    payload.insert("items".to_string(), build_items(images, prompt)?);
     payload.insert("node_id".to_string(), json!(device_id));
     payload.insert("capabilities".to_string(), json!(CHAT_CAPABILITIES));
     if let Some(id) = session_id {
@@ -267,6 +270,11 @@ pub struct GenerateVideoParams<'a> {
     pub aspect: Option<&'a str>,
     /// Thời lượng MONG MUỐN (giây) — cùng cảnh báo như `aspect`.
     pub duration_secs: Option<u32>,
+    /// Ảnh tham chiếu (nhân vật/sản phẩm) gửi kèm prompt. Rỗng = không có.
+    ///
+    /// CẢNH BÁO giống `aspect`/`duration_secs`: gửi được ảnh lên KHÔNG đảm bảo muse.ai giữ đúng
+    /// nhân vật — nó là ngữ cảnh cho mô hình, không phải tham số ràng buộc.
+    pub images: &'a [PathBuf],
 }
 
 /// Chèn chỉ thị tỉ lệ/thời lượng (nếu có) vào CUỐI prompt người dùng — CÙNG kỹ thuật với
@@ -338,6 +346,7 @@ pub async fn generate_video(
         conn,
         params.device_id,
         &prompt,
+        params.images,
         params.session_id,
         stream_timeout,
     )
@@ -580,6 +589,8 @@ pub async fn generate_image(
         conn,
         params.device_id,
         &prompt,
+        // Tao ANH chua nhan anh tham chieu — chi node tao VIDEO dung (xem `GenerateVideoParams`).
+        &[],
         params.session_id,
         stream_timeout,
     )

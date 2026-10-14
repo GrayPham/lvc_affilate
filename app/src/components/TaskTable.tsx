@@ -8,7 +8,7 @@ import type { TaskDto } from "../ipc/types";
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
   queued: "bg-fill text-ink2",
-  processing: "bg-sky-500/15 text-sky-400",
+  processing: "bg-sky-500/15 text-rest",
   completed: "bg-emerald-500/15 text-ok",
   failed: "bg-red-500/15 text-rose",
 };
@@ -91,7 +91,7 @@ function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps
             <button
               type="button"
               disabled={pending}
-              className="rounded border border-sky-500/30 px-1.5 py-0.5 text-sky-400 hover:bg-sky-500/10 disabled:opacity-50"
+              className="rounded border border-sky-500/30 px-1.5 py-0.5 text-rest hover:bg-rest/10 disabled:opacity-50"
               onClick={() => onResume(task.id)}
             >
               Tiếp tục
@@ -101,7 +101,7 @@ function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps
             <button
               type="button"
               disabled={pending}
-              className="rounded border border-red-500/30 px-1.5 py-0.5 text-rose hover:bg-red-500/10 disabled:opacity-50"
+              className="rounded border border-rose/35 px-1.5 py-0.5 text-rose hover:bg-rose/10 disabled:opacity-50"
               onClick={() => onCancel(task.id)}
             >
               Huỷ

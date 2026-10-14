@@ -1,5 +1,5 @@
 //! Node `museai_video` — mỗi `TextItem` trên cổng `prompt` là MỘT job = MỘT video (map ngầm,
-//! giống `dola_video`/`veo3_video`). Chỉ prompt văn bản — CHƯA có ảnh tham chiếu (xem `CLAUDE.md`
+//! giống `dola_video`/`veo3_video`). Cổng `refs` nhận ảnh tham chiếu dùng chung (xem `CLAUDE.md`
 //! mục "Tham số"). Chạy thật qua dịch vụ host [`lvc_museai::MuseaiVideoHost`]
 //! (`NodeCtx::services`) — host tự quyết `local_path`/đăng nhập/bootstrap; node KHÔNG biết trình
 //! duyệt/giao thức Hatch tồn tại (xem `CLAUDE.md` mục "Cơ chế tạo video").
@@ -40,7 +40,11 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
     version: 1,
     category: Category::Video,
     label_vi: "Tạo video MuseAI".to_string(),
-    inputs: vec![PortSpec::new("prompt", PortType::Text).many().required()],
+    inputs: vec![
+        PortSpec::new("prompt", PortType::Text).many().required(),
+        // Ảnh tham chiếu dùng CHUNG cho mọi cảnh của node — giống cổng `refs` của `veo3_video`.
+        PortSpec::new("refs", PortType::Image).many(),
+    ],
     outputs: vec![PortSpec::new("out", PortType::Video).many()],
     require_any: vec![],
     credential: Some(CredentialReq {
@@ -78,6 +82,11 @@ struct MuseaiVideoNode;
 /// `unnecessary_wraps` bắt).
 fn build_jobs(p: &VideoParams, inputs: &Inputs) -> Vec<VideoJob> {
     let aspect = (!p.aspect.trim().is_empty()).then(|| p.aspect.clone());
+    // Ảnh trên cổng `refs` dùng CHUNG cho mọi cảnh (không map 1-1 theo cảnh) — khớp `veo3_video`.
+    let images: Vec<std::path::PathBuf> = inputs
+        .assets("refs")
+        .map(|a| std::path::PathBuf::from(&a.path))
+        .collect();
     inputs
         .texts("prompt")
         .enumerate()
@@ -87,6 +96,7 @@ fn build_jobs(p: &VideoParams, inputs: &Inputs) -> Vec<VideoJob> {
             prompt: t.text.clone(),
             aspect: aspect.clone(),
             duration_secs: p.duration,
+            images: images.clone(),
         })
         .collect()
 }

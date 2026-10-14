@@ -12,13 +12,24 @@
 //     <video ref={hp.videoRef} muted={hp.muted} … />
 //     <MuteButton />
 //   </div>
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { useUiStore } from "../store/uiStore";
 
 export function useHoverPlay() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const muted = useUiStore((s) => s.previewMuted);
+
+  // React đặt `muted` khi TẠO phần tử nhưng KHÔNG cập nhật thuộc tính DOM ở các lần render sau
+  // (quirk đã biết của `<video muted>`). Bấm nút loa mà chỉ đổi prop thì video vẫn câm — phải gán
+  // thẳng vào phần tử.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) {
+      v.muted = muted;
+    }
+  }, [muted]);
+
   return {
     videoRef,
     muted,

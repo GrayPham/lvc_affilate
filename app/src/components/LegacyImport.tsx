@@ -68,7 +68,7 @@ export default function LegacyImport() {
       {error ? <p className="text-xs text-rose">{error}</p> : null}
 
       {report ? (
-        <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-300">
+        <div className="rounded border border-ok/35 bg-ok/10 p-2 text-xs text-ok">
           <p>
             Đã nhập {report.tasks} task, {report.accounts} tài khoản, {report.usage} lượt dùng,{" "}
             {report.settings} cài đặt, {report.scripts} kịch bản ({report.scenes} cảnh).

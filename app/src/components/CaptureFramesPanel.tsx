@@ -138,7 +138,7 @@ export default function CaptureFramesPanel() {
           <button type="button" className="rounded-md border border-line2 bg-fill px-2.5 py-1 text-xs hover:bg-fill2" onClick={() => capture("last")}>
             Khung cuối
           </button>
-          <button type="button" className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-200 hover:bg-sky-500/20" onClick={() => capture("current")}>
+          <button type="button" className="rounded-md border border-rest/40 bg-rest/10 px-2.5 py-1 text-xs text-rest hover:bg-rest/20" onClick={() => capture("current")}>
             Khung hiện tại
           </button>
           <button type="button" disabled={frames.length === 0} className="rounded-md border border-line2 bg-fill px-2.5 py-1 text-xs hover:bg-fill2 disabled:opacity-40" onClick={() => setFrames([])}>

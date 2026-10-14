@@ -169,7 +169,7 @@ export default function TrimPanel() {
           </div>
           <div className="mt-1 flex items-center justify-between text-[11px] text-ink2">
             <span>Bắt đầu <span className="font-mono text-ink">{fmt(start)}</span></span>
-            <span>Đoạn <span className="font-mono text-sky-300">{fmt(selDur)}</span></span>
+            <span>Đoạn <span className="font-mono text-rest">{fmt(selDur)}</span></span>
             <span>Kết thúc <span className="font-mono text-ink">{fmt(end)}</span></span>
           </div>
           {duration <= 0 ? <p className="mt-1 text-[11px] text-ink3">Đang tải video…</p> : null}

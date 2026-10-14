@@ -172,6 +172,10 @@
       {
         "name": "prompt",
         "type": "text"
+      },
+      {
+        "name": "refs",
+        "type": "image"
       }
     ],
     "outputs": [

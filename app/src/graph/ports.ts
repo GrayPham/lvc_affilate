@@ -109,7 +109,11 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     outputs: [{ name: "out", type: "image" }],
   },
   museai_video: {
-    inputs: [{ name: "prompt", type: "text" }],
+    inputs: [
+      { name: "prompt", type: "text" },
+      // Ảnh tham chiếu dùng chung cho mọi cảnh — giống cổng `refs` của `veo3_video`.
+      { name: "refs", type: "image" },
+    ],
     outputs: [{ name: "out", type: "video" }],
   },
   museai_image: {

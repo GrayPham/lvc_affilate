@@ -116,7 +116,7 @@ export default function MediaCard({ label, kind, selected, errors, runState, wid
 
       {hasErrors ? (
         <div
-          className="absolute inset-x-0 bottom-0 bg-red-950/80 px-2 py-1 text-[10px] leading-tight text-red-200"
+          className="absolute inset-x-0 bottom-0 bg-rose/15 px-2 py-1 text-[10px] leading-tight text-rose"
           title={errors?.map(formatGraphError).join("\n")}
         >
           {errors?.length} lỗi — xem "Kiểm tra"

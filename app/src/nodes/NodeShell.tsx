@@ -40,7 +40,7 @@ export default function NodeShell({ label, kind, selected, errors, runState, chi
       <div className="flex flex-col gap-1">{children}</div>
       {hasErrors ? (
         <div
-          className="mt-1.5 rounded-md bg-red-950/60 px-1.5 py-0.5 text-[10px] leading-tight text-red-200"
+          className="mt-1.5 rounded-md bg-rose/15 px-1.5 py-0.5 text-[10px] leading-tight text-rose"
           title={errors?.map(formatGraphError).join("\n")}
         >
           {errors?.length} lỗi — xem "Kiểm tra"

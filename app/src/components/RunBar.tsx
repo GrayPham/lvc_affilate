@@ -418,7 +418,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy || !running}
-          className="rounded-lg border border-red-500/40 px-4 py-2 text-xs font-medium text-rose hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-red-500/40 px-4 py-2 text-xs font-medium text-rose hover:bg-rose/10 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleCancel()}
         >
           Huỷ
@@ -500,7 +500,7 @@ export default function RunBar() {
       {message ? <p className="text-xs text-ink2">{message}</p> : null}
 
       {globalErrors.length > 0 || nodeErrorCount > 0 ? (
-        <ul className="max-h-32 overflow-auto rounded-md border border-red-500/30 bg-red-950/40 p-2 text-xs text-red-200">
+        <ul className="max-h-32 overflow-auto rounded-md border border-rose/35 bg-rose/10 p-2 text-xs text-rose">
           {globalErrors.map((err, i) => (
             <li key={`g${i}`}>{formatGraphError(err)}</li>
           ))}

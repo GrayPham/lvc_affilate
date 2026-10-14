@@ -138,7 +138,7 @@ export default function VideoParamsPanel() {
         </select>
         <button
           type="button"
-          className="text-xs text-sky-400 hover:text-sky-300"
+          className="text-xs text-rest hover:text-rest"
           onClick={() => setShowAdvanced((v) => !v)}
         >
           Tùy chọn nâng cao {showAdvanced ? "▲" : "▼"}

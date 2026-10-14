@@ -79,15 +79,20 @@ crate giả mạo TLS fingerprint nào (xem "Bối cảnh rủi ro"). **Cấm**:
   dùng chung struct dù hình dạng giống hệt, để không đụng code video đã chạy thật ổn định). Xong,
   có test (gồm case gộp ref trùng qua nhiều bí danh, test hình dạng phản hồi ẢNH thật đã xác nhận).
 - `filesystem.rs` — `MuseFilesystem` CHỈ phần tải (`raw`/`idea_media`/`idea_media_from_url`/
-  `download`) — KHÔNG port `stat`/`list`/`rename`/`delete`/`upload_file` (tải lên ảnh tham chiếu,
-  ngoài phạm vi v1 — node chỉ nhận prompt văn bản). Xong, có test.
+  `download`) — KHÔNG port `stat`/`list`/`rename`/`delete`/`upload_file`. Ảnh tham chiếu KHÔNG đi
+  qua `upload_file`: muse.ai nhúng ảnh base64 thẳng vào `items` của `/chat/stream` (xem
+  `attachments.rs`), nên các hàm ghi của `filesystem.py` vẫn không cần tới. Xong, có test.
 - `client.rs` — `generate_video`/`generate_image` đầu-cuối (gửi `chat_stream`, đợi video/ảnh mới
   qua poll `history`, tải xuống). Nhận `HatchConnection` ĐÃ kết nối sẵn — không tự login/bootstrap.
   `generate_image` tự gắn hướng dẫn "ảnh tĩnh, không phải video" vào CUỐI prompt qua
   `build_image_prompt` (xem ghi chú 2026-10-12 ở trên) — caller KHÔNG cần tự thêm từ khoá gì. Xong,
   có test cho phần thuần (`filename_for`/`filename_for_image`/`build_image_prompt`); phần RPC CHƯA
   có test tích hợp (cần mock WebSocket hoặc server thật).
-- Không port `attachments.py` (nén/upload ảnh tham chiếu) — ngoài phạm vi v1. Không port
+- `attachments.rs` — ảnh tham chiếu gửi kèm prompt (port từ `attachments.py`, 2026-10-14). Ảnh đi
+  base64 TRONG `items` của `/chat/stream`, đứng TRƯỚC item text. Ngân sách ~11 MB ảnh thô cho cả
+  yêu cầu (gói Noise ~16 MB, base64 phình ~4/3); mỗi ảnh ≤ 3,5 MB. KHÔNG port phần nén/thu nhỏ
+  bằng PIL — workspace không có thư viện xử lý ảnh, ảnh quá cỡ bị từ chối kèm hướng dẫn thay vì
+  kéo cả bộ codec vào. Xong, có test. Không port
   `routes.py`'s `ROUTES` dict — bản thân code tham khảo (`client.py`/`filesystem.py`) cũng không
   dùng nó, chỉ hardcode path literal; chỉ giữ lại hằng `CHAT_CAPABILITIES` (inline trong
   `client.rs`).
