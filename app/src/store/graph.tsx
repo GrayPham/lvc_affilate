@@ -16,6 +16,7 @@ import type { Connection, EdgeChange, NodeChange } from "@xyflow/react";
 
 import type { RFEdge, RFNode } from "../graph/adapter";
 import { fromGraph, migrateGraphJson, toGraph } from "../graph/adapter";
+import { autoLayout } from "../graph/autoLayout";
 import { isValidConnection as checkValidConnection } from "../graph/rules";
 import { connectionForNewNode, type PendingConnect } from "../graph/connect";
 import type { AddableNodeKind } from "../graph/ports";
@@ -209,6 +210,9 @@ export interface GraphStoreState {
   setSelected: (id: string | null) => void;
   /** Chọn tất cả node (Ctrl+A). */
   selectAll: () => void;
+  /** Tự sắp xếp node theo tầng trái→phải (xem `graph/autoLayout.ts`). Vào lịch sử nên Ctrl+Z
+   * hoàn tác được — xếp lại cả canvas là thay đổi lớn, phải lùi được. */
+  autoArrange: () => void;
   /** Chép các node đang chọn (+ cạnh nội bộ) vào clipboard (Ctrl+C). */
   copySelection: () => void;
   /** Dán clipboard: tạo node id mới, lệch vị trí, chọn các node vừa dán (Ctrl+V). */
@@ -426,6 +430,15 @@ export function createGraphStore(
       },
 
       setSelected: (id) => set({ selectedNodeId: id }),
+
+      autoArrange: () => {
+        const { nodes, edges } = get();
+        if (nodes.length === 0) {
+          return;
+        }
+        pushHistory();
+        set({ nodes: autoLayout(nodes, edges) });
+      },
 
       selectAll: () => {
         set({ nodes: get().nodes.map((n) => ({ ...n, selected: true })) });

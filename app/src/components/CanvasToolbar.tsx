@@ -36,6 +36,7 @@ const ICON = { size: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentCol
 
 export default function CanvasToolbar() {
   const undo = useGraphStore((s) => s.undo);
+  const autoArrange = useGraphStore((s) => s.autoArrange);
   const canUndo = useGraphStore((s) => s.history.length > 0);
   const addMenuOpen = useWorkflowUi((s) => s.addMenuOpen);
   const toggleAddMenu = useWorkflowUi((s) => s.toggleAddMenu);
@@ -57,6 +58,15 @@ export default function CanvasToolbar() {
       <ToolButton title="Kho mẫu" onClick={openTemplates}>
         <svg width={ICON.size} height={ICON.size} viewBox={ICON.viewBox} fill={ICON.fill} stroke={ICON.stroke} strokeWidth={ICON.strokeWidth} strokeLinecap={ICON.strokeLinecap} strokeLinejoin={ICON.strokeLinejoin}>
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+      </ToolButton>
+      <ToolButton title="Tự sắp xếp node" onClick={autoArrange}>
+        {/* Ba cột xếp đều — nói đúng việc nút làm: dồn node thành các tầng trái→phải. */}
+        <svg width={ICON.size} height={ICON.size} viewBox={ICON.viewBox} fill={ICON.fill} stroke={ICON.stroke} strokeWidth={ICON.strokeWidth} strokeLinecap={ICON.strokeLinecap} strokeLinejoin={ICON.strokeLinejoin}>
+          <rect x="3" y="4" width="5" height="5" rx="1" />
+          <rect x="3" y="15" width="5" height="5" rx="1" />
+          <rect x="16" y="9.5" width="5" height="5" rx="1" />
+          <path d="M8 6.5h4v5.5M8 17.5h4v-5.5M12 12h4" />
         </svg>
       </ToolButton>
       <ToolButton title="Hoàn tác" onClick={() => canUndo && undo()}>
