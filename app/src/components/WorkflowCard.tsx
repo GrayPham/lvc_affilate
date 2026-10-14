@@ -5,6 +5,7 @@
 // cảnh hay thời lượng của một workflow trước khi chạy nó — số cảnh do dữ liệu đầu vào quyết định
 // lúc thêm vào hàng chờ. Thứ app BIẾT CHẮC là số node, nên thẻ ghi "N node". Thà nói đúng một con
 // số nhỏ hơn là in ra một con số nghe hay mà sai.
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 /** Ảnh bìa có sẵn trong `app/public/covers/`. */
@@ -42,6 +43,23 @@ export function coverFor(key: string, declared?: string): string {
   return COVERS[hash % COVERS.length]!;
 }
 
+/**
+ * Đường dẫn ảnh thật từ giá trị bìa.
+ *
+ * Ba dạng đều phải nhận được, vì ba nguồn khai bìa khác nhau:
+ * - `g_food`        — tên bìa dựng sẵn trong `app/public/covers/`
+ * - `https://…`     — mục kho CỘNG ĐỒNG trỏ ảnh trên GitHub
+ * - `data:image/…`  — mẫu riêng người dùng tự chụp canvas
+ *
+ * THUẦN, export để test: nối nhầm `/covers/https://….svg` là cách ảnh bìa vỡ thành ô đen.
+ */
+export function coverSrc(cover: string): string {
+  if (/^(data:|https?:|\/)/.test(cover)) {
+    return cover;
+  }
+  return `/covers/${cover}.svg`;
+}
+
 /** Số vạch dưới đáy bìa — chặn trên để thẻ không thành một dải kẻ li ti. */
 const MAX_TICKS = 8;
 
@@ -65,7 +83,10 @@ export default function WorkflowCard({
   footer?: ReactNode;
   action: ReactNode;
 }) {
-  const src = cover.startsWith("data:") ? cover : `/covers/${cover}.svg`;
+  // Bìa của mục cộng đồng nằm trên mạng — mất mạng là ảnh vỡ thành ô đen. Hỏng thì lùi về một
+  // bìa dựng sẵn (chọn theo tiêu đề nên vẫn ổn định), thẻ luôn còn nhìn được.
+  const [failed, setFailed] = useState(false);
+  const src = failed ? coverSrc(coverFor(title)) : coverSrc(cover);
   const ticks = Math.min(Math.max(nodeCount, 1), MAX_TICKS);
 
   return (
@@ -75,6 +96,7 @@ export default function WorkflowCard({
           src={src}
           alt={`Ảnh bìa: ${title}`}
           loading="lazy"
+          onError={() => setFailed(true)}
           className="absolute inset-0 block h-full w-full object-cover"
         />
         <span className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/55" />
