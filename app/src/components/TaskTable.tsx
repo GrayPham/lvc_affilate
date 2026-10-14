@@ -7,10 +7,10 @@ import { filterByStatus, useTasksStore } from "../store/tasks";
 import type { TaskDto } from "../ipc/types";
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
-  queued: "bg-white/5 text-neutral-400",
+  queued: "bg-fill text-ink2",
   processing: "bg-sky-500/15 text-sky-400",
-  completed: "bg-emerald-500/15 text-emerald-400",
-  failed: "bg-red-500/15 text-red-400",
+  completed: "bg-emerald-500/15 text-ok",
+  failed: "bg-red-500/15 text-rose",
 };
 
 function formatCreatedAt(unixSeconds: number): string {
@@ -45,10 +45,10 @@ interface TaskRowProps {
 
 function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps) {
   const elapsedMs = elapsedMsOf(task);
-  const badgeClass = STATUS_BADGE_CLASS[task.status] ?? "bg-white/5 text-neutral-400";
+  const badgeClass = STATUS_BADGE_CLASS[task.status] ?? "bg-fill text-ink2";
 
   return (
-    <tr className="border-b border-white/5 text-xs text-neutral-300">
+    <tr className="border-b border-line text-xs text-ink2">
       <td className="whitespace-nowrap px-2 py-1">{formatCreatedAt(task.createdAt)}</td>
       <td className="whitespace-nowrap px-2 py-1 font-mono" title={task.runId}>
         {shortRunId(task.runId)}
@@ -65,11 +65,11 @@ function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps
           {statusLabel(task.status)}
         </span>
         {task.failureCode ? (
-          <div className="mt-0.5 text-red-400" title={task.failureCode}>
+          <div className="mt-0.5 text-rose" title={task.failureCode}>
             {failureLabel(task.failureCode)}
           </div>
         ) : null}
-        {elapsedMs !== null ? <div className="text-[10px] text-neutral-500">{formatElapsed(elapsedMs)}</div> : null}
+        {elapsedMs !== null ? <div className="text-[10px] text-ink3">{formatElapsed(elapsedMs)}</div> : null}
       </td>
       <td className="whitespace-nowrap px-2 py-1">{stageLabel(task.stage)}</td>
       <td className="px-2 py-1 text-center" title={task.hasConversation ? "Có hội thoại" : "Chưa có hội thoại"}>
@@ -81,7 +81,7 @@ function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps
             <button
               type="button"
               disabled={pending}
-              className="rounded border border-white/10 px-1.5 py-0.5 hover:bg-white/10 disabled:opacity-50"
+              className="rounded border border-line px-1.5 py-0.5 hover:bg-fill2 disabled:opacity-50"
               onClick={() => onOpenFile(task.id)}
             >
               Mở thư mục
@@ -101,7 +101,7 @@ function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps
             <button
               type="button"
               disabled={pending}
-              className="rounded border border-red-500/30 px-1.5 py-0.5 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+              className="rounded border border-red-500/30 px-1.5 py-0.5 text-rose hover:bg-red-500/10 disabled:opacity-50"
               onClick={() => onCancel(task.id)}
             >
               Huỷ
@@ -126,15 +126,15 @@ export default function TaskTable() {
 
   return (
     <div className="flex-1 overflow-auto p-2">
-      {error ? <p className="mb-2 text-xs text-red-400">{error}</p> : null}
+      {error ? <p className="mb-2 text-xs text-rose">{error}</p> : null}
       {visible.length === 0 ? (
-        <p className="p-4 text-center text-xs text-neutral-500">
+        <p className="p-4 text-center text-xs text-ink3">
           {rows.length === 0 ? "Chưa có tác vụ nào." : "Không có tác vụ nào khớp bộ lọc."}
         </p>
       ) : (
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-white/10 text-[10px] uppercase tracking-wide text-neutral-500">
+            <tr className="border-b border-line text-[10px] uppercase tracking-wide text-ink3">
               <th className="px-2 py-1 font-medium">Tạo lúc</th>
               <th className="px-2 py-1 font-medium">Run</th>
               <th className="px-2 py-1 font-medium">Cảnh</th>

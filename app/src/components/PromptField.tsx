@@ -35,7 +35,7 @@ export default function PromptField({ id }: { id: string }) {
 
   return (
     <textarea
-      className="nodrag min-h-[64px] w-full resize-y rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-xs leading-relaxed text-slate-100 outline-none focus:border-sky-400/60"
+      className="nodrag min-h-[64px] w-full resize-y rounded-md border border-line bg-fill px-2 py-1.5 text-xs leading-relaxed text-ink outline-none focus:border-sky-400/60"
       value={promptText}
       placeholder="Mô tả nội dung… (gõ vào đây sẽ tự tạo + nối node Prompt)"
       onChange={(e) => handleChange(e.target.value)}

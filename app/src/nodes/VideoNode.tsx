@@ -178,13 +178,13 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
               preload="metadata"
             />
           ) : (
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-fill2 text-ink">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             </span>
           )}
-          <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-slate-200 backdrop-blur-sm">
+          <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-ink backdrop-blur-sm">
             Video · {data.ratio}
           </span>
         </div>

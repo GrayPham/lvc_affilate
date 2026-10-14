@@ -61,32 +61,32 @@ export default function TaskFilters() {
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-neutral-900/60 p-2">
-      <label className="flex items-center gap-1 text-xs text-neutral-300">
+    <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel p-2">
+      <label className="flex items-center gap-1 text-xs text-ink2">
         Run
         <select
-          className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-100"
+          className="rounded border border-line bg-fill px-2 py-1 text-xs text-ink"
           value={filter.runId ?? ""}
           onChange={(e) => setRunId(e.target.value === "" ? null : e.target.value)}
         >
-          <option value="" className="bg-neutral-900 text-neutral-100">Tất cả</option>
+          <option value="" className="bg-panel text-ink">Tất cả</option>
           {runs.map((run) => (
-            <option key={run.id} value={run.id} className="bg-neutral-900 text-neutral-100">
+            <option key={run.id} value={run.id} className="bg-panel text-ink">
               {formatRunLabel(run)}
             </option>
           ))}
         </select>
       </label>
 
-      <label className="flex items-center gap-1 text-xs text-neutral-300">
+      <label className="flex items-center gap-1 text-xs text-ink2">
         Trạng thái
         <select
-          className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-100"
+          className="rounded border border-line bg-fill px-2 py-1 text-xs text-ink"
           value={filter.status}
           onChange={(e) => setStatus(e.target.value as StatusFilter)}
         >
           {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value} className="bg-neutral-900 text-neutral-100">
+            <option key={opt.value} value={opt.value} className="bg-panel text-ink">
               {opt.label}
             </option>
           ))}
@@ -101,7 +101,7 @@ export default function TaskFilters() {
             ? "Chọn một lần chạy ở ô Run để xem chi tiết"
             : "Xem dòng thời gian từng node của lần chạy này"
         }
-        className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-neutral-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded border border-line bg-fill px-2 py-1 text-xs text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-40"
         onClick={() => {
           const run = runs.find((r) => r.id === filter.runId);
           if (run) {
@@ -112,8 +112,8 @@ export default function TaskFilters() {
         Chi tiết lần chạy
       </button>
 
-      {loading ? <span className="text-xs text-neutral-500">Đang tải…</span> : null}
-      {runsError ? <span className="text-xs text-red-400">Không tải được danh sách run: {runsError}</span> : null}
+      {loading ? <span className="text-xs text-ink3">Đang tải…</span> : null}
+      {runsError ? <span className="text-xs text-rose">Không tải được danh sách run: {runsError}</span> : null}
 
       {showLog ? <RunLogDialog run={showLog} onClose={() => setShowLog(null)} /> : null}
     </div>

@@ -26,10 +26,10 @@ export default function AudioExtractNode({ id, data, selected }: NodeProps<Audio
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
       <NodeShell label={NODE_LABEL_VI.audio_extract} selected={selected} errors={errors} runState={runState}>
-        <label className="flex items-center gap-2 text-[11px] text-slate-400">
+        <label className="flex items-center gap-2 text-[11px] text-ink2">
           Định dạng
           <select
-            className="nodrag rounded-md border border-white/10 bg-white/5 px-1.5 py-1 text-xs text-slate-100 outline-none focus:border-sky-400/60"
+            className="nodrag rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-ink outline-none focus:border-sky-400/60"
             value={data.format}
             onChange={(e) => updateNodeData(id, { ...data, format: e.target.value as AudioFormat })}
           >
@@ -40,7 +40,7 @@ export default function AudioExtractNode({ id, data, selected }: NodeProps<Audio
             ))}
           </select>
         </label>
-        <p className="text-[10px] text-slate-500">Xuất 1 file audio — nối vào node Lưu</p>
+        <p className="text-[10px] text-ink3">Xuất 1 file audio — nối vào node Lưu</p>
       </NodeShell>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.audio }} />
     </>

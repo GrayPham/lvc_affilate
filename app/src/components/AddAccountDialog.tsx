@@ -156,25 +156,25 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
     <Dialog title="Thêm tài khoản" onClose={onClose} width="36rem">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-3">
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-ink2">
             Nền tảng
             <select
-              className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100"
+              className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-ink"
               value={platform}
               disabled={busy}
               onChange={(e) => handlePlatformChange(e.target.value as Platform)}
             >
               {COOKIE_PROVIDERS.map((p) => (
-                <option key={p} value={p} className="bg-neutral-900 text-neutral-100">
+                <option key={p} value={p} className="bg-panel text-ink">
                   {credentialProviderLabel(p)}
                 </option>
               ))}
             </select>
           </label>
 
-          <div className="flex flex-col gap-1 text-xs text-neutral-300">
+          <div className="flex flex-col gap-1 text-xs text-ink2">
             Cách thêm
-            <div className="flex overflow-hidden rounded-md border border-white/10">
+            <div className="flex overflow-hidden rounded-md border border-line">
               {methods.map((m) => (
                 <button
                   key={m}
@@ -183,8 +183,8 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
                   className={
                     "px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50 " +
                     (method === m
-                      ? "bg-amber-600 text-neutral-950"
-                      : "bg-white/5 text-neutral-300 hover:bg-white/10")
+                      ? "bg-accent text-accent-ink"
+                      : "bg-fill text-ink2 hover:bg-fill2")
                   }
                   onClick={() => {
                     setMethod(m);
@@ -201,19 +201,19 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         {method === "bulk" ? (
-          <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
-            <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <div className="flex flex-col gap-3 rounded-lg border border-line bg-fill p-3">
+            <label className="flex flex-col gap-1 text-xs text-ink2">
               Proxy chung (tuỳ chọn)
               <input
-                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-sm text-neutral-100 placeholder:text-neutral-500"
+                className="rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-ink3"
                 value={proxy}
                 disabled={busy}
                 onChange={(e) => setProxy(e.target.value)}
                 placeholder="để trống, hoặc ip:port"
               />
-              {proxyError ? <span className="text-red-400">{proxyError}</span> : null}
+              {proxyError ? <span className="text-rose">{proxyError}</span> : null}
             </label>
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-ink3">
               Mỗi file = một tài khoản (tên = tên file), lưu dạng phiên (cookie). Đường hợp lệ — bạn
               tự xuất cookie đã đăng nhập.
             </p>
@@ -226,41 +226,41 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
               {busy ? "Đang nạp…" : "Chọn nhiều file cookie…"}
             </button>
             {bulkResult ? (
-              <div className="max-h-40 overflow-auto rounded border border-white/10 bg-neutral-900">
+              <div className="max-h-40 overflow-auto rounded border border-line bg-panel">
                 {bulkResult.map((b, i) => (
                   <div
                     key={`${b.label}-${i}`}
-                    className="flex items-start gap-2 border-b border-white/5 px-2 py-1 text-xs last:border-b-0"
+                    className="flex items-start gap-2 border-b border-line px-2 py-1 text-xs last:border-b-0"
                   >
-                    <span className={b.ok ? "text-emerald-400" : "text-red-400"}>
+                    <span className={b.ok ? "text-ok" : "text-rose"}>
                       {b.ok ? "✓" : "✗"}
                     </span>
-                    <span className="font-medium text-neutral-200">{b.label}</span>
-                    {b.error ? <span className="text-red-400">— {b.error}</span> : null}
+                    <span className="font-medium text-ink">{b.label}</span>
+                    {b.error ? <span className="text-rose">— {b.error}</span> : null}
                   </div>
                 ))}
               </div>
             ) : null}
           </div>
         ) : (
-          <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
-            <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <div className="flex flex-col gap-3 rounded-lg border border-line bg-fill p-3">
+            <label className="flex flex-col gap-1 text-xs text-ink2">
               {platform === "dola" ? "Tên tài khoản" : "Nhãn"}
               <input
-                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500"
+                className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-ink placeholder:text-ink3"
                 value={label}
                 disabled={busy}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={platform === "dola" ? "vd acc1" : "vd Gmail acc1"}
               />
-              {nameError ? <span className="text-red-400">{NAME_INVALID_MSG}</span> : null}
+              {nameError ? <span className="text-rose">{NAME_INVALID_MSG}</span> : null}
             </label>
 
             {method === "paste" ? (
-              <label className="flex flex-col gap-1 text-xs text-neutral-300">
+              <label className="flex flex-col gap-1 text-xs text-ink2">
                 Cookie / nội dung đăng nhập
                 <textarea
-                  className="h-28 resize-none rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-xs text-neutral-100 placeholder:text-neutral-500"
+                  className="h-28 resize-none rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-ink placeholder:text-ink3"
                   value={secret}
                   disabled={busy}
                   onChange={(e) => setSecret(e.target.value)}
@@ -268,22 +268,22 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
                 />
               </label>
             ) : (
-              <p className="text-[11px] text-neutral-500">
+              <p className="text-[11px] text-ink3">
                 Cửa sổ trình duyệt sẽ mở tới trang đăng nhập. Bạn TỰ đăng nhập trong cửa sổ đó; phiên
                 được lưu vào profile để tái dùng. Ứng dụng không tự điền thông tin đăng nhập.
               </p>
             )}
 
-            <label className="flex flex-col gap-1 text-xs text-neutral-300">
+            <label className="flex flex-col gap-1 text-xs text-ink2">
               Proxy (tuỳ chọn)
               <input
-                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-sm text-neutral-100 placeholder:text-neutral-500"
+                className="rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-ink3"
                 value={proxy}
                 disabled={busy}
                 onChange={(e) => setProxy(e.target.value)}
                 placeholder="để trống, hoặc ip:port"
               />
-              {proxyError ? <span className="text-red-400">{proxyError}</span> : null}
+              {proxyError ? <span className="text-rose">{proxyError}</span> : null}
             </label>
 
             <div className="flex justify-end">
@@ -303,10 +303,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {error ? <p className="text-xs text-red-400">{error}</p> : null}
-        {okMsg ? <p className="text-xs text-emerald-400">{okMsg}</p> : null}
+        {error ? <p className="text-xs text-rose">{error}</p> : null}
+        {okMsg ? <p className="text-xs text-ok">{okMsg}</p> : null}
 
-        <div className="flex justify-end border-t border-white/10 pt-3">
+        <div className="flex justify-end border-t border-line pt-3">
           <button type="button" className={BTN_NEUTRAL_SM} onClick={onClose}>
             Đóng
           </button>

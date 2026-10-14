@@ -110,7 +110,7 @@ function TabRunBar({ runStore }: { runStore: RunStoreApi }) {
   }
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
   return (
-    <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden rounded-b bg-white/5">
+    <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden rounded-b bg-fill">
       <div
         className={"h-full bg-amber-400 " + (pct === null ? "w-1/3 animate-pulse" : "")}
         style={pct === null ? undefined : { width: `${pct}%`, transition: "width 300ms ease" }}
@@ -238,7 +238,7 @@ export default function WorkflowTabs() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 bg-neutral-950 px-2 pt-2">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-line bg-stage px-2 pt-2">
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -248,8 +248,8 @@ export default function WorkflowTabs() {
             className={
               "group relative flex max-w-[16rem] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-2 text-xs " +
               (tab.id === activeId
-                ? "border-white/10 bg-[#0a0a0b] text-white"
-                : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-neutral-300")
+                ? "border-line bg-[#0a0a0b] text-ink"
+                : "border-transparent text-ink3 hover:bg-fill hover:text-ink2")
             }
           >
             <TabRunDot runStore={tab.runStore} />
@@ -260,7 +260,7 @@ export default function WorkflowTabs() {
                 type="button"
                 title="Đóng tab"
                 aria-label="Đóng tab"
-                className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 hover:bg-white/15 hover:text-white group-hover:opacity-100"
+                className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-ink3 opacity-0 hover:bg-fill2 hover:text-ink group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleCloseTab(tab.id);
@@ -275,7 +275,7 @@ export default function WorkflowTabs() {
           type="button"
           title="Mở tab workflow mới"
           aria-label="Mở tab workflow mới"
-          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-white/10 hover:text-white"
+          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink3 hover:bg-fill2 hover:text-ink"
           onClick={handleNewTab}
         >
           +

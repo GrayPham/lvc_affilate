@@ -61,15 +61,15 @@ export default function SaveNode({ id, data, selected }: NodeProps<SaveRFNode>) 
       <NodeShell label={NODE_LABEL_VI.save} selected={selected} errors={errors} runState={runState}>
         <button
           type="button"
-          className="nodrag rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
+          className="nodrag rounded-md border border-line bg-fill px-2 py-1 text-xs text-ink hover:bg-fill2"
           onClick={() => void handlePick()}
         >
           Chọn thư mục…
         </button>
-        <p className="truncate text-[10px] text-slate-400" title={data.out_dir}>
+        <p className="truncate text-[10px] text-ink2" title={data.out_dir}>
           {data.out_dir || "Chưa chọn thư mục"}
         </p>
-        {pickError ? <p className="text-[10px] text-red-400">{pickError}</p> : null}
+        {pickError ? <p className="text-[10px] text-rose">{pickError}</p> : null}
       </NodeShell>
     </>
   );

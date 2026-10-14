@@ -16,7 +16,7 @@ type ScriptGenKind = Extract<NodeKind, { kind: "script_gen" }>;
 export type ScriptGenRFNode = RFNodeBase<ScriptGenKind, "script_gen">;
 
 const FIELD_CLASS =
-  "nodrag w-full rounded-md border border-white/10 bg-white/5 px-1.5 py-1 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-sky-400/60";
+  "nodrag w-full rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-ink placeholder-slate-500 outline-none focus:border-sky-400/60";
 
 export default function ScriptGenNode({ id, data, selected }: NodeProps<ScriptGenRFNode>) {
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
@@ -40,7 +40,7 @@ export default function ScriptGenNode({ id, data, selected }: NodeProps<ScriptGe
             placeholder="Chủ đề / sản phẩm (bỏ trống nếu nối cổng brief)"
             onChange={(e) => updateNodeData(id, { ...data, topic: e.target.value })}
           />
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <div className="flex items-center gap-2 text-[11px] text-ink2">
             <label className="flex items-center gap-1">
               Số cảnh
               <input
@@ -71,7 +71,7 @@ export default function ScriptGenNode({ id, data, selected }: NodeProps<ScriptGe
             placeholder="Tên API key trong kho"
             onChange={(e) => updateNodeData(id, { ...data, credential: e.target.value })}
           />
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <label className="flex items-center gap-1.5 text-[11px] text-ink2">
             <input
               type="checkbox"
               className="nodrag"

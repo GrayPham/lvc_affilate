@@ -22,12 +22,12 @@ export default function NodeShell({ label, selected, errors, runState, children 
   return (
     <div
       className={
-        "w-56 rounded-2xl border bg-[#17171a] p-2.5 text-slate-200 shadow-lg transition-colors " +
+        "w-56 rounded-2xl border bg-[#17171a] p-2.5 text-ink shadow-lg transition-colors " +
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] font-medium text-slate-200">{label}</span>
+        <span className="rounded-md bg-fill px-2 py-0.5 text-[11px] font-medium text-ink">{label}</span>
         <NodeStatusBadge state={runState} />
       </div>
       <div className="flex flex-col gap-1">{children}</div>

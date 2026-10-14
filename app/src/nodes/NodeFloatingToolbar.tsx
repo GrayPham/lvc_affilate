@@ -25,8 +25,8 @@ function ActionButton({ action }: { action: ToolbarAction }) {
       aria-label={action.title}
       disabled={action.disabled}
       className={
-        "nodrag flex h-7 w-7 items-center justify-center rounded-md text-slate-300 disabled:cursor-not-allowed disabled:opacity-40 " +
-        (action.danger ? "hover:bg-red-600 hover:text-white" : "hover:bg-white/10 hover:text-white")
+        "nodrag flex h-7 w-7 items-center justify-center rounded-md text-ink2 disabled:cursor-not-allowed disabled:opacity-40 " +
+        (action.danger ? "hover:bg-red-600 hover:text-ink" : "hover:bg-fill2 hover:text-ink")
       }
       onClick={(e) => {
         e.stopPropagation();
@@ -58,11 +58,11 @@ export default function NodeFloatingToolbar({
   const items = actions ?? [];
   return (
     <NodeToolbar nodeId={nodeId} position={Position.Top} offset={10}>
-      <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1c1c22] px-1 py-0.5 shadow-lg">
+      <div className="flex items-center gap-0.5 rounded-lg border border-line bg-[#1c1c22] px-1 py-0.5 shadow-lg">
         {items.map((a) => (
           <ActionButton key={a.key} action={a} />
         ))}
-        {items.length > 0 ? <span className="mx-0.5 h-5 w-px bg-white/10" /> : null}
+        {items.length > 0 ? <span className="mx-0.5 h-5 w-px bg-fill2" /> : null}
         <ActionButton
           action={{
             key: "delete-node",

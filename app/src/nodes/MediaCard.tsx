@@ -47,7 +47,7 @@ function LabelPill({ label, onRename }: { label: string; onRename?: (name: strin
     return (
       <input
         ref={inputRef}
-        className="nodrag absolute left-2 top-2 z-10 w-32 rounded-md border border-sky-400/60 bg-black/80 px-1.5 py-0.5 text-[11px] text-white outline-none"
+        className="nodrag absolute left-2 top-2 z-10 w-32 rounded-md border border-sky-400/60 bg-black/80 px-1.5 py-0.5 text-[11px] text-ink outline-none"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
@@ -65,7 +65,7 @@ function LabelPill({ label, onRename }: { label: string; onRename?: (name: strin
   return (
     <span
       className={
-        "absolute left-2 top-2 z-10 max-w-[80%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm " +
+        "absolute left-2 top-2 z-10 max-w-[80%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-medium text-ink backdrop-blur-sm " +
         (onRename ? "nodrag cursor-text hover:bg-black/75" : "pointer-events-none")
       }
       title={onRename ? "Nhấp đúp để đổi tên" : undefined}
@@ -78,7 +78,7 @@ function LabelPill({ label, onRename }: { label: string; onRename?: (name: strin
 
 /** Mau cham trang thai theo `NodeRunState.state` (mirror mau badge) — xam khi chua chay. */
 const DOT_CLASS: Record<string, string> = {
-  queued: "bg-slate-400",
+  queued: "bg-ink3",
   running: "bg-sky-400",
   done: "bg-emerald-400",
   failed: "bg-red-400",
@@ -87,7 +87,7 @@ const DOT_CLASS: Record<string, string> = {
 
 export default function MediaCard({ label, selected, errors, runState, wide, onRename, children }: MediaCardProps) {
   const hasErrors = Boolean(errors && errors.length > 0);
-  const dotClass = runState ? (DOT_CLASS[runState.state] ?? "bg-slate-400") : "bg-slate-600";
+  const dotClass = runState ? (DOT_CLASS[runState.state] ?? "bg-ink3") : "bg-line2";
   return (
     <div
       className={

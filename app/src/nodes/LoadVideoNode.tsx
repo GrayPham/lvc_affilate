@@ -137,14 +137,14 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
           {src ? (
             <video ref={hp.videoRef} src={src} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted loop playsInline preload="metadata" />
           ) : (
-            <div className="flex flex-col items-center gap-2 text-slate-400">
+            <div className="flex flex-col items-center gap-2 text-ink2">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <path d="m10 9 5 3-5 3z" />
               </svg>
               <button
                 type="button"
-                className="nodrag rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200 hover:bg-white/10"
+                className="nodrag rounded-md border border-line2 bg-fill px-2.5 py-1 text-[11px] text-ink hover:bg-fill2"
                 onClick={() => void pick()}
               >
                 Chọn video…
@@ -152,7 +152,7 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
             </div>
           )}
         </div>
-        {pickError ? <p className="px-2 py-1 text-[10px] text-red-400">{pickError}</p> : null}
+        {pickError ? <p className="px-2 py-1 text-[10px] text-rose">{pickError}</p> : null}
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.video }} />
       {zoom && src ? <Lightbox src={src} kind="video" onClose={() => setZoom(false)} /> : null}

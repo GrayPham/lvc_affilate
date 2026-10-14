@@ -9,8 +9,8 @@ import SceneRow from "./SceneRow";
 import { scriptErrorLabel } from "../format/scene";
 
 const BTN = "rounded border px-2 py-1 text-xs disabled:opacity-50";
-const BTN_NEUTRAL = `${BTN} border-slate-300 hover:bg-slate-50`;
-const BTN_PRIMARY = `${BTN} border-slate-900 bg-slate-900 text-white hover:bg-slate-700`;
+const BTN_NEUTRAL = `${BTN} border-line2 hover:bg-fill2`;
+const BTN_PRIMARY = `${BTN} border-line2 bg-panel text-ink hover:bg-fill2`;
 
 const COLS = 9;
 
@@ -41,11 +41,11 @@ export default function SceneTable() {
   const toggleSelected = useScriptsStore((s) => s.toggleSelected);
 
   if (loadingDoc) {
-    return <p className="p-4 text-xs text-slate-400">Đang tải kịch bản…</p>;
+    return <p className="p-4 text-xs text-ink2">Đang tải kịch bản…</p>;
   }
   if (!doc) {
     return (
-      <p className="flex-1 p-4 text-xs text-slate-400">
+      <p className="flex-1 p-4 text-xs text-ink2">
         Chọn một kịch bản ở bên trái để xem các cảnh.
       </p>
     );
@@ -55,14 +55,14 @@ export default function SceneTable() {
 
   return (
     <div className="flex flex-1 flex-col gap-2 overflow-auto p-2">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-        <h2 className="text-sm font-semibold text-slate-800">{doc.meta.name}</h2>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line2 pb-2">
+        <h2 className="text-sm font-semibold text-ink">{doc.meta.name}</h2>
 
-        <label className="flex items-center gap-1 text-xs text-slate-600">
+        <label className="flex items-center gap-1 text-xs text-ink3">
           Cố định style
           <input
             type="text"
-            className="w-40 rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+            className="w-40 rounded border border-line2 px-1.5 py-0.5 text-xs"
             value={style}
             onChange={(e) => setStyle(e.target.value)}
             placeholder="vd Cinematic"
@@ -106,13 +106,13 @@ export default function SceneTable() {
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
       {draft.length === 0 ? (
-        <p className="p-4 text-center text-xs text-slate-400">
+        <p className="p-4 text-center text-xs text-ink2">
           Chưa có cảnh nào — bấm "+ Dòng" hoặc "Nhập TXT…" ở danh sách kịch bản.
         </p>
       ) : (
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
+            <tr className="border-b border-line2 text-[10px] uppercase tracking-wide text-ink2">
               <th className="px-2 py-1 font-medium">#</th>
               <th className="px-2 py-1 font-medium">Prompt</th>
               <th className="px-2 py-1 font-medium">Tỉ lệ</th>

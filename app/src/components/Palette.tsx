@@ -61,8 +61,8 @@ export default function Palette({
   );
 
   return (
-    <div className="flex max-h-[70vh] w-56 flex-col gap-1.5 rounded-2xl border border-white/10 bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
-      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    <div className="flex max-h-[70vh] w-56 flex-col gap-1.5 rounded-2xl border border-line bg-[#17171a]/95 p-2 shadow-2xl backdrop-blur-md">
+      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ink2">
         {connectFrom ? "Nối tới node" : "Thêm node"}
       </h2>
       <input
@@ -70,17 +70,17 @@ export default function Palette({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Tìm node…"
-        className="nodrag w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-sky-400/60"
+        className="nodrag w-full rounded-lg border border-line bg-fill px-2 py-1 text-xs text-ink placeholder-slate-500 outline-none focus:border-sky-400/60"
       />
       <div className="flex flex-col gap-2 overflow-y-auto pr-0.5">
         {groups.length === 0 ? (
-          <p className="px-1 py-1 text-[11px] text-slate-500">
+          <p className="px-1 py-1 text-[11px] text-ink3">
             {kinds.length === 0 ? "Không có node nào nối được cổng này." : "Không khớp node nào."}
           </p>
         ) : (
           groups.map((g) => (
             <div key={g.cat} className="flex flex-col gap-1">
-              <span className="px-1 text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+              <span className="px-1 text-[9px] font-semibold uppercase tracking-wider text-ink3">
                 {CATEGORY_LABEL_VI[g.cat] ?? g.cat}
               </span>
               {g.kinds.map((kind) => (
@@ -159,8 +159,8 @@ function PaletteItem({
       className={
         "select-none rounded-lg border px-2 py-1.5 text-xs transition-colors " +
         (enabled
-          ? "cursor-grab border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 active:cursor-grabbing"
-          : "cursor-not-allowed border-dashed border-white/10 bg-white/[0.02] text-slate-500")
+          ? "cursor-grab border-line bg-fill text-ink hover:bg-fill2 active:cursor-grabbing"
+          : "cursor-not-allowed border-dashed border-line bg-fill text-ink3")
       }
     >
       {NODE_LABEL_VI[kind]}

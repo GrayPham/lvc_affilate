@@ -12,12 +12,12 @@ import { errorText } from "../ipc/error_text";
 import type { ScriptMeta } from "../ipc/types";
 
 const BTN = "rounded border px-2 py-1 text-xs disabled:opacity-50";
-const BTN_NEUTRAL = `${BTN} border-slate-300 hover:bg-slate-50`;
-const BTN_PRIMARY = `${BTN} border-slate-900 bg-slate-900 text-white hover:bg-slate-700`;
+const BTN_NEUTRAL = `${BTN} border-line2 hover:bg-fill2`;
+const BTN_PRIMARY = `${BTN} border-line2 bg-panel text-ink hover:bg-fill2`;
 
 function CountsLine({ meta }: { meta: ScriptMeta }) {
   return (
-    <span className="block text-[10px] text-slate-400">
+    <span className="block text-[10px] text-ink2">
       {meta.total} tổng · {meta.done} xong · {meta.failed} lỗi · {meta.running} đang chạy
     </span>
   );
@@ -55,10 +55,10 @@ function ImportTxtModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="w-[32rem] max-w-full rounded-lg bg-white p-4 shadow-lg">
+      <div className="w-[32rem] max-w-full rounded-lg bg-panel p-4 shadow-lg">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Nhập TXT vào "{scriptName}"</h2>
-          <button type="button" className="text-slate-400 hover:text-slate-700" onClick={onClose}>
+          <button type="button" className="text-ink2 hover:text-ink" onClick={onClose}>
             Đóng
           </button>
         </div>
@@ -68,7 +68,7 @@ function ImportTxtModal({
             <p className="text-sm text-emerald-700">Đã thay toàn bộ cảnh bằng {result} cảnh mới.</p>
             <button
               type="button"
-              className="self-end rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
+              className="self-end rounded bg-panel px-3 py-1 text-xs text-ink hover:bg-fill2"
               onClick={onClose}
             >
               Đóng
@@ -79,7 +79,7 @@ function ImportTxtModal({
             <label className="flex flex-col gap-1 text-xs">
               Dán nội dung TXT, mỗi dòng một cảnh, hint sau "|"
               <textarea
-                className="h-40 resize-none rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+                className="h-40 resize-none rounded border border-line2 px-2 py-1 font-mono text-xs"
                 value={text}
                 disabled={busy}
                 onChange={(e) => setText(e.target.value)}
@@ -93,7 +93,7 @@ function ImportTxtModal({
               <button
                 type="button"
                 disabled={busy}
-                className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+                className="rounded border border-line2 px-3 py-1 text-xs hover:bg-fill2 disabled:opacity-50"
                 onClick={onClose}
               >
                 Huỷ
@@ -101,7 +101,7 @@ function ImportTxtModal({
               <button
                 type="button"
                 disabled={busy || text.trim() === ""}
-                className="rounded bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700 disabled:opacity-50"
+                className="rounded bg-panel px-3 py-1 text-xs text-ink hover:bg-fill2 disabled:opacity-50"
                 onClick={() => void handleImport()}
               >
                 {busy ? "Đang nhập…" : "Nhập"}
@@ -176,9 +176,9 @@ export default function ScriptList() {
   }
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-2 border-r border-slate-200 p-2">
+    <div className="flex w-72 shrink-0 flex-col gap-2 border-r border-line2 p-2">
       <div className="flex flex-wrap items-center gap-1">
-        <h2 className="mr-auto text-sm font-semibold text-slate-800">Kịch bản</h2>
+        <h2 className="mr-auto text-sm font-semibold text-ink">Kịch bản</h2>
         <button type="button" disabled={busy} className={BTN_PRIMARY} onClick={() => void handleCreate()}>
           Mới
         </button>
@@ -193,12 +193,12 @@ export default function ScriptList() {
         </button>
       </div>
 
-      {loadingList ? <p className="text-[11px] text-slate-400">Đang tải…</p> : null}
+      {loadingList ? <p className="text-[11px] text-ink2">Đang tải…</p> : null}
       {listError ? <p className="text-xs text-red-600">{listError}</p> : null}
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
       {scripts.length === 0 && !loadingList ? (
-        <p className="text-xs text-slate-400">Chưa có kịch bản nào — bấm "Mới" để tạo.</p>
+        <p className="text-xs text-ink2">Chưa có kịch bản nào — bấm "Mới" để tạo.</p>
       ) : (
         <ul className="flex flex-1 flex-col gap-1 overflow-auto">
           {scripts.map((meta) => (
@@ -207,21 +207,21 @@ export default function ScriptList() {
               className={
                 "rounded border " +
                 (meta.id === selectedScriptId
-                  ? "border-slate-900 bg-slate-50"
-                  : "border-slate-200 hover:bg-slate-50")
+                  ? "border-line2 bg-fill2"
+                  : "border-line2 hover:bg-fill2")
               }
             >
               {editingId === meta.id ? (
                 <div className="flex flex-col gap-1 p-1.5">
                   <input
-                    className="rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+                    className="rounded border border-line2 px-1.5 py-0.5 text-xs"
                     value={editForm.name}
                     onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                     placeholder="Tên kịch bản"
                   />
                   <div className="flex items-center gap-1">
                     <input
-                      className="flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs"
+                      className="flex-1 rounded border border-line2 px-1.5 py-0.5 text-xs"
                       value={editForm.dir}
                       onChange={(e) => setEditForm((f) => ({ ...f, dir: e.target.value }))}
                       placeholder="(mặc định trong thư mục đầu ra)"
@@ -247,7 +247,7 @@ export default function ScriptList() {
                     className="w-full px-2 py-1.5 text-left"
                     onClick={() => void selectScript(meta.id)}
                   >
-                    <span className="block text-sm font-medium text-slate-800">{meta.name}</span>
+                    <span className="block text-sm font-medium text-ink">{meta.name}</span>
                     <CountsLine meta={meta} />
                   </button>
                   <div className="flex gap-1 px-2 pb-1.5 text-[11px]">

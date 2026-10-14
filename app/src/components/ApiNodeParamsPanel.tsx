@@ -12,7 +12,7 @@ import type { NodeKind, NodeKindTag } from "../ipc/types";
 import PromptField from "./PromptField";
 
 const FIELD_CLASS =
-  "rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-100 outline-none focus:border-sky-400/60";
+  "rounded-md border border-line bg-fill px-2 py-1 text-xs text-ink outline-none focus:border-sky-400/60";
 
 const ASPECT_PL: ReadonlyArray<readonly [string, string]> = [
   ["portrait", "Dọc"],
@@ -84,7 +84,7 @@ function Select({
   return (
     <select className={`${FIELD_CLASS} ${className}`} value={value} title={title} onChange={(e) => onChange(e.target.value)}>
       {options.map(([v, label]) => (
-        <option key={v} value={v} className="bg-neutral-900 text-neutral-100">
+        <option key={v} value={v} className="bg-panel text-ink">
           {label}
         </option>
       ))}
@@ -128,7 +128,7 @@ function fieldsFor(data: ApiNodeData, update: (patch: Partial<ApiNodeData>) => v
             <Select value={data.aspect} title="Tỉ lệ khung" options={ASPECT_PL} onChange={(v) => update({ aspect: v })} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex flex-1 items-center gap-1.5 text-[11px] text-slate-400">
+            <label className="flex flex-1 items-center gap-1.5 text-[11px] text-ink2">
               Seed
               <Text
                 type="number"
@@ -159,14 +159,14 @@ function fieldsFor(data: ApiNodeData, update: (patch: Partial<ApiNodeData>) => v
           </div>
           <Text value={data.model} placeholder="Model (rỗng = mặc định theo mode)" onChange={(v) => update({ model: v })} />
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <label className="flex items-center gap-1.5 text-[11px] text-ink2">
               Số biến thể
               <Text type="number" value={data.seed_count} placeholder="1" className="w-16" onChange={(v) => update({ seed_count: Math.max(1, Number(v) || 1) })} />
             </label>
             <Text value={data.account} placeholder="Tài khoản (tên/label credential Google; rỗng = tự chọn)" onChange={(v) => update({ account: v })} />
           </div>
-          <p className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="rounded bg-white/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-slate-400">Sắp có</span>
+          <p className="flex items-center gap-1.5 text-[10px] text-ink3">
+            <span className="rounded bg-fill2 px-1 py-0.5 text-[9px] uppercase tracking-wide text-ink2">Sắp có</span>
             Chế độ trình duyệt chống phát hiện (Camoufox)
           </p>
         </>
@@ -251,7 +251,7 @@ function fieldsFor(data: ApiNodeData, update: (patch: Partial<ApiNodeData>) => v
               onChange={(v) => update({ duration: v === "" ? null : Number(v) })}
             />
           </div>
-          <p className="text-[10px] text-slate-500">
+          <p className="text-[10px] text-ink3">
             muse.ai không có API tỉ lệ/thời lượng — 2 ô trên chỉ CHÈN THÊM vào câu prompt, AI có thể không tuân theo.
           </p>
           <Text value={data.account} placeholder="Tài khoản (tên/label credential MuseAI; rỗng = tự chọn)" onChange={(v) => update({ account: v })} />
@@ -309,18 +309,18 @@ export default function ApiNodeParamsPanel() {
   }
 
   return (
-    <div className="pointer-events-auto flex w-[26rem] max-w-[calc(100%-2rem)] flex-col gap-2 rounded-2xl border border-white/10 bg-[#17171a]/95 px-3 py-2.5 text-slate-200 shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex w-[26rem] max-w-[calc(100%-2rem)] flex-col gap-2 rounded-2xl border border-line bg-[#17171a]/95 px-3 py-2.5 text-ink shadow-2xl backdrop-blur-md">
       {chips.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 pb-2">
-          <span className="text-[11px] text-slate-400">Tham chiếu:</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-line pb-2">
+          <span className="text-[11px] text-ink2">Tham chiếu:</span>
           {chips.map((chip) => (
-            <span key={chip.edgeId} className="flex items-center gap-1 rounded-md bg-white/10 py-0.5 pl-2 pr-1 text-[11px] text-slate-200" title={chip.label}>
+            <span key={chip.edgeId} className="flex items-center gap-1 rounded-md bg-fill2 py-0.5 pl-2 pr-1 text-[11px] text-ink" title={chip.label}>
               <span className="max-w-[9rem] truncate">{chip.label}</span>
               <button
                 type="button"
                 title="Bỏ tham chiếu"
                 aria-label={`Bỏ tham chiếu ${chip.label}`}
-                className="flex h-4 w-4 items-center justify-center rounded text-slate-400 hover:bg-white/15 hover:text-white"
+                className="flex h-4 w-4 items-center justify-center rounded text-ink2 hover:bg-fill2 hover:text-ink"
                 onClick={() => onEdgesChange([{ type: "remove", id: chip.edgeId }])}
               >
                 ×
@@ -332,7 +332,7 @@ export default function ApiNodeParamsPanel() {
 
       <PromptField id={id} />
 
-      <div className="flex flex-col gap-2 border-t border-white/10 pt-2">{fieldsFor(data, update)}</div>
+      <div className="flex flex-col gap-2 border-t border-line pt-2">{fieldsFor(data, update)}</div>
     </div>
   );
 }

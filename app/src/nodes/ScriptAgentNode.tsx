@@ -25,7 +25,7 @@ type ScriptAgentKind = Extract<NodeKind, { kind: "script_agent" }>;
 export type ScriptAgentRFNode = RFNodeBase<ScriptAgentKind, "script_agent">;
 
 const FIELD_CLASS =
-  "nodrag w-full rounded-md border border-white/10 bg-white/5 px-1.5 py-1 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-sky-400/60";
+  "nodrag w-full rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-ink placeholder-slate-500 outline-none focus:border-sky-400/60";
 
 /** Nhà cung cấp AI text mà `TextGenHost` (backend) hỗ trợ — xem `crates/providers/lvc-genai`. Chỉ
  * 2 nền tảng này được liệt kê động từ kho credential (đã loại Claude theo quyết định người dùng). */
@@ -78,7 +78,7 @@ export default function ScriptAgentNode({ id, data, selected }: NodeProps<Script
             placeholder="Sản phẩm / chương trình affiliate (bỏ trống nếu nối cổng brief)"
             onChange={(e) => updateNodeData(id, { ...data, topic: e.target.value })}
           />
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <div className="flex items-center gap-2 text-[11px] text-ink2">
             <label className="flex items-center gap-1">
               Số cảnh
               <input
@@ -105,13 +105,13 @@ export default function ScriptAgentNode({ id, data, selected }: NodeProps<Script
                 </option>
               ) : null}
               {usable.map((r) => (
-                <option key={r.id} value={`${r.provider}::${r.label}`} className="bg-neutral-900 text-neutral-100">
+                <option key={r.id} value={`${r.provider}::${r.label}`} className="bg-panel text-ink">
                   {credentialProviderLabel(r.provider)} — {r.label}
                 </option>
               ))}
             </select>
           ) : (
-            <p className="text-[11px] text-amber-400">
+            <p className="text-[11px] text-accent-text">
               Chưa có API key Gemini/OpenAI nào trong kho — vào trang "Tài khoản AI" để thêm trước.
             </p>
           )}
@@ -121,7 +121,7 @@ export default function ScriptAgentNode({ id, data, selected }: NodeProps<Script
             placeholder="Yêu cầu thêm (tuỳ chọn — nối vào chỉ dẫn affiliate có sẵn, không thay thế)"
             onChange={(e) => updateNodeData(id, { ...data, extra_instructions: e.target.value })}
           />
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <label className="flex items-center gap-1.5 text-[11px] text-ink2">
             <input
               type="checkbox"
               className="nodrag"

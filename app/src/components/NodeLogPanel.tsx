@@ -20,9 +20,9 @@ import type { NodeKindTag, TaskDto } from "../ipc/types";
 
 const TASK_STATUS_CLASS: Record<string, string> = {
   completed: "text-emerald-300",
-  failed: "text-red-300",
+  failed: "text-rose",
   processing: "text-sky-300",
-  queued: "text-slate-400",
+  queued: "text-ink2",
 };
 
 function taskStatusLabel(status: string, failureCode: string | null): string {
@@ -89,21 +89,21 @@ export default function NodeLogPanel() {
   );
 
   return (
-    <div className="pointer-events-auto flex max-h-[min(60vh,22rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#17171a]/95 text-slate-200 shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex max-h-[min(60vh,22rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-line bg-[#17171a]/95 text-ink shadow-2xl backdrop-blur-md">
       {/* Tiêu đề */}
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-semibold text-slate-100" title={displayName}>
+          <div className="truncate text-xs font-semibold text-ink" title={displayName}>
             Nhật ký · {displayName}
           </div>
-          <div className="text-[10px] text-slate-500">{kindLabel}</div>
+          <div className="text-[10px] text-ink3">{kindLabel}</div>
         </div>
         <NodeStatusBadge state={runState} />
         <button
           type="button"
           title="Đóng"
           aria-label="Đóng nhật ký"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-white/10 hover:text-white"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink2 hover:bg-fill2 hover:text-ink"
           onClick={() => setSelected(null)}
         >
           ×
@@ -112,14 +112,14 @@ export default function NodeLogPanel() {
 
       <div className="flex flex-col gap-2 overflow-y-auto p-3">
         {/* Tóm tắt đếm */}
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-ink2">
           {runState.total > 0 ? (
             <span>
-              Hoàn tất <span className="text-slate-200">{runState.done}/{runState.total}</span>
+              Hoàn tất <span className="text-ink">{runState.done}/{runState.total}</span>
             </span>
           ) : null}
           {runState.ok > 0 ? <span className="text-emerald-300">✓ {runState.ok}</span> : null}
-          {runState.failed > 0 ? <span className="text-red-300">✗ {runState.failed}</span> : null}
+          {runState.failed > 0 ? <span className="text-rose">✗ {runState.failed}</span> : null}
         </div>
 
         {/* Lỗi cấp node (nhật ký chính cho node không fan-out) */}
@@ -129,24 +129,24 @@ export default function NodeLogPanel() {
           </div>
         ) : null}
 
-        {loadError ? <p className="text-[11px] text-red-300">Không tải được nhật ký cảnh: {loadError}</p> : null}
+        {loadError ? <p className="text-[11px] text-rose">Không tải được nhật ký cảnh: {loadError}</p> : null}
 
         {/* Cấp cảnh (node fan-out) */}
         {scenes.length > 0 ? (
           <div className="flex flex-col gap-1">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Từng cảnh</div>
+            <div className="text-[10px] uppercase tracking-wide text-ink3">Từng cảnh</div>
             {scenes.map((t) => {
-              const statusCls = TASK_STATUS_CLASS[t.status] ?? "text-slate-300";
+              const statusCls = TASK_STATUS_CLASS[t.status] ?? "text-ink2";
               return (
-                <div key={t.id} className="rounded-md border border-white/5 bg-white/[0.02] px-2 py-1 text-[11px]">
+                <div key={t.id} className="rounded-md border border-line bg-fill px-2 py-1 text-[11px]">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-slate-400">#{t.sceneIndex ?? "?"}</span>
+                    <span className="font-mono text-ink2">#{t.sceneIndex ?? "?"}</span>
                     <span className={statusCls}>{taskStatusLabel(t.status, t.failureCode)}</span>
-                    {t.account ? <span className="truncate text-slate-500" title={t.account}>· {t.account}</span> : null}
-                    <span className="ml-auto text-slate-500">{t.stage}</span>
+                    {t.account ? <span className="truncate text-ink3" title={t.account}>· {t.account}</span> : null}
+                    <span className="ml-auto text-ink3">{t.stage}</span>
                   </div>
                   {t.error ? (
-                    <div className="mt-0.5 whitespace-pre-wrap break-words text-red-300/90">
+                    <div className="mt-0.5 whitespace-pre-wrap break-words text-rose/90">
                       {t.failureCode ? <span className="font-mono">[{t.failureCode}] </span> : null}
                       {t.error}
                     </div>
@@ -161,7 +161,7 @@ export default function NodeLogPanel() {
         ) : null}
 
         {!runState.error && scenes.length === 0 ? (
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-ink3">
             {runState.state === "done"
               ? "Node chạy xong, không có cảnh chi tiết."
               : runState.state === "running"

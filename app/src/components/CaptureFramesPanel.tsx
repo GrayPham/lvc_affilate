@@ -110,12 +110,12 @@ export default function CaptureFramesPanel() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={close}>
       <div
-        className="flex max-h-[90vh] w-[720px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] p-3 text-slate-200 shadow-2xl"
+        className="flex max-h-[90vh] w-[720px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-[#17171a] p-3 text-ink shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Chụp khung hình · {target.label}</h3>
-          <button type="button" className="rounded-md px-2 py-1 text-slate-400 hover:bg-white/10 hover:text-white" onClick={close} aria-label="Đóng">
+          <button type="button" className="rounded-md px-2 py-1 text-ink2 hover:bg-fill2 hover:text-ink" onClick={close} aria-label="Đóng">
             ✕
           </button>
         </div>
@@ -132,41 +132,41 @@ export default function CaptureFramesPanel() {
         />
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-xs hover:bg-white/10" onClick={() => capture("first")}>
+          <button type="button" className="rounded-md border border-line2 bg-fill px-2.5 py-1 text-xs hover:bg-fill2" onClick={() => capture("first")}>
             Khung đầu
           </button>
-          <button type="button" className="rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-xs hover:bg-white/10" onClick={() => capture("last")}>
+          <button type="button" className="rounded-md border border-line2 bg-fill px-2.5 py-1 text-xs hover:bg-fill2" onClick={() => capture("last")}>
             Khung cuối
           </button>
           <button type="button" className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-200 hover:bg-sky-500/20" onClick={() => capture("current")}>
             Khung hiện tại
           </button>
-          <button type="button" disabled={frames.length === 0} className="rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-xs hover:bg-white/10 disabled:opacity-40" onClick={() => setFrames([])}>
+          <button type="button" disabled={frames.length === 0} className="rounded-md border border-line2 bg-fill px-2.5 py-1 text-xs hover:bg-fill2 disabled:opacity-40" onClick={() => setFrames([])}>
             Xoá hết
           </button>
           <button
             type="button"
             disabled={frames.length === 0 || busy}
-            className="ml-auto rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40"
+            className="ml-auto rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-ink hover:bg-sky-500 disabled:opacity-40"
             onClick={() => void addToCanvas()}
           >
             {busy ? "Đang thêm…" : `Thêm vào canvas (${frames.length})`}
           </button>
         </div>
 
-        {error ? <p className="text-xs text-red-400">{error}</p> : null}
+        {error ? <p className="text-xs text-rose">{error}</p> : null}
 
-        <div className="flex min-h-[92px] flex-wrap gap-2 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-2">
+        <div className="flex min-h-[92px] flex-wrap gap-2 overflow-y-auto rounded-lg border border-line bg-black/20 p-2">
           {frames.length === 0 ? (
-            <p className="m-auto text-xs text-slate-500">Chưa có khung nào — tua video rồi bấm "Khung hiện tại".</p>
+            <p className="m-auto text-xs text-ink3">Chưa có khung nào — tua video rồi bấm "Khung hiện tại".</p>
           ) : (
             frames.map((fr, i) => (
               <div key={`${fr.label}-${i}`} className="relative">
-                <img src={fr.dataUrl} alt="" className="h-20 w-auto rounded border border-white/10 object-cover" />
-                <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] text-slate-200">{fr.label}</span>
+                <img src={fr.dataUrl} alt="" className="h-20 w-auto rounded border border-line object-cover" />
+                <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] text-ink">{fr.label}</span>
                 <button
                   type="button"
-                  className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl bg-black/70 text-[10px] text-slate-200 hover:bg-red-600 hover:text-white"
+                  className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl bg-black/70 text-[10px] text-ink hover:bg-red-600 hover:text-ink"
                   onClick={() => setFrames((f) => f.filter((_, j) => j !== i))}
                   aria-label="Bỏ khung"
                 >

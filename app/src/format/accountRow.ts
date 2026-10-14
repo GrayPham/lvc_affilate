@@ -28,12 +28,12 @@ export const ACCOUNT_STATE_VI: Record<AccountState, string> = {
 
 /** Mau cham + chu cho tung trang thai (nen toi). */
 export const ACCOUNT_STATE_CLASS: Record<AccountState, { dot: string; text: string }> = {
-  active: { dot: "bg-emerald-400", text: "text-emerald-400" },
-  relogin: { dot: "bg-amber-400", text: "text-amber-400" },
+  active: { dot: "bg-emerald-400", text: "text-ok" },
+  relogin: { dot: "bg-amber-400", text: "text-accent-text" },
   resting: { dot: "bg-sky-400", text: "text-sky-400" },
   limited: { dot: "bg-fuchsia-400", text: "text-fuchsia-400" },
   no_credit: { dot: "bg-orange-400", text: "text-orange-400" },
-  unknown: { dot: "bg-neutral-500", text: "text-neutral-400" },
+  unknown: { dot: "bg-neutral-500", text: "text-ink2" },
 };
 
 /** Thu tu hien chip loc (trai -> phai). */

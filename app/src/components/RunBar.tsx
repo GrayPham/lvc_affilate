@@ -363,9 +363,9 @@ export default function RunBar() {
   }
 
   return (
-    <div className="flex flex-col gap-2.5 border-b border-white/10 bg-[#121216] px-3 py-2.5 text-slate-200">
+    <div className="flex flex-col gap-2.5 border-b border-line bg-[#121216] px-3 py-2.5 text-ink">
       <div className="flex items-center gap-1.5">
-        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-amber-400" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent-text" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
           <path d="M14 3v4a1 1 0 0 0 1 1h4" />
         </svg>
@@ -374,7 +374,7 @@ export default function RunBar() {
             type="button"
             title="Bấm để đổi tên"
             onClick={() => setRenaming(workflowName)}
-            className="rounded px-1 text-sm font-semibold text-white hover:bg-white/10"
+            className="rounded px-1 text-sm font-semibold text-ink hover:bg-fill2"
           >
             {workflowName}
           </button>
@@ -391,18 +391,18 @@ export default function RunBar() {
                 setRenaming(null);
               }
             }}
-            className="min-w-0 flex-1 rounded border border-amber-400/60 bg-white/5 px-1.5 py-0.5 text-sm font-semibold text-white outline-none"
+            className="min-w-0 flex-1 rounded border border-amber-400/60 bg-fill px-1.5 py-0.5 text-sm font-semibold text-ink outline-none"
           />
         )}
         {workflowSaved ? null : (
-          <span className="text-[10px] text-neutral-500">chưa lưu</span>
+          <span className="text-[10px] text-ink3">chưa lưu</span>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleValidate()}
         >
           Kiểm tra
@@ -410,7 +410,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy || running}
-          className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-neutral-950 shadow-md shadow-amber-500/30 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+          className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-ink shadow-md shadow-amber-500/30 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           onClick={() => void handleRun()}
         >
           ▶ Chạy
@@ -418,24 +418,24 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy || !running}
-          className="rounded-lg border border-red-500/40 px-4 py-2 text-xs font-medium text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-red-500/40 px-4 py-2 text-xs font-medium text-rose hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleCancel()}
         >
           Huỷ
         </button>
-        <span className="mx-1 h-5 w-px bg-white/10" />
+        <span className="mx-1 h-5 w-px bg-fill2" />
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleSave()}
         >
-          Lưu <span className="ml-1 text-[10px] text-neutral-500">Ctrl+S</span>
+          Lưu <span className="ml-1 text-[10px] text-ink3">Ctrl+S</span>
         </button>
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => setShowOpen(true)}
         >
           Workflow của tôi
@@ -443,17 +443,17 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleNew()}
         >
           Mới
         </button>
-        <span className="mx-1 h-5 w-px bg-white/10" />
+        <span className="mx-1 h-5 w-px bg-fill2" />
         <button
           type="button"
           disabled={busy}
           title="Xếp workflow này vào hàng chờ ở tab Tác vụ (chạy lần lượt)"
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleEnqueue()}
         >
           + Hàng chờ
@@ -461,7 +461,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={openTemplates}
         >
           Kho mẫu
@@ -469,7 +469,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleSaveTemplate()}
         >
           Lưu thành mẫu
@@ -478,26 +478,26 @@ export default function RunBar() {
           type="button"
           disabled={busy}
           title="Mở Pull Request đưa workflow này lên kho cộng đồng"
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => setShowPublish(true)}
         >
           ↑ Publish
         </button>
         {running ? (
-          <span className="text-xs text-amber-400">Đang chạy (run {runId})…</span>
+          <span className="text-xs text-accent-text">Đang chạy (run {runId})…</span>
         ) : runStatus ? (
-          <span className="text-xs text-slate-400">Lần chạy trước: {runStatus}</span>
+          <span className="text-xs text-ink2">Lần chạy trước: {runStatus}</span>
         ) : null}
       </div>
 
       {planSummary ? (
-        <p className="text-xs text-emerald-400">
+        <p className="text-xs text-ok">
           Hợp lệ — sẽ tạo {planSummary.videoTotal} video.
           {planSummary.warnings.length > 0 ? ` (${planSummary.warnings.join("; ")})` : ""}
         </p>
       ) : null}
 
-      {message ? <p className="text-xs text-slate-300">{message}</p> : null}
+      {message ? <p className="text-xs text-ink2">{message}</p> : null}
 
       {globalErrors.length > 0 || nodeErrorCount > 0 ? (
         <ul className="max-h-32 overflow-auto rounded-md border border-red-500/30 bg-red-950/40 p-2 text-xs text-red-200">

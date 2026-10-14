@@ -451,8 +451,8 @@ export default function Workflow() {
         <ReactFlowProvider>
           <WorkflowCanvas />
         </ReactFlowProvider>
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-white/10 bg-[#121216] text-slate-200">
-          <h2 className="border-b border-white/10 p-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-line bg-[#121216] text-ink">
+          <h2 className="border-b border-line p-2 text-xs font-semibold uppercase tracking-wide text-ink2">
             Tiến độ
           </h2>
           <div className="flex-1 overflow-y-auto">

@@ -38,22 +38,22 @@ export default function UpdateBanner() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80 rounded-xl border border-white/10 bg-neutral-900 p-3 shadow-2xl">
+    <div className="fixed bottom-4 right-4 z-50 w-80 rounded-xl border border-line bg-panel p-3 shadow-2xl">
       {phase === "error" ? (
         <>
-          <p className="text-sm font-semibold text-red-300">Kiểm tra cập nhật thất bại</p>
-          <p className="mt-1 text-xs text-neutral-400">{error}</p>
+          <p className="text-sm font-semibold text-rose">Kiểm tra cập nhật thất bại</p>
+          <p className="mt-1 text-xs text-ink2">{error}</p>
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-md px-2 py-1 text-xs text-neutral-400 hover:bg-white/10 hover:text-neutral-200"
+              className="rounded-md px-2 py-1 text-xs text-ink2 hover:bg-fill2 hover:text-ink"
               onClick={dismiss}
             >
               Đóng
             </button>
             <button
               type="button"
-              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-neutral-900 hover:bg-amber-400"
+              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-ink hover:bg-amber-400"
               onClick={() => void checkForUpdate()}
             >
               Thử lại
@@ -64,21 +64,21 @@ export default function UpdateBanner() {
 
       {phase === "available" && update ? (
         <>
-          <p className="text-sm font-semibold text-white">Có bản cập nhật v{update.version}</p>
+          <p className="text-sm font-semibold text-ink">Có bản cập nhật v{update.version}</p>
           {notes ? (
-            <p className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-neutral-400">{notes}</p>
+            <p className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-ink2">{notes}</p>
           ) : null}
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-md px-2 py-1 text-xs text-neutral-400 hover:bg-white/10 hover:text-neutral-200"
+              className="rounded-md px-2 py-1 text-xs text-ink2 hover:bg-fill2 hover:text-ink"
               onClick={dismiss}
             >
               Để sau
             </button>
             <button
               type="button"
-              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-neutral-900 hover:bg-amber-400"
+              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-ink hover:bg-amber-400"
               onClick={() => void install()}
             >
               Cài đặt
@@ -89,8 +89,8 @@ export default function UpdateBanner() {
 
       {phase === "downloading" ? (
         <>
-          <p className="text-sm font-semibold text-white">Đang tải bản cập nhật…</p>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <p className="text-sm font-semibold text-ink">Đang tải bản cập nhật…</p>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-fill2">
             <div
               className="h-full bg-amber-400 transition-all"
               style={{
@@ -98,7 +98,7 @@ export default function UpdateBanner() {
               }}
             />
           </div>
-          <p className="mt-1 text-[11px] text-neutral-500">
+          <p className="mt-1 text-[11px] text-ink3">
             {formatBytes(downloadedBytes)}
             {totalBytes ? ` / ${formatBytes(totalBytes)}` : ""} — ứng dụng sẽ tự khởi động lại sau khi cài xong
           </p>

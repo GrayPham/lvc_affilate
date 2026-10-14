@@ -130,7 +130,7 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
           />
         ) : (
           // Chua co anh: than the KEO duoc; nut "Chọn ảnh" (nodrag) o giua.
-          <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-white/[0.03] to-transparent text-slate-400">
+          <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-white/[0.03] to-transparent text-ink2">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <circle cx="9" cy="9" r="1.6" />
@@ -138,14 +138,14 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
             </svg>
             <button
               type="button"
-              className="nodrag rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200 hover:bg-white/10"
+              className="nodrag rounded-md border border-line2 bg-fill px-2.5 py-1 text-[11px] text-ink hover:bg-fill2"
               onClick={() => void pick()}
             >
               Chọn ảnh…
             </button>
           </div>
         )}
-        {pickError ? <p className="px-2 py-1 text-[10px] text-red-400">{pickError}</p> : null}
+        {pickError ? <p className="px-2 py-1 text-[10px] text-rose">{pickError}</p> : null}
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.image }} />
       {zoom && src ? <Lightbox src={src} kind="image" onClose={() => setZoom(false)} /> : null}

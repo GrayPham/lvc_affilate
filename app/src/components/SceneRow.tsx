@@ -25,7 +25,7 @@ function durationsFor(mode: string | null, model: string | null): readonly numbe
 }
 
 const BTN = "rounded border px-1.5 py-0.5 text-[11px] disabled:opacity-50";
-const BTN_NEUTRAL = `${BTN} border-slate-300 hover:bg-slate-50`;
+const BTN_NEUTRAL = `${BTN} border-line2 hover:bg-fill2`;
 const BTN_DANGER = `${BTN} border-red-300 text-red-700 hover:bg-red-50`;
 
 interface SceneRowProps {
@@ -100,8 +100,8 @@ export default function SceneRow({
   }
 
   return (
-    <tr className="border-b border-slate-100 align-top text-xs">
-      <td className="px-2 py-1 text-center text-slate-400">
+    <tr className="border-b border-line align-top text-xs">
+      <td className="px-2 py-1 text-center text-ink2">
         <div className="flex flex-col items-center gap-0.5">
           {docScene ? (
             <input
@@ -118,7 +118,7 @@ export default function SceneRow({
       </td>
       <td className="min-w-[16rem] px-2 py-1">
         <textarea
-          className="w-full resize-none rounded border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-50"
+          className="w-full resize-none rounded border border-line2 px-1.5 py-1 text-xs disabled:opacity-50"
           rows={2}
           value={draft.prompt}
           disabled={fieldsDisabled}
@@ -129,7 +129,7 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
+          className="rounded border border-line2 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.ratio ?? ""}
           disabled={fieldsDisabled}
           title={runningTitle}
@@ -146,7 +146,7 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
+          className="rounded border border-line2 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.duration ?? ""}
           disabled={fieldsDisabled}
           title={runningTitle}
@@ -165,7 +165,7 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
+          className="rounded border border-line2 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.model ?? ""}
           disabled={fieldsDisabled}
           title={runningTitle}
@@ -182,7 +182,7 @@ export default function SceneRow({
       </td>
       <td className="px-2 py-1">
         <select
-          className="rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
+          className="rounded border border-line2 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.mode ?? ""}
           disabled={fieldsDisabled}
           title={runningTitle}
@@ -200,7 +200,7 @@ export default function SceneRow({
       <td className="px-2 py-1">
         <input
           type="text"
-          className="w-24 rounded border border-slate-300 px-1 py-0.5 text-xs disabled:opacity-50"
+          className="w-24 rounded border border-line2 px-1 py-0.5 text-xs disabled:opacity-50"
           value={draft.account}
           disabled={fieldsDisabled}
           title={runningTitle}

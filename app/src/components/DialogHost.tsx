@@ -64,21 +64,21 @@ function DialogView({ req, onDone }: { req: DialogReq; onDone: () => void }) {
       role="presentation"
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#17171a] p-4 text-slate-100 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-line bg-[#17171a] p-4 text-ink shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         {req.title ? <h2 className="mb-1 text-sm font-semibold">{req.title}</h2> : null}
         {"message" in req && req.message ? (
-          <p className="mb-3 whitespace-pre-line text-[13px] leading-relaxed text-slate-300">{req.message}</p>
+          <p className="mb-3 whitespace-pre-line text-[13px] leading-relaxed text-ink2">{req.message}</p>
         ) : null}
 
         {req.kind === "prompt" ? (
           req.multiline ? (
             <textarea
               ref={areaRef}
-              className="mb-3 min-h-[88px] w-full resize-y rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm outline-none focus:border-sky-400/60"
+              className="mb-3 min-h-[88px] w-full resize-y rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm outline-none focus:border-sky-400/60"
               value={value}
               placeholder={req.placeholder}
               onChange={(e) => setValue(e.target.value)}
@@ -91,7 +91,7 @@ function DialogView({ req, onDone }: { req: DialogReq; onDone: () => void }) {
           ) : (
             <input
               ref={inputRef}
-              className="mb-3 w-full rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm outline-none focus:border-sky-400/60"
+              className="mb-3 w-full rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm outline-none focus:border-sky-400/60"
               value={value}
               placeholder={req.placeholder}
               onChange={(e) => setValue(e.target.value)}
@@ -108,7 +108,7 @@ function DialogView({ req, onDone }: { req: DialogReq; onDone: () => void }) {
           {req.kind !== "alert" ? (
             <button
               type="button"
-              className="rounded-md px-3 py-1.5 text-sm text-slate-300 hover:bg-white/10"
+              className="rounded-md px-3 py-1.5 text-sm text-ink2 hover:bg-fill2"
               onClick={cancel}
             >
               {req.kind === "confirm" ? (req.cancelText ?? "Huỷ") : (req.cancelText ?? "Huỷ")}
@@ -118,7 +118,7 @@ function DialogView({ req, onDone }: { req: DialogReq; onDone: () => void }) {
             type="button"
             autoFocus={req.kind !== "prompt"}
             className={
-              "rounded-md px-3 py-1.5 text-sm font-medium text-white " +
+              "rounded-md px-3 py-1.5 text-sm font-medium text-ink " +
               (danger ? "bg-red-600 hover:bg-red-500" : "bg-sky-600 hover:bg-sky-500")
             }
             onClick={ok}

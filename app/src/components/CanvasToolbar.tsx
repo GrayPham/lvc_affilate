@@ -24,7 +24,7 @@ function ToolButton({
       onClick={onClick}
       className={
         "flex h-9 w-9 items-center justify-center rounded-lg transition-colors " +
-        (active ? "bg-sky-500/20 text-sky-300" : "text-slate-300 hover:bg-white/10 hover:text-white")
+        (active ? "bg-sky-500/20 text-sky-300" : "text-ink2 hover:bg-fill2 hover:text-ink")
       }
     >
       {children}
@@ -42,7 +42,7 @@ export default function CanvasToolbar() {
   const openTemplates = useWorkflowUi((s) => s.openTemplates);
 
   return (
-    <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl border border-white/10 bg-[#17171a]/95 p-1.5 shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl border border-line bg-[#17171a]/95 p-1.5 shadow-2xl backdrop-blur-md">
       <ToolButton title="Thêm node" active={addMenuOpen} onClick={toggleAddMenu}>
         <svg width={ICON.size} height={ICON.size} viewBox={ICON.viewBox} fill={ICON.fill} stroke={ICON.stroke} strokeWidth={ICON.strokeWidth} strokeLinecap={ICON.strokeLinecap} strokeLinejoin={ICON.strokeLinejoin}>
           <path d="M12 5v14M5 12h14" />
@@ -72,7 +72,7 @@ export default function CanvasToolbar() {
           <path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12" />
         </svg>
       </ToolButton>
-      <span className="my-0.5 h-px w-6 bg-white/10" />
+      <span className="my-0.5 h-px w-6 bg-fill2" />
       <ToolButton title="Trợ giúp">
         <svg width={ICON.size} height={ICON.size} viewBox={ICON.viewBox} fill={ICON.fill} stroke={ICON.stroke} strokeWidth={ICON.strokeWidth} strokeLinecap={ICON.strokeLinecap} strokeLinejoin={ICON.strokeLinejoin}>
           <circle cx="12" cy="12" r="9" />

@@ -12,7 +12,7 @@ const STATE_LABEL_VI: Record<string, string> = {
 };
 
 const STATE_CLASS: Record<string, string> = {
-  queued: "bg-slate-100 text-slate-600",
+  queued: "bg-fill2 text-ink3",
   running: "bg-sky-100 text-sky-700",
   done: "bg-emerald-100 text-emerald-700",
   failed: "bg-red-100 text-red-700",
@@ -24,7 +24,7 @@ export default function NodeStatusBadge({ state }: { state?: NodeRunState }) {
     return null;
   }
   const label = STATE_LABEL_VI[state.state] ?? state.state;
-  const cls = STATE_CLASS[state.state] ?? "bg-slate-100 text-slate-600";
+  const cls = STATE_CLASS[state.state] ?? "bg-fill2 text-ink3";
   const countText = state.total > 0 ? ` ${state.ok}/${state.total}` : "";
   const failedText = state.failed > 0 ? ` · lỗi ${state.failed}` : "";
   return (

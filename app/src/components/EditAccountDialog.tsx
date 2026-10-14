@@ -64,16 +64,16 @@ export default function EditAccountDialog({
   return (
     <Dialog title={`Sửa proxy — ${name}`} onClose={onClose} width="26rem">
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between text-xs text-neutral-400">
+        <div className="flex items-center justify-between text-xs text-ink2">
           <span>Nền tảng</span>
-          <span className="font-medium text-neutral-200">{platformLabel}</span>
+          <span className="font-medium text-ink">{platformLabel}</span>
         </div>
 
-        <label className="flex flex-col gap-1 text-xs text-neutral-300">
+        <label className="flex flex-col gap-1 text-xs text-ink2">
           Proxy
           <div className="flex gap-2">
             <input
-              className="flex-1 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-sm text-neutral-100 placeholder:text-neutral-500"
+              className="flex-1 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-ink3"
               value={proxy}
               disabled={busy}
               onChange={(e) => setProxy(e.target.value)}
@@ -88,13 +88,13 @@ export default function EditAccountDialog({
               Lưu
             </button>
           </div>
-          {proxyError ? <span className="text-red-400">{proxyError}</span> : null}
+          {proxyError ? <span className="text-rose">{proxyError}</span> : null}
         </label>
 
-        {error ? <p className="text-xs text-red-400">{error}</p> : null}
-        {okMsg ? <p className="text-xs text-emerald-400">{okMsg}</p> : null}
+        {error ? <p className="text-xs text-rose">{error}</p> : null}
+        {okMsg ? <p className="text-xs text-ok">{okMsg}</p> : null}
 
-        <div className="flex justify-end border-t border-white/10 pt-3">
+        <div className="flex justify-end border-t border-line pt-3">
           <button type="button" className={BTN_PRIMARY_SM} onClick={onClose}>
             Đóng
           </button>

@@ -49,9 +49,9 @@ export default function LegacyImport() {
   }
 
   return (
-    <section className="flex flex-col gap-2 border-t border-white/10 pt-4 text-neutral-200">
-      <p className="text-sm font-medium text-neutral-100">Nhập dữ liệu từ bản Python</p>
-      <p className="text-xs text-neutral-500">
+    <section className="flex flex-col gap-2 border-t border-line pt-4 text-ink">
+      <p className="text-sm font-medium text-ink">Nhập dữ liệu từ bản Python</p>
+      <p className="text-xs text-ink3">
         Chọn thư mục cài đặt bản Python cũ để nhập task/tài khoản/lượt dùng/cài đặt vào ứng dụng này.
       </p>
       <div>
@@ -65,7 +65,7 @@ export default function LegacyImport() {
         </button>
       </div>
 
-      {error ? <p className="text-xs text-red-400">{error}</p> : null}
+      {error ? <p className="text-xs text-rose">{error}</p> : null}
 
       {report ? (
         <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-300">

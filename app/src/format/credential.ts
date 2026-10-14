@@ -137,11 +137,11 @@ export function credentialStatusLabel(status: CredentialStatus): string {
 
 /** Lop mau badge cho tung trang thai (mau phan biet ro giua cac trang thai). */
 export const CREDENTIAL_STATUS_BADGE_CLASS: Record<CredentialStatus, string> = {
-  ok: "bg-emerald-500/15 text-emerald-400",
-  expired: "bg-amber-500/15 text-amber-400",
-  banned: "bg-red-500/15 text-red-400",
+  ok: "bg-emerald-500/15 text-ok",
+  expired: "bg-amber-500/15 text-accent-text",
+  banned: "bg-red-500/15 text-rose",
   quota: "bg-orange-500/15 text-orange-400",
-  unknown: "bg-white/5 text-neutral-400",
+  unknown: "bg-fill text-ink2",
 };
 
 // ---------------------------------------------------------------------------------------------

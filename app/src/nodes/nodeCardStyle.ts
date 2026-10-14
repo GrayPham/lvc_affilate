@@ -26,5 +26,5 @@ export function nodeBorderClass(opts: {
   if (opts.selected) {
     return "border-sky-400/80 ring-1 ring-sky-400/40";
   }
-  return "border-white/10";
+  return "border-line";
 }

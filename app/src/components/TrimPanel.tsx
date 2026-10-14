@@ -122,12 +122,12 @@ export default function TrimPanel() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={close}>
       <div
-        className="flex max-h-[92vh] w-[760px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] p-3 text-slate-200 shadow-2xl"
+        className="flex max-h-[92vh] w-[760px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-[#17171a] p-3 text-ink shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Cắt video · {target.label}</h3>
-          <button type="button" className="rounded-md px-2 py-1 text-slate-400 hover:bg-white/10 hover:text-white" onClick={close} aria-label="Đóng">
+          <button type="button" className="rounded-md px-2 py-1 text-ink2 hover:bg-fill2 hover:text-ink" onClick={close} aria-label="Đóng">
             ✕
           </button>
         </div>
@@ -147,7 +147,7 @@ export default function TrimPanel() {
 
         {/* Thanh thời gian: nền + đoạn chọn tô sáng + hai tay cầm kéo được */}
         <div className="px-1">
-          <div ref={trackRef} className="relative h-9 cursor-pointer select-none rounded-md bg-white/10" onClick={seekTo}>
+          <div ref={trackRef} className="relative h-9 cursor-pointer select-none rounded-md bg-fill2" onClick={seekTo}>
             <div
               className="absolute top-0 h-full rounded-md bg-sky-500/35"
               style={{ left: `${pct(start)}%`, width: `${pct(selDur)}%` }}
@@ -167,24 +167,24 @@ export default function TrimPanel() {
               title="Kéo: điểm kết thúc"
             />
           </div>
-          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Bắt đầu <span className="font-mono text-slate-200">{fmt(start)}</span></span>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-ink2">
+            <span>Bắt đầu <span className="font-mono text-ink">{fmt(start)}</span></span>
             <span>Đoạn <span className="font-mono text-sky-300">{fmt(selDur)}</span></span>
-            <span>Kết thúc <span className="font-mono text-slate-200">{fmt(end)}</span></span>
+            <span>Kết thúc <span className="font-mono text-ink">{fmt(end)}</span></span>
           </div>
-          {duration <= 0 ? <p className="mt-1 text-[11px] text-slate-500">Đang tải video…</p> : null}
+          {duration <= 0 ? <p className="mt-1 text-[11px] text-ink3">Đang tải video…</p> : null}
         </div>
 
-        {error ? <p className="text-xs text-red-400">{error}</p> : null}
+        {error ? <p className="text-xs text-rose">{error}</p> : null}
 
         <div className="flex justify-end gap-2">
-          <button type="button" className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs hover:bg-white/10" onClick={close}>
+          <button type="button" className="rounded-md border border-line2 bg-fill px-3 py-1 text-xs hover:bg-fill2" onClick={close}>
             Huỷ
           </button>
           <button
             type="button"
             disabled={busy || selDur <= 0 || duration <= 0}
-            className="rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40"
+            className="rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-ink hover:bg-sky-500 disabled:opacity-40"
             onClick={() => void confirm()}
           >
             {busy ? "Đang cắt…" : "Cắt & thêm vào canvas"}

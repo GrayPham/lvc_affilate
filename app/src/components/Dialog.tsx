@@ -21,15 +21,15 @@ export default function Dialog({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full flex-col rounded-xl border border-white/10 bg-neutral-900 shadow-2xl"
+        className="flex max-h-[85vh] w-full flex-col rounded-xl border border-line bg-panel shadow-2xl"
         style={{ maxWidth: width }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 className="text-sm font-semibold text-white">{title}</h2>
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <h2 className="text-sm font-semibold text-ink">{title}</h2>
           <button
             type="button"
-            className="rounded-md p-1 text-neutral-500 hover:bg-white/10 hover:text-neutral-200"
+            className="rounded-md p-1 text-ink3 hover:bg-fill2 hover:text-ink"
             onClick={onClose}
             aria-label="Đóng"
           >
