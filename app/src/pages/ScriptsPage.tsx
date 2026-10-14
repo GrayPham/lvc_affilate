@@ -1,90 +1,299 @@
-// Man "Kịch bản" (P3c Task 2): `ScriptList` (trai) + `SceneTable` (phai). Tu cap nhat `doc` (trang
-// thai tung canh) qua `useEngineActivity().events` khi mot su kien `task_stage/task_done/task_failed`
-// CHAM toi mot `taskId` thuoc kich ban DANG MO (debounce 300ms) — cung mot mo hinh voi
-// `pages/TasksPage.tsx` (KHONG tu `listenEngine` rieng o day: `src/store/engine_bridge.ts`, goi tu
-// `main.tsx`, la subscription DUY NHAT cho kenh `engine://event` suot vong doi app; trang nay chi
-// DOC `useEngineActivity().events`, xem doc file do).
+// Màn "Kho kịch bản" — dựng theo `references/lvc-ui-design/screens/Library.dc.html` +
+// `LibraryFree.dc.html`.
 //
-// PHAI dung `engineActivity` (store toan app) chu KHONG phai `useRunStore`: tu khi co nhieu tab
-// workflow, `useRunStore` doi mot `RunStoreProvider` bao ngoai — trang nay nam NGOAI cac tab do
-// nen goi vao se nem loi va lam TRANG ca app.
-import { useEffect, useRef } from "react";
+// "Kịch bản" ở đây LÀ WORKFLOW (quyết định của chủ dự án 2026-10-14): một thứ người dùng dựng và
+// lưu chỉ có MỘT loại duy nhất. Trang này là kho để xem/quản lý, ba nguồn:
+//
+//   Của tôi   — workflow đã lưu (`workflow_list`); bấm là mở lên canvas.
+//   Công khai — mẫu dựng sẵn trong app (`template_list("public")`).
+//   Miễn phí  — workflow cộng đồng trên GitHub (`template_list("remote")`).
+//
+// Mở lên canvas KHÔNG gọi thẳng graph store được: store đó nằm sau `GraphStoreProvider` của từng
+// tab workflow, trang này ở ngoài. Nên đặt một yêu cầu vào `useOpenWorkflow`, `WorkflowTabs` nhận
+// và nạp vào tab đang xem (xem `store/openWorkflow.ts`).
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useEngineActivity } from "../store/engineActivity";
-import { useScriptsStore } from "../store/scripts";
-import ScriptList from "../components/ScriptList";
-import SceneTable from "../components/SceneTable";
-import type { EngineEvent } from "../ipc/types";
+import { templateGet, templateList, workflowGet, workflowList } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
+import { useOpenWorkflow } from "../store/openWorkflow";
+import { useUiStore } from "../store/uiStore";
+import WorkflowCard, { coverFor } from "../components/WorkflowCard";
+import { Button, SearchInput } from "../ui/primitives";
+import type { TemplateMeta, TemplateScope, WorkflowMeta } from "../ipc/types";
 
-const REFRESH_DEBOUNCE_MS = 300;
+const TABS: ReadonlyArray<readonly [TemplateScope, string]> = [
+  ["private", "Của tôi"],
+  ["public", "Công khai"],
+  ["remote", "Miễn phí"],
+];
 
-/** `taskId` cua `event` neu no la MOT trong 3 kieu su kien cham toi mot task cu the
- * (`node_state`/`run_done` khong mang `taskId` rieng — xem `store/run.ts`); `null` neu khong. */
-function taskIdOf(event: EngineEvent): string | null {
-  if (event.type === "task_stage" || event.type === "task_done" || event.type === "task_failed") {
-    return event.taskId;
-  }
-  return null;
+const SUBTITLE: Record<TemplateScope, string> = {
+  private: "Workflow bạn đã lưu — bấm để mở lại trên canvas.",
+  public: "Workflow mẫu dựng sẵn trong ứng dụng — dùng ngay, không cần mạng.",
+  remote: "Workflow cộng đồng publish lên GitHub — tải về để dùng và sửa trong “Của tôi”.",
+};
+
+const SEARCH_HINT: Record<TemplateScope, string> = {
+  private: "Tìm theo tên workflow…",
+  public: "Tìm theo tên hoặc mô tả…",
+  remote: "Tìm theo tên hoặc mô tả…",
+};
+
+/** Tiêu đề nhóm + gạch ngang, đúng kiểu bản thiết kế. */
+function GroupHeading({ children }: { children: string }) {
+  return (
+    <h2 className="m-0 flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.1em] text-ink3 uppercase">
+      {children}
+      <span className="h-px flex-1 bg-line" />
+    </h2>
+  );
+}
+
+function CardGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+      {children}
+    </div>
+  );
 }
 
 export default function ScriptsPage() {
-  const refreshList = useScriptsStore((s) => s.refreshList);
-  const refreshDoc = useScriptsStore((s) => s.refreshDoc);
-  const doc = useScriptsStore((s) => s.doc);
-  const clearRunIdIfMatches = useScriptsStore((s) => s.clearRunIdIfMatches);
-  const events = useEngineActivity((s) => s.events);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [scope, setScope] = useState<TemplateScope>("private");
+  const [query, setQuery] = useState("");
+  const [mine, setMine] = useState<WorkflowMeta[] | null>(null);
+  const [templates, setTemplates] = useState<TemplateMeta[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const requestOpen = useOpenWorkflow((s) => s.request);
+  const setActiveTab = useUiStore((s) => s.setActiveTab);
+
+  const load = useCallback(async (): Promise<void> => {
+    setError(null);
+    if (scope === "private") {
+      setMine(await workflowList());
+      return;
+    }
+    setTemplates(await templateList(scope));
+  }, [scope]);
 
   useEffect(() => {
-    void refreshList();
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
+    let cancelled = false;
+    // Đổi tab thì xoá danh sách cũ, nếu không người dùng thấy thẻ của tab TRƯỚC trong một nhịp.
+    if (scope === "private") {
+      setMine(null);
+    } else {
+      setTemplates(null);
+    }
+    load().catch((e: unknown) => {
+      if (!cancelled) {
+        setError(errorText(e));
       }
+    });
+    return () => {
+      cancelled = true;
     };
-    // `refreshList` la action zustand (tham chieu on dinh) — chi can chay dung mot lan luc mount.
-  }, []);
+  }, [scope, load]);
 
-  // Fix-round 1 (review I1): su kien `run_done` ket thuc CHINH lan chay dang duoc "Dừng tất cả"
-  // theo doi -> xoa `lastRunId` NGAY (khong debounce, chi doi trang thai store, khong goi IPC) —
-  // `clearRunIdIfMatches` tu kiem `runId` co khop khong nen an toan goi cho MOI su kien run_done,
-  // ke ca cua mot kich ban/run khac (khong khop thi khong lam gi).
-  useEffect(() => {
-    const last = events[events.length - 1];
-    if (last && last.type === "run_done") {
-      clearRunIdIfMatches(last.runId);
-    }
-  }, [events, clearRunIdIfMatches]);
+  /** Nạp đồ thị lên canvas rồi chuyển sang tab Workflow. */
+  function openOnCanvas(req: Parameters<typeof requestOpen>[0]): void {
+    requestOpen(req);
+    setActiveTab("workflow");
+  }
 
-  // Moi lan `events` doi tham chieu VA su kien MOI NHAT la mot su kien cham task CUA MOT taskId
-  // thuoc kich ban dang mo (`doc.scenes[].taskId`) -> dat lai debounce 300ms roi doc lai `doc` +
-  // lam moi so dem danh sach kich ban (yeu cau brief Task 2).
-  useEffect(() => {
-    const last = events[events.length - 1];
-    if (!last || !doc) {
-      return;
+  async function handleOpenMine(meta: WorkflowMeta): Promise<void> {
+    setBusyId(meta.id);
+    setError(null);
+    try {
+      const doc = await workflowGet(meta.id);
+      openOnCanvas({
+        graph: doc.graph,
+        workflowId: doc.meta.id,
+        workflowName: doc.meta.name,
+        saved: true,
+      });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusyId(null);
     }
-    const taskId = taskIdOf(last);
-    if (taskId === null) {
-      return;
+  }
+
+  async function handleUseTemplate(meta: TemplateMeta): Promise<void> {
+    setBusyId(meta.id);
+    setError(null);
+    try {
+      const doc = await templateGet(meta.id);
+      // Dùng mẫu = canvas MỚI mang đồ thị đó, CHƯA phải một workflow đã lưu — người dùng tự đặt
+      // tên khi bấm Lưu. Không mượn id của mẫu làm id workflow.
+      openOnCanvas({
+        graph: doc.graph,
+        workflowId: "",
+        workflowName: doc.meta.name,
+        saved: false,
+      });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusyId(null);
     }
-    const belongsToDoc = doc.scenes.some((s) => s.taskId === taskId);
-    if (!belongsToDoc) {
-      return;
+  }
+
+  const q = query.trim().toLowerCase();
+  const visibleMine = useMemo(
+    () => (mine ?? []).filter((m) => q === "" || m.name.toLowerCase().includes(q)),
+    [mine, q],
+  );
+  const visibleTemplates = useMemo(
+    () =>
+      (templates ?? []).filter(
+        (t) =>
+          q === "" ||
+          t.name.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q),
+      ),
+    [templates, q],
+  );
+
+  /** Gom mẫu theo nhóm, giữ thứ tự xuất hiện — khớp cách bản thiết kế trình bày. */
+  const groups = useMemo(() => {
+    const order: string[] = [];
+    const by = new Map<string, TemplateMeta[]>();
+    for (const t of visibleTemplates) {
+      const list = by.get(t.category);
+      if (list) {
+        list.push(t);
+      } else {
+        order.push(t.category);
+        by.set(t.category, [t]);
+      }
     }
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    timerRef.current = setTimeout(() => {
-      void refreshDoc();
-      void refreshList();
-    }, REFRESH_DEBOUNCE_MS);
-  }, [events, doc, refreshDoc, refreshList]);
+    return order.map((name) => ({ name, rows: by.get(name) ?? [] }));
+  }, [visibleTemplates]);
+
+  const loading = scope === "private" ? mine === null : templates === null;
+  const count = scope === "private" ? visibleMine.length : visibleTemplates.length;
 
   return (
-    <div className="flex h-full">
-      <ScriptList />
-      <SceneTable />
+    <div className="flex h-full min-w-0 flex-col overflow-hidden">
+      <header className="flex flex-col gap-3.5 border-b border-line px-6 pt-5 pb-4">
+        <div>
+          <h1 className="text-[20px] font-bold tracking-[-0.01em] text-ink">Kho kịch bản</h1>
+          <p className="mt-1 text-[13px] text-ink3">{SUBTITLE[scope]}</p>
+        </div>
+
+        <div
+          role="tablist"
+          aria-label="Nguồn kịch bản"
+          className="inline-flex gap-0.5 self-start rounded-[11px] border border-line2 bg-fill p-[3px]"
+        >
+          {TABS.map(([s, label]) => {
+            const on = s === scope;
+            return (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => setScope(s)}
+                className={
+                  "inline-flex min-h-9 items-center rounded-lg px-4 text-[13px] " +
+                  (on ? "bg-accent font-bold text-accent-ink" : "text-ink2 hover:text-ink")
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            label="Tìm workflow"
+            placeholder={SEARCH_HINT[scope]}
+          />
+          <span className="text-[13px] text-ink3">
+            {loading ? "Đang tải…" : `${count} workflow`}
+          </span>
+        </div>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-6 overflow-auto px-6 pt-5 pb-7">
+        {error ? <p className="text-[12.5px] text-rose">{error}</p> : null}
+
+        {loading ? null : scope === "private" ? (
+          visibleMine.length === 0 ? (
+            <p className="text-[13px] leading-[1.6] text-ink3">
+              {mine?.length === 0
+                ? "Chưa lưu workflow nào. Dựng trên canvas ở tab Workflow rồi bấm Lưu (Ctrl+S) để cất vào đây."
+                : "Không có workflow nào khớp."}
+            </p>
+          ) : (
+            <CardGrid>
+              {visibleMine.map((meta) => (
+                <WorkflowCard
+                  key={meta.id}
+                  title={meta.name}
+                  description={`Sửa lần cuối ${new Date(meta.updatedAt * 1000).toLocaleString("vi-VN")}`}
+                  cover={coverFor(meta.id)}
+                  nodeCount={meta.nodeCount}
+                  action={
+                    <Button
+                      variant="primary"
+                      disabled={busyId !== null}
+                      onClick={() => void handleOpenMine(meta)}
+                    >
+                      {busyId === meta.id ? "Đang mở…" : "Mở trên canvas"}
+                    </Button>
+                  }
+                />
+              ))}
+            </CardGrid>
+          )
+        ) : groups.length === 0 ? (
+          <p className="text-[13px] text-ink3">
+            {scope === "remote"
+              ? "Chưa tải được kho cộng đồng, hoặc chưa có workflow nào được publish."
+              : "Không có workflow nào khớp."}
+          </p>
+        ) : (
+          groups.map((g) => (
+            <section key={g.name} className="flex flex-col gap-3">
+              <GroupHeading>{g.name}</GroupHeading>
+              <CardGrid>
+                {g.rows.map((meta) => (
+                  <WorkflowCard
+                    key={meta.id}
+                    title={meta.name}
+                    description={meta.description}
+                    cover={coverFor(meta.id, meta.thumbnail)}
+                    nodeCount={meta.nodeCount}
+                    topLeftBadge={scope === "remote" ? meta.category : undefined}
+                    footer={
+                      scope === "remote" && meta.version !== "" ? (
+                        <span className="font-mono text-[11px] text-accent-text">
+                          {meta.version}
+                        </span>
+                      ) : undefined
+                    }
+                    action={
+                      <Button
+                        variant="primary"
+                        disabled={busyId !== null}
+                        onClick={() => void handleUseTemplate(meta)}
+                      >
+                        {busyId === meta.id ? "Đang mở…" : "Dùng workflow"}
+                      </Button>
+                    }
+                  />
+                ))}
+              </CardGrid>
+            </section>
+          ))
+        )}
+      </div>
     </div>
   );
 }

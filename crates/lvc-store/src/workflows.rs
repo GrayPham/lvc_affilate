@@ -32,6 +32,20 @@ pub struct WorkflowMeta {
     pub id: String,
     pub name: String,
     pub updated_at: f64,
+    /// Số node trong đồ thị — để kho workflow hiện được "N node" trên thẻ mà không phải tải cả
+    /// đồ thị của từng workflow. Đếm từ cột `json`; đồ thị hỏng → 0 (thà hiện 0 còn hơn chặn cả
+    /// danh sách vì một dòng hỏng).
+    pub node_count: u32,
+}
+
+/// Đếm node trong một đồ thị đã mã hoá JSON. Không parse thành `Graph` (lvc-store KHÔNG phụ thuộc
+/// `lvc-core`) — chỉ cần độ dài mảng `nodes`. Hỏng/thiếu → 0.
+fn count_nodes(json: &str) -> u32 {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get("nodes").and_then(|n| n.as_array()).map(Vec::len))
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone)]
@@ -96,16 +110,19 @@ impl WorkflowRepo {
     /// # Errors
     /// `StoreError::Sqlx` khi truy vấn thất bại.
     pub async fn list_meta(&self) -> Result<Vec<WorkflowMeta>, StoreError> {
-        let rows =
-            sqlx::query("SELECT id, name, updated_at FROM workflows ORDER BY updated_at DESC")
-                .fetch_all(self.db.pool())
-                .await?;
+        let rows = sqlx::query(
+            "SELECT id, name, updated_at, json FROM workflows ORDER BY updated_at DESC",
+        )
+        .fetch_all(self.db.pool())
+        .await?;
         rows.iter()
             .map(|r| {
+                let json: String = r.try_get("json")?;
                 Ok(WorkflowMeta {
                     id: r.try_get("id")?,
                     name: r.try_get("name")?,
                     updated_at: r.try_get("updated_at")?,
+                    node_count: count_nodes(&json),
                 })
             })
             .collect()

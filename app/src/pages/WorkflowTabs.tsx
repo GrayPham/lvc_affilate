@@ -21,6 +21,7 @@ import {
 import type { PersistedCanvas } from "../store/graph";
 import { createRunStore, RunStoreProvider, type RunStoreApi } from "../store/run";
 import { unregisterRunOwner } from "../store/runRegistry";
+import { useOpenWorkflow } from "../store/openWorkflow";
 import { runCancel } from "../ipc/commands";
 import { confirmDialog } from "../store/dialog";
 
@@ -128,6 +129,29 @@ export default function WorkflowTabs() {
   // thuoc cua moi callback — doc tai THOI DIEM goi, khong phai luc dong closure.
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+
+  // Nhan yeu cau "mo do thi nay" tu mot TRANG KHAC (vd Kho kịch bản) — nap vao tab DANG XEM.
+  // Day la noi duy nhat biet tab nao dang xem, nen cung la noi duy nhat lam duoc viec nay.
+  const pendingOpen = useOpenWorkflow((s) => s.pending);
+  const consumeOpen = useOpenWorkflow((s) => s.consume);
+  useEffect(() => {
+    if (pendingOpen === null) {
+      return;
+    }
+    const tab = tabsRef.current.find((t) => t.id === activeId);
+    if (!tab) {
+      return;
+    }
+    const g = tab.graphStore.getState();
+    g.loadGraph(pendingOpen.graph);
+    g.setWorkflowMeta(
+      // Dung mau -> chua co id that, cap mot id tam de tab van co danh tinh rieng.
+      pendingOpen.workflowId === "" ? newEphemeralWorkflowId() : pendingOpen.workflowId,
+      pendingOpen.workflowName,
+      pendingOpen.saved,
+    );
+    consumeOpen();
+  }, [pendingOpen, activeId, consumeOpen]);
 
   // Luu CA phien (moi tab + tab dang xem) moi khi bat ky canvas nao doi. Gop 500ms de keo mot node
   // khong sinh hang tram luot ghi. Day la NGUON GHI DUY NHAT cua khoa phien — store khong tu ghi.

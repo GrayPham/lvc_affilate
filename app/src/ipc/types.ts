@@ -426,6 +426,8 @@ export const WorkflowMetaSchema = z.object({
   id: z.string(),
   name: z.string(),
   updatedAt: z.number(),
+  /** So node trong do thi — the trong kho hien "N node" ma khong phai tai ca do thi. */
+  nodeCount: z.number().default(0),
 });
 export type WorkflowMeta = z.infer<typeof WorkflowMetaSchema>;
 
@@ -940,6 +942,8 @@ export const TemplateMetaSchema = z.object({
   category: z.string().default("Cơ bản"),
   thumbnail: z.string(),
   updatedAt: z.number(),
+  /** So node cua do thi — the trong kho hien "N node" ma khong phai tai ca do thi tung mau. */
+  nodeCount: z.number().default(0),
   /** CHI muc cong dong co; rong voi mau dung san/rieng. Dung de ghi nguon goc khi luu workflow
    * dung tu mau nay (`workflowSetOrigin`) -> ve sau biet co ban moi hay khong. */
   version: z.string().default(""),

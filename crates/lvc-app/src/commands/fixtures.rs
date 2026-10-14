@@ -430,6 +430,7 @@ fn fixtures_khop_ban_da_commit() {
             id: "wf_1".to_string(),
             name: "Demo".to_string(),
             updated_at: 1_700_000_000.0,
+            node_count: 3,
         })
         .unwrap(),
     );
@@ -515,6 +516,7 @@ fn template_list_fixture() -> Value {
             category: "Cơ bản".to_string(),
             thumbnail: String::new(),
             updated_at: 0.0,
+            node_count: 3,
             version: String::new(),
         },
         TemplateMeta {
@@ -525,6 +527,7 @@ fn template_list_fixture() -> Value {
             category: "Cơ bản".to_string(),
             thumbnail: String::new(),
             updated_at: 1_700_000_000.0,
+            node_count: 3,
             version: String::new(),
         },
     ])
@@ -543,6 +546,7 @@ fn template_doc_fixture() -> crate::commands::templates::TemplateDoc {
             category: "Cơ bản".to_string(),
             thumbnail: String::new(),
             updated_at: 0.0,
+            node_count: 3,
             version: String::new(),
         },
         graph: three_scene_graph(),

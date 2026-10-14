@@ -26,6 +26,7 @@ function makeMeta(overrides: Partial<TemplateMeta> = {}): TemplateMeta {
     category: "Cơ bản",
     thumbnail: "",
     updatedAt: 1700000000,
+    nodeCount: 3,
     // Mau rieng khong co phien ban — chi muc cong dong moi co (xem `TemplateMetaSchema`).
     version: "",
     ...overrides,

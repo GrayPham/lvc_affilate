@@ -31,6 +31,9 @@ pub struct TemplateMeta {
     /// data URL PNG hoặc rỗng (Public không có).
     pub thumbnail: String,
     pub updated_at: f64,
+    /// Số node của đồ thị — thẻ trong kho hiện "N node" mà không phải tải cả đồ thị từng mẫu.
+    #[serde(default)]
+    pub node_count: u32,
     /// Phiên bản — CHỈ mục cộng đồng có; rỗng với mẫu dựng sẵn/riêng và với mục publish trước khi
     /// trường này tồn tại. UI dùng nó để ghi nguồn gốc khi lưu workflow dựng từ mẫu này
     /// (`commands::updates::workflow_set_origin`), nhờ đó về sau biết có bản mới hay không.
@@ -135,6 +138,8 @@ pub(crate) const PUBLIC: [(&str, &str); 17] = [
 
 fn public_doc(id: &str, raw: &str) -> Option<TemplateDoc> {
     let t: PublicTemplate = serde_json::from_str(raw).ok()?;
+    let graph = migrate(t.graph);
+    let node_count = u32::try_from(graph.nodes.len()).unwrap_or(0);
     Some(TemplateDoc {
         meta: TemplateMeta {
             id: id.to_string(),
@@ -144,9 +149,10 @@ fn public_doc(id: &str, raw: &str) -> Option<TemplateDoc> {
             category: t.category,
             thumbnail: String::new(),
             updated_at: 0.0,
+            node_count,
             version: String::new(),
         },
-        graph: migrate(t.graph),
+        graph,
     })
 }
 
@@ -166,8 +172,19 @@ fn remote_meta(row: &RemoteTemplateRow) -> TemplateMeta {
         },
         thumbnail: row.thumbnail.clone(),
         updated_at: row.updated_at,
+        node_count: count_nodes_json(&row.graph),
         version: row.version.clone(),
     }
+}
+
+/// Đếm node từ đồ thị đã mã hoá JSON mà KHÔNG parse thành `Graph` — mục cache hỏng chỉ mất con số
+/// trên thẻ, không làm hỏng cả danh sách.
+fn count_nodes_json(json: &str) -> u32 {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get("nodes").and_then(|n| n.as_array()).map(Vec::len))
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(0)
 }
 
 /// Fetch `index.json` mới nhất rồi THAY TOÀN BỘ cache (xem `RemoteTemplateRepo::replace_all`).
@@ -240,6 +257,7 @@ pub async fn template_list_impl<D: BrowserDriver + 'static>(
     }
     if want != Some("public") && want != Some("remote") {
         for row in TemplateRepo::new(&ctx.db).list().await? {
+            let node_count = count_nodes_json(&row.graph);
             out.push(TemplateMeta {
                 id: row.id,
                 name: row.name,
@@ -249,6 +267,7 @@ pub async fn template_list_impl<D: BrowserDriver + 'static>(
                 thumbnail: row.thumbnail,
                 #[allow(clippy::cast_precision_loss)]
                 updated_at: row.updated_at as f64,
+                node_count,
                 version: String::new(),
             });
         }
@@ -326,6 +345,7 @@ pub async fn template_get_impl<D: BrowserDriver + 'static>(
             thumbnail: row.thumbnail,
             #[allow(clippy::cast_precision_loss)]
             updated_at: row.updated_at as f64,
+            node_count: u32::try_from(graph.nodes.len()).unwrap_or(0),
             version: String::new(),
         },
         graph: migrate(graph),
@@ -381,6 +401,7 @@ pub async fn template_save_private_impl<D: BrowserDriver + 'static>(
         thumbnail: row.thumbnail,
         #[allow(clippy::cast_precision_loss)]
         updated_at: row.updated_at as f64,
+        node_count: count_nodes_json(&row.graph),
         version: String::new(),
     })
 }

@@ -1,5 +1,6 @@
 {
   "id": "wf_1",
   "name": "Demo",
-  "updatedAt": 1700000000.0
+  "updatedAt": 1700000000.0,
+  "nodeCount": 3
 }

@@ -113,6 +113,7 @@ pub async fn workflow_save_impl<D: BrowserDriver + 'static>(
         id,
         name: name.to_string(),
         updated_at,
+        node_count: u32::try_from(graph.nodes.len()).unwrap_or(0),
     })
 }
 
@@ -167,6 +168,7 @@ pub async fn workflow_get_impl<D: BrowserDriver + 'static>(
             id: row.id,
             name: row.name,
             updated_at: row.updated_at,
+            node_count: u32::try_from(graph.nodes.len()).unwrap_or(0),
         },
         graph,
     })
