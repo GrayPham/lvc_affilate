@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AddAccountDialog from "../components/AddAccountDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
 import EditAccountDialog, { type EditTarget } from "../components/EditAccountDialog";
 import { useAccountsStore } from "../store/accounts";
 import { useCredentialsStore } from "../store/credentials";
@@ -122,8 +123,14 @@ export default function AccountsPage() {
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<AccountState | "all">("all");
   const [nodeFilter, setNodeFilter] = useState<NodeTypeKey | "all">("all");
+  /** Lọc theo nền tảng (`dola`/`museai`/…). Chỉ hiện những nền tảng THỰC SỰ có tài khoản — bày
+   * ra 13 nền tảng rỗng chỉ làm người dùng phải đọc nhiều hơn mà không lọc được gì. */
+  const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  /** `true` = đang hỏi trước khi xoá hàng loạt. Xoá tài khoản là KHÔNG hoàn tác được (mất cả
+   * cookie/phiên đăng nhập đã nạp), nên không bao giờ xoá thẳng từ một cú bấm. */
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   useEffect(() => {
     void loadDola();
@@ -209,6 +216,15 @@ export default function AccountsPage() {
     return m;
   }, [rows]);
 
+  /** `[khoá nền tảng, số tài khoản]`, nhiều nhất trước — chỉ nền tảng đang CÓ tài khoản. */
+  const platformCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) {
+      m.set(r.platformKey, (m.get(r.platformKey) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [rows]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
@@ -216,6 +232,9 @@ export default function AccountsPage() {
         return false;
       }
       if (nodeFilter !== "all" && !r.nodeTypes.includes(nodeFilter)) {
+        return false;
+      }
+      if (platformFilter !== "all" && r.platformKey !== platformFilter) {
         return false;
       }
       if (q === "") {
@@ -228,7 +247,7 @@ export default function AccountsPage() {
         platformLook(r.platformKey as never).name.toLowerCase().includes(q)
       );
     });
-  }, [rows, query, stateFilter, nodeFilter]);
+  }, [rows, query, stateFilter, nodeFilter, platformFilter]);
 
   const activeCount = stateCounts.get("active") ?? 0;
   const selectedRows = visible.filter((r) => selected.has(r.key));
@@ -308,6 +327,7 @@ export default function AccountsPage() {
   }
 
   async function handleBulkDelete(): Promise<void> {
+    setConfirmBulkDelete(false);
     setBulkBusy(true);
     try {
       for (const row of selectedRows) {
@@ -382,6 +402,27 @@ export default function AccountsPage() {
           ))}
         </div>
 
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="w-[120px] shrink-0 text-[10.5px] font-semibold uppercase tracking-[.1em] text-ink3">
+            Nền tảng
+          </span>
+          <Chip
+            label="Tất cả"
+            count={rows.length}
+            on={platformFilter === "all"}
+            onClick={() => setPlatformFilter("all")}
+          />
+          {platformCounts.map(([key, count]) => (
+            <Chip
+              key={key}
+              label={platformLook(key as never).name}
+              count={count}
+              on={platformFilter === key}
+              onClick={() => setPlatformFilter(key)}
+            />
+          ))}
+        </div>
+
         <div className="flex flex-wrap items-center gap-2.5">
           <SearchInput
             value={query}
@@ -397,7 +438,7 @@ export default function AccountsPage() {
               <Button disabled={bulkBusy} onClick={() => void handleBulkVerify()}>
                 {bulkBusy ? "Đang kiểm tra…" : "Kiểm tra"}
               </Button>
-              <Button variant="danger" disabled={bulkBusy} onClick={() => void handleBulkDelete()}>
+              <Button variant="danger" disabled={bulkBusy} onClick={() => setConfirmBulkDelete(true)}>
                 Xoá
               </Button>
             </>
@@ -625,6 +666,23 @@ export default function AccountsPage() {
             Xoá
           </button>
         </div>
+      ) : null}
+
+      {confirmBulkDelete ? (
+        <ConfirmDialog
+          title={`Xoá ${selectedRows.length} tài khoản?`}
+          body="Xoá tài khoản là không hoàn tác được: cookie và phiên đăng nhập đã nạp sẽ mất, muốn dùng lại phải đăng nhập từ đầu."
+          list={selectedRows.slice(0, 8).map((r) => ({ a: r.label, b: r.sublabel }))}
+          note={
+            selectedRows.length > 8
+              ? `…và ${selectedRows.length - 8} tài khoản nữa. Workflow đang chạy bằng các tài khoản này sẽ lỗi ở node tương ứng.`
+              : "Workflow đang chạy bằng các tài khoản này sẽ lỗi ở node tương ứng."
+          }
+          okLabel={`Xoá ${selectedRows.length} tài khoản`}
+          busy={bulkBusy}
+          onCancel={() => setConfirmBulkDelete(false)}
+          onConfirm={() => void handleBulkDelete()}
+        />
       ) : null}
 
       {showAdd ? <AddAccountDialog onClose={() => setShowAdd(false)} /> : null}
