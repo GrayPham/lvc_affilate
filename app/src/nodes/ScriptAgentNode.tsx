@@ -70,7 +70,7 @@ export default function ScriptAgentNode({ id, data, selected }: NodeProps<Script
         id="brief"
         style={{ background: PORT_TYPE_COLOR.text }}
       />
-      <NodeShell label={NODE_LABEL_VI.script_agent} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.script_agent} kind="script_agent" selected={selected} errors={errors} runState={runState}>
         <div className="flex flex-col gap-1.5">
           <textarea
             className={`${FIELD_CLASS} h-16 resize-none`}

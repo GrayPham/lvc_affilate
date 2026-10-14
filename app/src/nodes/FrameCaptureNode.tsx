@@ -22,7 +22,7 @@ export default function FrameCaptureNode({ id, data, selected }: NodeProps<Frame
     <>
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
-      <NodeShell label={NODE_LABEL_VI.frame_capture} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.frame_capture} kind="frame_capture" selected={selected} errors={errors} runState={runState}>
         <label className="flex items-center gap-2 text-[11px] text-ink2">
           Thời điểm
           <input

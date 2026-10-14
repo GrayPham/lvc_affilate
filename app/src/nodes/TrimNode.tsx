@@ -25,7 +25,7 @@ export default function TrimNode({ id, data, selected }: NodeProps<TrimRFNode>) 
     <>
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
-      <NodeShell label={NODE_LABEL_VI.trim} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.trim} kind="trim" selected={selected} errors={errors} runState={runState}>
         <div className="flex items-center gap-2 text-[11px] text-ink2">
           <label className="flex items-center gap-1">
             Từ

@@ -29,7 +29,7 @@ export default function GoogleImageNode({ id, data, selected }: NodeProps<Google
     <>
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="prompt" style={{ background: PORT_TYPE_COLOR.text }} />
-      <MediaCard label={NODE_LABEL_VI.google_image} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.google_image} kind="google_image" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="image" path={outputPath} label={`Ảnh · ${ASPECT_LABEL_VI[data.aspect] ?? data.aspect}`} />
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.image }} />

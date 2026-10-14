@@ -44,7 +44,7 @@ export default function TtsNode({ id, selected }: NodeProps<TtsRFNode>) {
     <>
       <NodeFloatingToolbar nodeId={id} actions={actions} />
       <Handle type="target" position={Position.Left} id="prompt" style={{ background: PORT_TYPE_COLOR.text }} />
-      <MediaCard label={NODE_LABEL_VI.tts} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.tts} kind="tts" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="audio" path={outputPath} label="Audio" />
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.audio }} />

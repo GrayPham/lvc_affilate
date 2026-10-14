@@ -32,7 +32,7 @@ export default function ScriptGenNode({ id, data, selected }: NodeProps<ScriptGe
         id="brief"
         style={{ background: PORT_TYPE_COLOR.text }}
       />
-      <NodeShell label={NODE_LABEL_VI.script_gen} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.script_gen} kind="script_gen" selected={selected} errors={errors} runState={runState}>
         <div className="flex flex-col gap-1.5">
           <textarea
             className={`${FIELD_CLASS} h-16 resize-none`}

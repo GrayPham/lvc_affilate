@@ -30,7 +30,7 @@ export default function GoogleVideoNode({ id, data, selected }: NodeProps<Google
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="prompt" style={{ top: "30%", background: PORT_TYPE_COLOR.text }} />
       <Handle type="target" position={Position.Left} id="ref" style={{ top: "70%", background: PORT_TYPE_COLOR.image }} />
-      <MediaCard label={NODE_LABEL_VI.google_video} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.google_video} kind="google_video" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="video" path={outputPath} label={`Video · ${ASPECT_LABEL_VI[data.aspect] ?? data.aspect}`} />
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.video }} />

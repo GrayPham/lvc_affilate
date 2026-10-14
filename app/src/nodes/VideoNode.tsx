@@ -160,7 +160,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
         id="refs"
         style={{ top: "70%", background: PORT_TYPE_COLOR.image }}
       />
-      <MediaCard label={NODE_LABEL_VI.dola_video} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.dola_video} kind="dola_video" selected={selected} errors={errors} runState={runState} wide>
         {/* Vung xem truoc: video ket qua neu da chay xong; chua co thi placeholder toi + glyph play. */}
         <div
           className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-fill2 to-fill"

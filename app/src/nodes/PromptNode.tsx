@@ -46,7 +46,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptRFNod
   return (
     <>
       <NodeFloatingToolbar nodeId={id} />
-      <NodeShell label={NODE_LABEL_VI.prompt} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.prompt} kind="prompt" selected={selected} errors={errors} runState={runState}>
         <textarea
           className="nodrag h-24 w-full resize-none rounded-md border border-line bg-fill p-1.5 text-xs text-ink placeholder-slate-500 outline-none focus:border-sky-400/60"
           value={data.text}

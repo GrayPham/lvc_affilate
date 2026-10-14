@@ -52,7 +52,7 @@ export default function MuseaiVideoNode({ id, selected }: NodeProps<MuseaiVideoR
     <>
       <NodeFloatingToolbar nodeId={id} actions={actions} />
       <Handle type="target" position={Position.Left} id="prompt" style={{ background: PORT_TYPE_COLOR.text }} />
-      <MediaCard label={NODE_LABEL_VI.museai_video} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.museai_video} kind="museai_video" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="video" path={outputPath} label="Video" />
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.video }} />

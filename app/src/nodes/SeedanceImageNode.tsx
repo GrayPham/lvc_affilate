@@ -28,7 +28,7 @@ export default function SeedanceImageNode({ id, data, selected }: NodeProps<Seed
     <>
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="prompt" style={{ background: PORT_TYPE_COLOR.text }} />
-      <MediaCard label={NODE_LABEL_VI.seedance_image} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.seedance_image} kind="seedance_image" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="image" path={outputPath} label={`Ảnh · ${ASPECT_LABEL_VI[data.aspect] ?? data.aspect}`} />
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.image }} />

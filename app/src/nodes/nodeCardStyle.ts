@@ -28,3 +28,70 @@ export function nodeBorderClass(opts: {
   }
   return "border-line";
 }
+
+
+// ---------------------------------------------------------------------------------------------
+// Màu theo LOẠI node — để nhìn canvas là biết mỗi node làm gì, không phải đọc từng nhãn.
+//
+// Thân thẻ giữ trung tính (chữ phải dễ đọc); màu chỉ nằm ở VIỀN TRÊN + chip nhãn. Dùng đúng bộ
+// `--tag-*` mà bảng Tài khoản/thẻ workflow đang dùng, nên một loại node chỉ có MỘT màu trong cả
+// app — học một lần dùng mọi nơi.
+// ---------------------------------------------------------------------------------------------
+
+export type NodeTone = "video" | "image" | "script" | "audio" | "io" | "neutral";
+
+/** `kind` của node -> tông màu. Kind lạ (node mới chưa khai) -> `neutral`, không đoán bừa. */
+export function toneForKind(kind: string): NodeTone {
+  if (kind.includes("video") && kind !== "load_video") {
+    return "video";
+  }
+  if (kind.includes("image")) {
+    return "image";
+  }
+  if (kind.startsWith("script") || kind === "prompt" || kind === "note") {
+    return "script";
+  }
+  if (kind.startsWith("audio") || kind === "tts") {
+    return "audio";
+  }
+  if (kind === "save" || kind === "load_video" || kind === "concat" || kind === "trim" || kind === "frame_capture") {
+    return "io";
+  }
+  return "neutral";
+}
+
+/** Lớp cho VIỀN TRÊN của thẻ (dải màu 3px). */
+export function toneEdgeClass(tone: NodeTone): string {
+  switch (tone) {
+    case "video":
+      return "bg-tag-video";
+    case "image":
+      return "bg-tag-image";
+    case "script":
+      return "bg-tag-script";
+    case "audio":
+      return "bg-rest";
+    case "io":
+      return "bg-ink3";
+    default:
+      return "bg-line2";
+  }
+}
+
+/** Lớp cho CHIP nhãn ở đầu thẻ (nền mờ + chữ cùng tông). */
+export function toneChipClass(tone: NodeTone): string {
+  switch (tone) {
+    case "video":
+      return "bg-tag-video/12 text-tag-video";
+    case "image":
+      return "bg-tag-image/12 text-tag-image";
+    case "script":
+      return "bg-tag-script/12 text-tag-script";
+    case "audio":
+      return "bg-rest/12 text-rest";
+    case "io":
+      return "bg-fill text-ink2";
+    default:
+      return "bg-fill text-ink2";
+  }
+}

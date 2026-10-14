@@ -7,10 +7,12 @@ import NodeStatusBadge from "../components/NodeStatusBadge";
 import type { NodeRunState } from "../store/run";
 import type { GraphError } from "../ipc/types";
 import { formatGraphError } from "../graph/errors";
-import { nodeBorderClass } from "./nodeCardStyle";
+import { nodeBorderClass, toneEdgeClass, toneForKind } from "./nodeCardStyle";
 
 interface MediaCardProps {
   label: string;
+  /** `kind` của node — quyết định tông màu (xem `toneForKind`). Bỏ trống = trung tính. */
+  kind?: string;
   selected: boolean;
   errors?: GraphError[];
   runState?: NodeRunState;
@@ -85,8 +87,9 @@ const DOT_CLASS: Record<string, string> = {
   cancelled: "bg-amber-400",
 };
 
-export default function MediaCard({ label, selected, errors, runState, wide, onRename, children }: MediaCardProps) {
+export default function MediaCard({ label, kind, selected, errors, runState, wide, onRename, children }: MediaCardProps) {
   const hasErrors = Boolean(errors && errors.length > 0);
+  const tone = toneForKind(kind ?? "");
   const dotClass = runState ? (DOT_CLASS[runState.state] ?? "bg-ink3") : "bg-line2";
   return (
     <div
@@ -97,6 +100,8 @@ export default function MediaCard({ label, selected, errors, runState, wide, onR
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >
+      {/* Dải màu theo loại node — xem `toneForKind`. */}
+      <span className={"absolute inset-x-0 top-0 z-10 h-[3px] " + toneEdgeClass(tone)} />
       {/* Than the = vung xem truoc (KÉO node bằng chính vùng này — media để KHÔNG `nodrag`) */}
       <div className="relative">{children}</div>
 

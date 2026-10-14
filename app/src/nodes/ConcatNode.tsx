@@ -43,7 +43,7 @@ export default function ConcatNode({ id, selected }: NodeProps<ConcatRFNode>) {
     <>
       <NodeFloatingToolbar nodeId={id} actions={actions} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
-      <MediaCard label={NODE_LABEL_VI.concat} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.concat} kind="concat" selected={selected} errors={errors} runState={runState} wide>
         <div
           className="relative flex aspect-video w-full items-center justify-center bg-gradient-to-br from-fill2 to-fill"
           {...(videoSrc ? hp.hover : {})}

@@ -58,7 +58,7 @@ export default function SaveNode({ id, data, selected }: NodeProps<SaveRFNode>) 
         id="audio"
         style={{ top: "75%", background: PORT_TYPE_COLOR.audio }}
       />
-      <NodeShell label={NODE_LABEL_VI.save} selected={selected} errors={errors} runState={runState}>
+      <NodeShell label={NODE_LABEL_VI.save} kind="save" selected={selected} errors={errors} runState={runState}>
         <button
           type="button"
           className="nodrag rounded-md border border-line bg-fill px-2 py-1 text-xs text-ink hover:bg-fill2"

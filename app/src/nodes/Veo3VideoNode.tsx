@@ -53,7 +53,7 @@ export default function Veo3VideoNode({ id, data, selected }: NodeProps<Veo3Vide
       <NodeFloatingToolbar nodeId={id} actions={actions} />
       <Handle type="target" position={Position.Left} id="prompt" style={{ top: "30%", background: PORT_TYPE_COLOR.text }} />
       <Handle type="target" position={Position.Left} id="refs" style={{ top: "70%", background: PORT_TYPE_COLOR.image }} />
-      <MediaCard label={NODE_LABEL_VI.veo3_video} selected={selected} errors={errors} runState={runState} wide>
+      <MediaCard label={NODE_LABEL_VI.veo3_video} kind="veo3_video" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="video" path={outputPath} label={`Video · ${data.aspect === "landscape" ? "Ngang" : "Dọc"}`} />
       </MediaCard>
       <Handle type="source" position={Position.Right} id="out" style={{ background: PORT_TYPE_COLOR.video }} />
