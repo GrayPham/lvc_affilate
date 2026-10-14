@@ -22,6 +22,16 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
   }
 }
 
+/** Doc co bool da luu ("1"/"0"); hong/khong co -> mac dinh. */
+function readBool(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : raw === "1";
+  } catch {
+    return fallback;
+  }
+}
+
 function store(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
@@ -39,6 +49,13 @@ const initialTheme = readStored<Theme>(THEME_KEY, ["dark", "light"], "dark");
 applyTheme(initialTheme);
 
 interface UiState {
+  /** `true` = video xem truoc trong node PHAT IM TIENG.
+   *
+   * Mac dinh `true` vi trinh duyet CHAN tu phat khi co tieng — re chuot vao ma may ruc tieng cung
+   * la kieu lam nguoi dung giat minh. Bam nut loa (mot cu cham that) moi mo tieng, va luu lai cho
+   * cac lan sau. */
+  previewMuted: boolean;
+  togglePreviewMuted: () => void;
   activeTab: TabId;
   setActiveTab: (tab: TabId) => void;
   /** Thu gon sidebar con dai icon (nut tron noi o mep phai thanh ben — xem `App.tsx`). */
@@ -50,6 +67,13 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
+  previewMuted: readBool("lvc.ui.previewMuted", true),
+  togglePreviewMuted: () =>
+    set((st) => {
+      const next = !st.previewMuted;
+      store("lvc.ui.previewMuted", next ? "1" : "0");
+      return { previewMuted: next };
+    }),
   activeTab: "workflow",
   setActiveTab: (tab) => set({ activeTab: tab }),
 

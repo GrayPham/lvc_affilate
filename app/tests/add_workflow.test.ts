@@ -8,10 +8,10 @@ import { describe, expect, it } from "vitest";
 import {
   countPromptNodes,
   countSaveNodes,
-  countScenes,
   withOutDir,
   withPromptText,
 } from "../src/components/AddWorkflowDialog";
+import { countScenes } from "../src/graph/sceneCount";
 import type { Graph } from "../src/ipc/types";
 
 function graph(): Graph {

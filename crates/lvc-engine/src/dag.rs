@@ -119,7 +119,7 @@ use lvc_veo3::{VeoCaptchaHost, VeoImageHost, VeoSessionHost, VeoVideoHost};
 use tokio::sync::watch;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::apimedia::{
     EngineGoogleImage, EngineGoogleVideo, EngineGrokImage, EngineSeedanceImage,
@@ -657,7 +657,20 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 services: services.clone(),
             };
             let inputs = gather_inputs(&graph, node_id, &outputs);
-            match exec.run(&ctx, &node.kind.params, inputs).await {
+            // Log MOC vao/ra cua tung node. Truoc day ca mot lan chay khong sinh MOT dong log nao:
+            // node treo giua chung thi khong co gi de lan ra cho hong (da gap that voi node
+            // `museai_video` 2026-10-14). Chi ghi kind + id + so viec — KHONG ghi prompt/bi mat.
+            info!(node = %node_id, kind = %node.kind.kind, total, "node: bat dau");
+            let started = std::time::Instant::now();
+            let outcome = exec.run(&ctx, &node.kind.params, inputs).await;
+            info!(
+                node = %node_id,
+                kind = %node.kind.kind,
+                giay = started.elapsed().as_secs(),
+                ok = outcome.is_ok(),
+                "node: ket thuc"
+            );
+            match outcome {
                 Ok(res) => {
                     let c = res.counts;
                     let failed = res.is_failed();

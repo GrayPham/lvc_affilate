@@ -14,7 +14,7 @@
 // download — review nguoi dung 2026-10-13: "muse, veo3 đều giống như dola chứ", cac node API
 // (Veo3/MuseAI...) truoc day THIEU toan bo toolbar nay, chi co nut Xoa).
 import { assetUrl } from "../ipc/tauri";
-import { useHoverPlay } from "./useHoverPlay";
+import { MuteButton, useHoverPlay } from "./useHoverPlay";
 
 export default function OutputPreview({
   kind,
@@ -40,15 +40,18 @@ export default function OutputPreview({
         ) : kind === "audio" ? (
           <audio src={src} className="absolute inset-x-2 bottom-2 w-[calc(100%-1rem)]" controls preload="metadata" />
         ) : (
-          <video
-            ref={hp.videoRef}
-            src={src}
-            className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain"
-            muted
-            loop
-            playsInline
-            preload="metadata"
-          />
+          <>
+            <video
+              ref={hp.videoRef}
+              src={src}
+              className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain"
+              muted={hp.muted}
+              loop
+              playsInline
+              preload="metadata"
+            />
+            <MuteButton />
+          </>
         )
       ) : (
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-fill2 text-ink">

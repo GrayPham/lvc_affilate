@@ -24,6 +24,7 @@ use lvc_museai::{
     VideoJobDone, VideoJobsReport,
 };
 use serde::Deserialize;
+use tracing::{info, warn};
 
 /// Nguồn `profile_dir` cho MỘT `credential_id` (`museai/login` trong `lvc-vault`) — dùng khuôn
 /// `crate::veo3::VeoAccountResolver`, tách riêng (không tái dùng trait đó) vì tên gắn với Veo3,
@@ -68,6 +69,14 @@ fn image_out_path(
 /// `generate_video`, lâu hơn nhiều vì phải đợi AI sinh xong).
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Quá hạn cho CẢ bước lấy phiên đăng nhập (mở Chromium → vào muse.ai → đọc bootstrap).
+///
+/// Trước đây bước này KHÔNG có hạn: Chromium không mở được (profile đang bị một cửa sổ Chrome khác
+/// khoá, thiếu bản Chrome, cửa sổ mở ngoài màn hình) là node treo VĨNH VIỄN — người dùng chỉ thấy
+/// "Đang chạy 0/1" mãi mãi, không có lỗi nào để đọc. 90 giây đủ rộng cho một lần mở trình duyệt
+/// chậm, và đủ ngắn để biết là hỏng.
+const BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(90);
+
 #[derive(Deserialize)]
 struct TokenRefreshResponse {
     token: Option<String>,
@@ -83,6 +92,24 @@ struct TokenRefreshResponse {
 /// ĐÃ XÁC NHẬN đúng field/endpoint qua trang thật 2026-10-11 (`crates/lvc-browser/examples/
 /// museai_probe.rs`, cookie thật của người dùng) — xem `MEMORY.md`.
 async fn fetch_bootstrap(profile_dir: &Path, logs_dir: &Path) -> Result<MuseBootstrap, String> {
+    match tokio::time::timeout(
+        BOOTSTRAP_TIMEOUT,
+        fetch_bootstrap_inner(profile_dir, logs_dir),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(_) => Err(format!(
+            "qua {}s van chua lay duoc phien dang nhap muse.ai — thuong la Chromium khong mo duoc              (profile dang bi mot cua so Chrome khac khoa, hoac chua dang nhap muse.ai trong              profile nay). Dong het cua so Chrome dang dung profile do roi thu lai.",
+            BOOTSTRAP_TIMEOUT.as_secs()
+        )),
+    }
+}
+
+async fn fetch_bootstrap_inner(
+    profile_dir: &Path,
+    logs_dir: &Path,
+) -> Result<MuseBootstrap, String> {
     let driver = ChromiumDriver;
     let opts = LaunchOpts {
         profile_dir: profile_dir.to_path_buf(),
@@ -92,9 +119,17 @@ async fn fetch_bootstrap(profile_dir: &Path, logs_dir: &Path) -> Result<MuseBoot
         headless: false,
         ..Default::default()
     };
+    // Log TUNG BUOC: khi node treo, day la thu duy nhat cho biet no dung o dau. KHONG log cookie/
+    // URL co chu ky — chi ten buoc (xem luat #3 trong CLAUDE.md).
+    info!("museai: mo trinh duyet lay phien dang nhap");
     let session = driver.launch(&opts).await.map_err(|e| e.to_string())?;
+    info!("museai: da mo trinh duyet, dang doc bootstrap tu muse.ai");
     let result = fetch_bootstrap_with_session(&driver, &session).await;
     let _ = driver.close(session).await;
+    match &result {
+        Ok(_) => info!("museai: lay phien dang nhap xong"),
+        Err(e) => warn!(error = %e, "museai: lay phien dang nhap that bai"),
+    }
     result
 }
 

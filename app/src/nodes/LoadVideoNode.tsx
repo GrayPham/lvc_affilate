@@ -15,7 +15,7 @@ import { assetUrl } from "../ipc/tauri";
 import { errorText } from "../ipc/error_text";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
-import { useHoverPlay } from "./useHoverPlay";
+import { MuteButton, useHoverPlay } from "./useHoverPlay";
 import Lightbox from "../components/Lightbox";
 
 type LoadVideoKind = Extract<NodeKind, { kind: "load_video" }>;
@@ -135,7 +135,10 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
           title={src ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
         >
           {src ? (
-            <video ref={hp.videoRef} src={src} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted loop playsInline preload="metadata" />
+            <>
+              <video ref={hp.videoRef} src={src} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted={hp.muted} loop playsInline preload="metadata" />
+              <MuteButton />
+            </>
           ) : (
             <div className="flex flex-col items-center gap-2 text-ink2">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

@@ -11,7 +11,7 @@ import { useRunStore } from "../store/run";
 import { assetUrl } from "../ipc/tauri";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
-import { useHoverPlay } from "./useHoverPlay";
+import { MuteButton, useHoverPlay } from "./useHoverPlay";
 import Lightbox from "../components/Lightbox";
 
 type ConcatKind = Extract<NodeKind, { kind: "concat" }>;
@@ -50,7 +50,10 @@ export default function ConcatNode({ id, selected }: NodeProps<ConcatRFNode>) {
           title={videoSrc ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
         >
           {videoSrc ? (
-            <video ref={hp.videoRef} src={videoSrc} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted loop playsInline preload="metadata" />
+            <>
+              <video ref={hp.videoRef} src={videoSrc} className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain" muted={hp.muted} loop playsInline preload="metadata" />
+              <MuteButton />
+            </>
           ) : (
             <span className="flex flex-col items-center gap-1 text-ink2">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

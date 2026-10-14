@@ -21,7 +21,7 @@ import { useWorkflowUi } from "../store/workflowUi";
 import { assetUrl } from "../ipc/tauri";
 import MediaCard from "./MediaCard";
 import NodeFloatingToolbar, { type ToolbarAction } from "./NodeFloatingToolbar";
-import { useHoverPlay } from "./useHoverPlay";
+import { MuteButton, useHoverPlay } from "./useHoverPlay";
 import Lightbox from "../components/Lightbox";
 
 type VideoKind = Extract<NodeKind, { kind: "dola_video" }>;
@@ -168,15 +168,18 @@ export default function VideoNode({ id, data, selected }: NodeProps<VideoRFNode>
           title={videoSrc ? "Rê chuột để xem; Phóng to để phát đầy đủ" : undefined}
         >
           {videoSrc ? (
-            <video
-              ref={hp.videoRef}
-              src={videoSrc}
-              className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain"
-              muted
-              loop
-              playsInline
-              preload="metadata"
-            />
+            <>
+              <video
+                ref={hp.videoRef}
+                src={videoSrc}
+                className="pointer-events-none absolute inset-0 h-full w-full bg-black object-contain"
+                muted={hp.muted}
+                loop
+                playsInline
+                preload="metadata"
+              />
+              <MuteButton />
+            </>
           ) : (
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-fill2 text-ink">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">

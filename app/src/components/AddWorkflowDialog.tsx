@@ -24,6 +24,7 @@ import {
 import { errorText } from "../ipc/error_text";
 import { formatGraphError } from "../graph/errors";
 import { missingCredentials } from "../graph/credentials";
+import { countScenes } from "../graph/sceneCount";
 import { useCredentialsStore } from "../store/credentials";
 import { useQueueStore } from "../store/queue";
 import { useSettingsStore } from "../store/settings";
@@ -66,11 +67,6 @@ export function countSaveNodes(graph: Graph): number {
 /** So node `prompt` — do thi khong co node nao thi khong co cho nhan dau vao. */
 export function countPromptNodes(graph: Graph): number {
   return graph.nodes.filter((n) => n.kind.kind === PROMPT_KIND).length;
-}
-
-/** So CANH tu khoi text dau vao: moi dong khac rong mot canh (dong trong bi bo). */
-export function countScenes(text: string): number {
-  return text.split("\n").filter((l) => l.trim() !== "").length;
 }
 
 /**

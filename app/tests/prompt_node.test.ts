@@ -5,7 +5,7 @@
 // bam "Kiem tra"/"Chay", khong dem thua dong chu thich.
 import { describe, expect, it } from "vitest";
 
-import { countScenes } from "../src/nodes/PromptNode";
+import { countScenes } from "../src/graph/sceneCount";
 
 describe("countScenes (PromptNode) — khop scene_txt::parse_txt", () => {
   it("dem so dong khong rong", () => {
@@ -34,5 +34,15 @@ describe("countScenes (PromptNode) — khop scene_txt::parse_txt", () => {
 
   it("chi toan dong chu thich/trong -> 0 canh", () => {
     expect(countScenes("# a\n\n   \n#b")).toBe(0);
+  });
+});
+
+// Bao dam MOT nguon: hop thoai "Thêm workflow" va node Prompt phai dem GIONG HET nhau. Truoc
+// 2026-10-14 moi ben mot ham, ban trong hop thoai khong bo qua dong `#` nen bao "5 cảnh" trong khi
+// node chay dung 3 — nguoi dung khong co cach nao biet ben nao dung.
+describe("mot nguon duy nhat", () => {
+  it("dong `#` khong duoc tinh la canh — o BAT KY cho nao goi", () => {
+    const txt = "# ghi chu\ncanh 1\ncanh 2\n# ghi chu nua\n";
+    expect(countScenes(txt)).toBe(2);
   });
 });

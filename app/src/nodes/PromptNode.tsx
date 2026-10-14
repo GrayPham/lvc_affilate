@@ -17,26 +17,12 @@ import { NODE_LABEL_VI, PORT_TYPE_COLOR } from "../graph/ports";
 import { useGraphStore } from "../store/graph";
 import { useRunStore } from "../store/run";
 import NodeShell from "./NodeShell";
+import { countScenes } from "../graph/sceneCount";
 import NodeFloatingToolbar from "./NodeFloatingToolbar";
 
 type PromptKind = Extract<NodeKind, { kind: "prompt" }>;
 export type PromptRFNode = RFNodeBase<PromptKind, "prompt">;
 
-/**
- * So canh se duoc gui (uoc luong hien thi, KHONG phai nguon su that — `workflow_validate` moi la
- * nguon that khi bam "Kiem tra"/"Chay"). Bo qua dong trong VA dong bat dau bang `#` (sau `trim`) —
- * khop dung `scene_txt::parse_txt` (crates/lvc-core/src/scene_txt.rs): "dong trong hoac bat dau
- * bang `#`" deu KHONG phai canh (M7, fix-round 1 final-review) — truoc ban sua nay ham chi bo qua
- * dong trong nen mot workflow co dong chu thich se hien "N canh" nhieu hon so canh THAT gui di.
- */
-export function countScenes(text: string): number {
-  return text
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      return trimmed.length > 0 && !trimmed.startsWith("#");
-    }).length;
-}
 
 export default function PromptNode({ id, data, selected }: NodeProps<PromptRFNode>) {
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
