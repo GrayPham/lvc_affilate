@@ -134,10 +134,10 @@ export default function App() {
   const otherTabs = TABS.filter((t) => t.group === "other");
 
   return (
-    <div className="flex h-screen w-screen bg-bg text-fg">
+    <div className="lvc-frame flex h-screen w-screen gap-2.5 p-2.5 text-fg">
       <aside
         className={
-          "lvc-sidebar relative flex shrink-0 flex-col gap-[18px] border-r border-sidebar-line px-3 py-4 text-sidebar-fg transition-[width] duration-200 " +
+          "lvc-sidebar relative flex shrink-0 flex-col gap-[18px] rounded-[20px] px-3 py-4 text-sidebar-fg shadow-panel transition-[width] duration-200 " +
           (sidebarCollapsed ? "w-[68px]" : "w-[200px]")
         }
       >
@@ -213,7 +213,7 @@ export default function App() {
 
         {sidebarCollapsed ? null : <SidebarAccountFooter />}
       </aside>
-      <main className="flex-1 overflow-auto bg-bg">
+      <main className="relative min-h-0 flex-1 overflow-auto rounded-[20px] bg-bg shadow-panel">
         {/* Workflow (P-tabs) phai luon giu MOUNTED — chuyen qua tab dieu huong khac roi quay lai
             KHONG duoc mat cac tab canvas/run dang theo doi (`WorkflowTabs` tu quan ly state qua
             `useState` noi bo, se mat het neu component nay bi unmount). An/hien qua CSS, khong
