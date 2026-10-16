@@ -15,6 +15,11 @@
         "title": "LVC Affiliate",
         "width": 1400,
         "height": 900,
+        "minWidth": 1100,
+        "minHeight": 640,
+        "center": true,
+        "decorations": false,
+        "shadow": true,
         "dragDropEnabled": false
       }
     ],

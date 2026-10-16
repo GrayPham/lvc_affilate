@@ -9,6 +9,7 @@ import CredentialsPage from "./pages/CredentialsPage";
 import DialogHost from "./components/DialogHost";
 import UpdateBanner from "./components/UpdateBanner";
 import SidebarAccountFooter from "./components/SidebarAccountFooter";
+import { WindowChrome } from "./ui/WindowChrome";
 
 // Icon duong net don gian (inline SVG, khong them thu vien ngoai) — moi icon mot ham nho, dung
 // chung stroke="currentColor" de doi mau theo trang thai active/hover cua nut cha.
@@ -134,7 +135,9 @@ export default function App() {
   const otherTabs = TABS.filter((t) => t.group === "other");
 
   return (
-    <div className="lvc-frame flex h-screen w-screen gap-2.5 p-2.5 text-fg">
+    <div className="lvc-frame flex h-screen w-screen flex-col gap-2 p-2.5 text-fg">
+      <WindowChrome />
+      <div className="flex min-h-0 flex-1 gap-2.5">
       <aside
         className={
           "lvc-sidebar relative flex shrink-0 flex-col gap-[18px] rounded-[20px] px-3 py-4 text-sidebar-fg shadow-panel transition-[width] duration-200 " +
@@ -226,6 +229,7 @@ export default function App() {
         </div>
         {activeTab === "workflow" ? null : <ActivePage />}
       </main>
+      </div>
       {/* Dialog trong-app (thay window.confirm/prompt/alert) — mount mot lan cho ca app. */}
       <DialogHost />
       {/* Banner auto-update (P8) — tu check ngam luc mo app, mount mot lan. */}
