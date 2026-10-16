@@ -403,15 +403,9 @@ function WorkflowCanvas() {
         defaultEdgeOptions={{ type: "flow", style: { stroke: "var(--line2)", strokeWidth: 1.5 } }}
         fitView
       >
-        {/* React Flow nhận màu qua PROP, không qua class, nên không dùng được token Tailwind —
-            lấy thẳng biến CSS để lưới chấm và bản đồ thu nhỏ đổi theo giao diện sáng/tối. */}
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={22}
-          size={1.4}
-          color="var(--line2)"
-          bgColor="var(--stage)"
-        />
+        {/* Dùng nền MẶC ĐỊNH của React Flow theo `colorMode` (sáng = gần trắng, tối = than) để khớp
+            hệt flow editor app quản lý — KHÔNG ép bgColor/color (ép `var(--stage)` làm nền ngả nâu). */}
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} />
         <Controls />
         <MiniMap
           pannable
@@ -460,7 +454,7 @@ function WorkflowCanvas() {
 export default function Workflow() {
   const [progressOpen, setProgressOpen] = useState(true);
   return (
-    <div className="flex h-full flex-col bg-stage">
+    <div className="flex h-full flex-col bg-bg">
       <CaptureFramesPanel />
       <TrimPanel />
       <RunBar />
