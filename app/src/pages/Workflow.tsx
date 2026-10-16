@@ -463,8 +463,8 @@ export default function Workflow() {
           <WorkflowCanvas />
         </ReactFlowProvider>
         {progressOpen ? (
-          <aside className="my-2 mr-2 flex w-80 shrink-0 flex-col overflow-hidden rounded-[16px] border border-line bg-panel text-fg shadow-card">
-            <h2 className="flex items-center gap-2 border-b border-line px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
+          <aside className="z-10 m-2.5 flex w-80 shrink-0 flex-col overflow-hidden rounded-[16px] border border-line bg-panel text-fg shadow-panel">
+            <h2 className="flex items-center gap-2 border-b border-line bg-panel-2 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
               <span className="flex-1">Tiến độ</span>
               <button
                 type="button"
@@ -486,7 +486,7 @@ export default function Workflow() {
             onClick={() => setProgressOpen(true)}
             title="Hiện bảng tiến độ"
             aria-label="Hiện bảng tiến độ"
-            className="my-2 mr-2 flex shrink-0 flex-col items-center gap-2 rounded-[16px] border border-line bg-panel px-1.5 py-3 text-muted shadow-card hover:text-fg"
+            className="z-10 m-2.5 flex shrink-0 flex-col items-center gap-2 rounded-[16px] border border-line bg-panel px-1.5 py-3 text-muted shadow-panel hover:text-fg"
           >
             <PanelRightOpen size={16} />
             <span className="text-[10px] font-semibold uppercase tracking-wide [writing-mode:vertical-rl]">Tiến độ</span>
