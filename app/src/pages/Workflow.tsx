@@ -10,6 +10,7 @@
 // `run_done`/cac su kien `task_*` trong luc trang bi unmount.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   Background,
   BackgroundVariant,
@@ -64,6 +65,7 @@ import { canConnectToNode, type PendingConnect } from "../graph/connect";
 import { ADDABLE_KINDS, type AddableNodeKind } from "../graph/ports";
 import { useGraphStore, useGraphStoreApi } from "../store/graph";
 import { useRunStoreApi } from "../store/run";
+import { useUiStore } from "../store/uiStore";
 import { useWorkflowUi } from "../store/workflowUi";
 import { runList, taskList } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
@@ -110,6 +112,7 @@ function isAddableKind(value: string): value is AddableNodeKind {
 }
 
 function WorkflowCanvas() {
+  const theme = useUiStore((s) => s.theme);
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
   const onNodesChange = useGraphStore((s) => s.onNodesChange);
@@ -396,8 +399,8 @@ function WorkflowCanvas() {
         panOnDrag={[1, 2]}
         panActivationKeyCode={["Space", "Control", "Meta"]}
         selectionKeyCode={null}
-        colorMode="dark"
-        defaultEdgeOptions={{ type: "flow", style: { stroke: "#6b6b74", strokeWidth: 1.5 } }}
+        colorMode={theme === "dark" ? "dark" : "light"}
+        defaultEdgeOptions={{ type: "flow", style: { stroke: "var(--line2)", strokeWidth: 1.5 } }}
         fitView
       >
         {/* React Flow nhận màu qua PROP, không qua class, nên không dùng được token Tailwind —
@@ -455,6 +458,7 @@ function WorkflowCanvas() {
 }
 
 export default function Workflow() {
+  const [progressOpen, setProgressOpen] = useState(true);
   return (
     <div className="flex h-full flex-col bg-stage">
       <CaptureFramesPanel />
@@ -464,14 +468,36 @@ export default function Workflow() {
         <ReactFlowProvider>
           <WorkflowCanvas />
         </ReactFlowProvider>
-        <aside className="my-2 mr-2 flex w-80 shrink-0 flex-col overflow-hidden rounded-[16px] border border-line bg-panel text-fg shadow-card">
-          <h2 className="border-b border-line px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
-            Tiến độ
-          </h2>
-          <div className="flex-1 overflow-y-auto">
-            <ProgressPanel />
-          </div>
-        </aside>
+        {progressOpen ? (
+          <aside className="my-2 mr-2 flex w-80 shrink-0 flex-col overflow-hidden rounded-[16px] border border-line bg-panel text-fg shadow-card">
+            <h2 className="flex items-center gap-2 border-b border-line px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
+              <span className="flex-1">Tiến độ</span>
+              <button
+                type="button"
+                onClick={() => setProgressOpen(false)}
+                title="Thu gọn bảng tiến độ"
+                aria-label="Thu gọn bảng tiến độ"
+                className="grid h-6 w-6 place-items-center rounded-lg text-muted hover:bg-hover hover:text-fg"
+              >
+                <PanelRightClose size={15} />
+              </button>
+            </h2>
+            <div className="flex-1 overflow-y-auto">
+              <ProgressPanel />
+            </div>
+          </aside>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setProgressOpen(true)}
+            title="Hiện bảng tiến độ"
+            aria-label="Hiện bảng tiến độ"
+            className="my-2 mr-2 flex shrink-0 flex-col items-center gap-2 rounded-[16px] border border-line bg-panel px-1.5 py-3 text-muted shadow-card hover:text-fg"
+          >
+            <PanelRightOpen size={16} />
+            <span className="text-[10px] font-semibold uppercase tracking-wide [writing-mode:vertical-rl]">Tiến độ</span>
+          </button>
+        )}
       </div>
     </div>
   );
