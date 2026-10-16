@@ -108,7 +108,7 @@ export default function UpdateWorkflowDialog({
       <p className="text-[12.5px] text-ink3">
         <span className="font-mono">{update.currentVersion}</span>
         {" → "}
-        <span className="font-mono text-accent-text">{update.newVersion}</span>
+        <span className="font-mono text-accent">{update.newVersion}</span>
         {meta === "" ? null : ` · ${meta}`}
       </p>
 
@@ -131,7 +131,7 @@ export default function UpdateWorkflowDialog({
                 >
                   {c.kind}
                 </span>
-                <span className="text-ink2">{c.text}</span>
+                <span className="text-muted">{c.text}</span>
               </li>
             ))}
           </ul>
@@ -141,7 +141,7 @@ export default function UpdateWorkflowDialog({
       )}
 
       {update.locallyModified ? (
-        <div className="flex gap-2.5 rounded-lg border border-accent/40 bg-accent/[0.07] p-3">
+        <div className="flex gap-2.5 rounded-lg border border-primary/40 bg-primary/[0.07] p-3">
           <svg
             width="17"
             height="17"
@@ -151,13 +151,13 @@ export default function UpdateWorkflowDialog({
             strokeWidth="2"
             strokeLinejoin="round"
             aria-hidden="true"
-            className="mt-px flex-none text-accent-text"
+            className="mt-px flex-none text-accent"
           >
             <path d="M12 3 2 20h20L12 3Z" />
             <path d="M12 10v4M12 17v.5" strokeLinecap="round" />
           </svg>
           <div className="flex flex-1 flex-col gap-2">
-            <span className="text-[13px] font-semibold text-ink">
+            <span className="text-[13px] font-semibold text-fg">
               Bạn đã sửa bản trên máy
             </span>
             <div role="radiogroup" aria-label="Cách cập nhật" className="flex flex-col gap-1.5">
@@ -175,7 +175,7 @@ export default function UpdateWorkflowDialog({
                   key={value}
                   className={
                     "flex min-h-10 items-center gap-2.5 rounded-[9px] border bg-panel px-3 text-[13px] " +
-                    (mode === value ? "border-accent/60" : "border-line2")
+                    (mode === value ? "border-primary/60" : "border-line2")
                   }
                 >
                   <input
@@ -186,7 +186,7 @@ export default function UpdateWorkflowDialog({
                     disabled={busy}
                     onChange={() => setMode(value)}
                   />
-                  <span className="text-ink">
+                  <span className="text-fg">
                     {label} <span className="text-ink3">— {desc}</span>
                   </span>
                 </label>

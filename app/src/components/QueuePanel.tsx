@@ -116,7 +116,7 @@ export default function QueuePanel() {
           <Button onClick={() => setShowBulk(true)}>Thêm hàng loạt</Button>
           {running ? (
             <Button
-              className="border-accent/45 bg-accent/10 text-accent-text"
+              className="border-primary/45 bg-primary/10 text-accent"
               onClick={() => setConfirmStop(true)}
             >
               ■ Dừng hàng chờ
@@ -132,9 +132,9 @@ export default function QueuePanel() {
         </div>
 
         {runningItem ? (
-          <div className="flex flex-wrap items-center gap-3.5 rounded-lg border border-accent/30 bg-accent/5 px-3.5 py-3">
+          <div className="flex flex-wrap items-center gap-3.5 rounded-lg border border-primary/30 bg-primary/5 px-3.5 py-3">
             <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent"
+              className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
               style={{ boxShadow: "0 0 0 4px rgb(245 165 36 / .2)" }}
             />
             <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-1">
@@ -169,7 +169,7 @@ export default function QueuePanel() {
               <rect x="4" y="4" width="16" height="16" rx="3" />
               <path d="M7.5 11.5l2 2 4-4.5" />
             </svg>
-            <p className="text-[13px] font-semibold text-ink2">
+            <p className="text-[13px] font-semibold text-muted">
               {items.length === 0 ? "Hàng chờ đang trống" : "Không có workflow nào khớp."}
             </p>
             {items.length === 0 ? (
@@ -217,14 +217,14 @@ export default function QueuePanel() {
                         <span
                           className={
                             "inline-grid h-[26px] min-w-[26px] place-items-center rounded-sm px-1.5 text-[12px] font-bold " +
-                            (isRunning ? "bg-accent text-accent-ink" : "bg-fill text-ink2")
+                            (isRunning ? "bg-primary text-primary-fg" : "bg-fill text-muted")
                           }
                         >
                           {idx + 1}
                         </span>
                       </td>
                       <td className={TD}>
-                        <span className="font-semibold text-ink">{item.name}</span>
+                        <span className="font-semibold text-fg">{item.name}</span>
                         {item.error ? (
                           <span className="mt-[3px] block max-w-[320px] text-[12px] leading-[1.45] text-ink3">
                             {item.error}
@@ -243,7 +243,7 @@ export default function QueuePanel() {
                           {STATUS_VI[item.status]}
                         </span>
                       </td>
-                      <td className={`${TD} whitespace-nowrap text-ink2`}>
+                      <td className={`${TD} whitespace-nowrap text-muted`}>
                         {formatElapsed(item.startedAt, item.finishedAt)}
                       </td>
                       <td className={`${TD} whitespace-nowrap`}>

@@ -125,8 +125,8 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="flex max-h-[80vh] w-[42rem] max-w-full flex-col rounded-lg border border-line bg-panel p-4 shadow-2xl">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">Kho mẫu</h2>
-          <button type="button" className="text-ink3 hover:text-ink" onClick={onClose}>
+          <h2 className="text-sm font-semibold text-fg">Kho mẫu</h2>
+          <button type="button" className="text-ink3 hover:text-fg" onClick={onClose}>
             Đóng
           </button>
         </div>
@@ -135,21 +135,21 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
           <div className="flex rounded border border-line p-0.5 text-xs">
             <button
               type="button"
-              className={`rounded px-3 py-1 ${scope === "public" ? "bg-accent text-accent-ink shadow-sm" : "text-ink2 hover:bg-fill2"}`}
+              className={`rounded px-3 py-1 ${scope === "public" ? "bg-primary text-primary-fg shadow-sm" : "text-muted hover:bg-fill2"}`}
               onClick={() => setScope("public")}
             >
               Công khai
             </button>
             <button
               type="button"
-              className={`rounded px-3 py-1 ${scope === "private" ? "bg-accent text-accent-ink shadow-sm" : "text-ink2 hover:bg-fill2"}`}
+              className={`rounded px-3 py-1 ${scope === "private" ? "bg-primary text-primary-fg shadow-sm" : "text-muted hover:bg-fill2"}`}
               onClick={() => setScope("private")}
             >
               Của tôi
             </button>
             <button
               type="button"
-              className={`rounded px-3 py-1 ${scope === "remote" ? "bg-accent text-accent-ink shadow-sm" : "text-ink2 hover:bg-fill2"}`}
+              className={`rounded px-3 py-1 ${scope === "remote" ? "bg-primary text-primary-fg shadow-sm" : "text-muted hover:bg-fill2"}`}
               onClick={() => setScope("remote")}
             >
               Miễn phí
@@ -160,7 +160,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tìm theo tên hoặc mô tả…"
-            className="flex-1 rounded border border-line bg-fill px-2 py-1 text-xs text-ink placeholder:text-ink3"
+            className="flex-1 rounded border border-line bg-fill px-2 py-1 text-xs text-fg placeholder:text-ink3"
           />
         </div>
 
@@ -168,7 +168,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
           <div className="mb-2 flex flex-wrap items-center gap-1">
             <button
               type="button"
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === "all" ? "border-amber-600 bg-accent text-accent-ink shadow-sm" : "border-line text-ink2 hover:bg-fill2"}`}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === "all" ? "border-amber-600 bg-primary text-primary-fg shadow-sm" : "border-line text-muted hover:bg-fill2"}`}
               onClick={() => setCategory("all")}
             >
               Tất cả
@@ -177,7 +177,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
               <button
                 key={c}
                 type="button"
-                className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-amber-600 bg-accent text-accent-ink shadow-sm" : "border-line text-ink2 hover:bg-fill2"}`}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-amber-600 bg-primary text-primary-fg shadow-sm" : "border-line text-muted hover:bg-fill2"}`}
                 onClick={() => setCategory(c)}
               >
                 {c}
@@ -199,7 +199,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
             <div className="flex flex-col gap-3">
               {groups.map((group) => (
                 <section key={group.category} className="flex flex-col gap-1.5">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
                     {group.category}
                   </h3>
                   <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -219,11 +219,11 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-xs font-medium text-ink2">{meta.name}</span>
+                        <span className="text-xs font-medium text-muted">{meta.name}</span>
                       )}
                     </div>
                     <div className="flex flex-1 flex-col gap-1 p-2">
-                      <span className="text-xs font-medium text-ink">{meta.name}</span>
+                      <span className="text-xs font-medium text-fg">{meta.name}</span>
                       {meta.description ? (
                         <span className="line-clamp-2 text-[10px] text-ink3">
                           {meta.description}
@@ -233,7 +233,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                         <button
                           type="button"
                           disabled={busy}
-                          className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-accent-ink shadow-sm shadow-amber-600/25 hover:bg-amber-500 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                          className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-primary-fg shadow-sm shadow-amber-600/25 hover:bg-amber-500 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
                           onClick={() => void handleUse(meta)}
                         >
                           Dùng mẫu
@@ -244,7 +244,7 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                             disabled={busy}
                             className={`rounded border px-2 py-1 text-[11px] disabled:opacity-50 ${
                               confirmDeleteId === meta.id
-                                ? "border-red-500 bg-red-600 text-ink hover:bg-red-500"
+                                ? "border-red-500 bg-red-600 text-fg hover:bg-red-500"
                                 : "border-rose/35 text-rose hover:bg-rose/10"
                             }`}
                             onClick={() => void handleDelete(meta)}

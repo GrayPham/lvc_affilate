@@ -21,13 +21,13 @@ import type { StageState, TimelineRow } from "./run_log";
 
 /** Mau + ky hieu cua tung trang thai node — khop bang trong ban thiet ke. */
 const STATE_STYLE: Record<StageState, { mark: string; dot: string; line: string; name: string }> = {
-  ok: { mark: "✓", dot: "bg-ok/15 text-ok", line: "bg-ok", name: "text-ink" },
-  err: { mark: "!", dot: "bg-rose/15 text-rose", line: "bg-line2", name: "text-ink" },
+  ok: { mark: "✓", dot: "bg-ok/15 text-ok", line: "bg-ok", name: "text-fg" },
+  err: { mark: "!", dot: "bg-rose/15 text-rose", line: "bg-line2", name: "text-fg" },
   running: {
     mark: "•",
-    dot: "bg-accent-soft text-accent-text",
-    line: "bg-accent/40",
-    name: "text-ink",
+    dot: "bg-accent-soft text-accent",
+    line: "bg-primary/40",
+    name: "text-fg",
   },
   skip: { mark: "–", dot: "bg-fill2 text-ink3", line: "bg-line2", name: "text-ink3" },
 };
@@ -118,7 +118,7 @@ export default function RunLogDialog({ run, workflowName, onClose }: RunLogDialo
     run.status === "failed"
       ? { text: "Lỗi", cls: "bg-rose/15 text-rose", dot: "bg-rose" }
       : run.status === "running"
-        ? { text: "Đang chạy", cls: "bg-accent-soft text-accent-text", dot: "bg-accent" }
+        ? { text: "Đang chạy", cls: "bg-accent-soft text-accent", dot: "bg-primary" }
         : run.status === "cancelled"
           ? { text: "Đã huỷ", cls: "bg-fill2 text-ink3", dot: "bg-ink3" }
           : { text: "Hoàn tất", cls: "bg-ok/15 text-ok", dot: "bg-ok" };
@@ -133,7 +133,7 @@ export default function RunLogDialog({ run, workflowName, onClose }: RunLogDialo
       <div className="w-[620px] max-w-full overflow-hidden rounded-2xl border border-line2 bg-panel shadow-[var(--dialog-shadow)]">
         <header className="flex items-start gap-2.5 border-b border-line px-[18px] py-4">
           <div className="min-w-0 flex-1">
-            <h2 id="logTitle" className="truncate text-[16px] font-bold text-ink">
+            <h2 id="logTitle" className="truncate text-[16px] font-bold text-fg">
               {workflowName && workflowName !== "" ? workflowName : run.workflowId}
             </h2>
             <p className="mt-1 text-[12.5px] text-ink3">
@@ -157,7 +157,7 @@ export default function RunLogDialog({ run, workflowName, onClose }: RunLogDialo
             type="button"
             aria-label="Đóng"
             onClick={onClose}
-            className="grid h-9 w-9 flex-none place-items-center rounded-[9px] text-[16px] text-ink3 hover:text-ink"
+            className="grid h-9 w-9 flex-none place-items-center rounded-[9px] text-[16px] text-ink3 hover:text-fg"
           >
             ✕
           </button>
@@ -211,7 +211,7 @@ export default function RunLogDialog({ run, workflowName, onClose }: RunLogDialo
                               : failureLabel(row.failureCode)}
                           </span>
                           {row.error === "" ? null : (
-                            <span className="text-[12.5px] leading-[1.5] text-ink2">
+                            <span className="text-[12.5px] leading-[1.5] text-muted">
                               {row.error}
                             </span>
                           )}
@@ -231,7 +231,7 @@ export default function RunLogDialog({ run, workflowName, onClose }: RunLogDialo
 
           {logLines > 0 ? (
             <details className="rounded-lg border border-line">
-              <summary className="flex min-h-10 cursor-pointer items-center px-3 text-[12.5px] font-semibold text-ink2">
+              <summary className="flex min-h-10 cursor-pointer items-center px-3 text-[12.5px] font-semibold text-muted">
                 Log đầy đủ ({logLines} dòng)
               </summary>
               <pre className="m-0 border-t border-line px-3 py-2.5 font-mono text-[11.5px] leading-[1.7] whitespace-pre-wrap text-ink3">

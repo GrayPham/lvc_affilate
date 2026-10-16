@@ -64,16 +64,16 @@ export default function EditAccountDialog({
   return (
     <Dialog title={`Sửa proxy — ${name}`} onClose={onClose} width="26rem">
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between text-xs text-ink2">
+        <div className="flex items-center justify-between text-xs text-muted">
           <span>Nền tảng</span>
-          <span className="font-medium text-ink">{platformLabel}</span>
+          <span className="font-medium text-fg">{platformLabel}</span>
         </div>
 
-        <label className="flex flex-col gap-1 text-xs text-ink2">
+        <label className="flex flex-col gap-1 text-xs text-muted">
           Proxy
           <div className="flex gap-2">
             <input
-              className="flex-1 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-ink3"
+              className="flex-1 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-fg placeholder:text-ink3"
               value={proxy}
               disabled={busy}
               onChange={(e) => setProxy(e.target.value)}

@@ -25,7 +25,7 @@ export default function NodeShell({ label, kind, selected, errors, runState, chi
   return (
     <div
       className={
-        "relative w-56 overflow-hidden rounded-2xl border bg-panel p-2.5 text-ink shadow-lg transition-colors " +
+        "relative w-56 overflow-hidden rounded-2xl border bg-panel p-2.5 text-fg shadow-lg transition-colors " +
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >

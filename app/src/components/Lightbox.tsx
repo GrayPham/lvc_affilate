@@ -20,7 +20,7 @@ export default function Lightbox({ src, kind, onClose }: LightboxProps) {
     >
       <button
         type="button"
-        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-fill2 text-ink hover:bg-fill2"
+        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-fill2 text-fg hover:bg-fill2"
         onClick={onClose}
         aria-label="Đóng"
         title="Đóng"

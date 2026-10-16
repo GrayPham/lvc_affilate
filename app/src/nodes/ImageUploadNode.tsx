@@ -130,7 +130,7 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
           />
         ) : (
           // Chua co anh: than the KEO duoc; nut "Chọn ảnh" (nodrag) o giua.
-          <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-white/[0.03] to-transparent text-ink2">
+          <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-white/[0.03] to-transparent text-muted">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <circle cx="9" cy="9" r="1.6" />
@@ -138,7 +138,7 @@ export default function ImageUploadNode({ id, data, selected }: NodeProps<ImageU
             </svg>
             <button
               type="button"
-              className="nodrag rounded-md border border-line2 bg-fill px-2.5 py-1 text-[11px] text-ink hover:bg-fill2"
+              className="nodrag rounded-md border border-line2 bg-fill px-2.5 py-1 text-[11px] text-fg hover:bg-fill2"
               onClick={() => void pick()}
             >
               Chọn ảnh…

@@ -90,8 +90,8 @@ export function toneChipClass(tone: NodeTone): string {
     case "audio":
       return "bg-rest/12 text-rest";
     case "io":
-      return "bg-fill text-ink2";
+      return "bg-fill text-muted";
     default:
-      return "bg-fill text-ink2";
+      return "bg-fill text-muted";
   }
 }

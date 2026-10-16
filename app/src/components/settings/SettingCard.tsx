@@ -17,7 +17,7 @@ export function SettingCard({
   return (
     <section className="rounded-xl border border-line bg-panel">
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-[13px]">
-        <h2 className="flex-1 text-sm font-bold text-ink">{title}</h2>
+        <h2 className="flex-1 text-sm font-bold text-fg">{title}</h2>
         {description ? <span className="text-xs text-ink3">{description}</span> : null}
       </header>
       {children}
@@ -50,7 +50,7 @@ export function SettingRow({
       <div className="flex-[1_1_200px] max-w-[240px]">
         <Label
           {...(htmlFor ? { htmlFor } : {})}
-          className="block text-[13px] font-semibold text-ink"
+          className="block text-[13px] font-semibold text-fg"
         >
           {label}
         </Label>

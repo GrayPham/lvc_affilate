@@ -55,7 +55,7 @@ export default function ConcatNode({ id, selected }: NodeProps<ConcatRFNode>) {
               <MuteButton />
             </>
           ) : (
-            <span className="flex flex-col items-center gap-1 text-ink2">
+            <span className="flex flex-col items-center gap-1 text-muted">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="9" height="7" rx="1.5" />
                 <rect x="2" y="13" width="9" height="7" rx="1.5" />

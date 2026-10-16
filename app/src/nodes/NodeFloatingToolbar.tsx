@@ -25,8 +25,8 @@ function ActionButton({ action }: { action: ToolbarAction }) {
       aria-label={action.title}
       disabled={action.disabled}
       className={
-        "nodrag flex h-7 w-7 items-center justify-center rounded-md text-ink2 disabled:cursor-not-allowed disabled:opacity-40 " +
-        (action.danger ? "hover:bg-red-600 hover:text-ink" : "hover:bg-fill2 hover:text-ink")
+        "nodrag flex h-7 w-7 items-center justify-center rounded-md text-muted disabled:cursor-not-allowed disabled:opacity-40 " +
+        (action.danger ? "hover:bg-red-600 hover:text-fg" : "hover:bg-fill2 hover:text-fg")
       }
       onClick={(e) => {
         e.stopPropagation();

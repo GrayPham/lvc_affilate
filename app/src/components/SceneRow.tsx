@@ -101,7 +101,7 @@ export default function SceneRow({
 
   return (
     <tr className="border-b border-line align-top text-xs">
-      <td className="px-2 py-1 text-center text-ink2">
+      <td className="px-2 py-1 text-center text-muted">
         <div className="flex flex-col items-center gap-0.5">
           {docScene ? (
             <input

@@ -178,7 +178,7 @@ export default function ScriptsPage() {
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <header className="flex flex-col gap-3.5 border-b border-line px-6 pt-5 pb-4">
         <div>
-          <h1 className="text-[20px] font-bold tracking-[-0.01em] text-ink">Kho kịch bản</h1>
+          <h1 className="text-[20px] font-bold tracking-[-0.01em] text-fg">Kho kịch bản</h1>
           <p className="mt-1 text-[13px] text-ink3">{SUBTITLE[scope]}</p>
         </div>
 
@@ -198,7 +198,7 @@ export default function ScriptsPage() {
                 onClick={() => setScope(s)}
                 className={
                   "inline-flex min-h-9 items-center rounded-lg px-4 text-[13px] " +
-                  (on ? "bg-accent font-bold text-accent-ink" : "text-ink2 hover:text-ink")
+                  (on ? "bg-primary font-bold text-primary-fg" : "text-muted hover:text-fg")
                 }
               >
                 {label}
@@ -273,7 +273,7 @@ export default function ScriptsPage() {
                     topLeftBadge={scope === "remote" ? meta.category : undefined}
                     footer={
                       scope === "remote" && meta.version !== "" ? (
-                        <span className="font-mono text-[11px] text-accent-text">
+                        <span className="font-mono text-[11px] text-accent">
                           {meta.version}
                         </span>
                       ) : undefined

@@ -108,7 +108,7 @@ export default function WorkflowListModal({ onClose, onPicked }: WorkflowListMod
       <div className="flex max-h-full w-[760px] max-w-full flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-[var(--dialog-shadow)]">
         <header className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-4">
           <div className="min-w-[200px] flex-1">
-            <h2 id="wfLibTitle" className="text-[16px] font-bold text-ink">
+            <h2 id="wfLibTitle" className="text-[16px] font-bold text-fg">
               Workflow của tôi
             </h2>
             <p className="mt-0.5 text-[12.5px] text-ink3">
@@ -119,7 +119,7 @@ export default function WorkflowListModal({ onClose, onPicked }: WorkflowListMod
             type="button"
             aria-label="Đóng"
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-[9px] text-[16px] text-ink3 hover:text-ink"
+            className="grid h-9 w-9 place-items-center rounded-[9px] text-[16px] text-ink3 hover:text-fg"
           >
             ✕
           </button>
@@ -156,7 +156,7 @@ export default function WorkflowListModal({ onClose, onPicked }: WorkflowListMod
                     className="flex flex-col gap-2 rounded-xl border border-line bg-fill p-3"
                   >
                     <div className="flex items-start gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">
+                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-fg">
                         {meta.name}
                       </span>
                       {update ? (
@@ -164,7 +164,7 @@ export default function WorkflowListModal({ onClose, onPicked }: WorkflowListMod
                           type="button"
                           title={`Kho có bản ${update.newVersion} (đang dùng ${update.currentVersion})`}
                           onClick={() => setShowUpdate(update)}
-                          className="shrink-0 rounded-sm border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10.5px] font-bold text-accent-text hover:bg-accent/20"
+                          className="shrink-0 rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10.5px] font-bold text-accent hover:bg-primary/20"
                         >
                           ↑ {update.newVersion}
                         </button>

@@ -49,14 +49,14 @@ export default function SidebarAccountFooter() {
     <div className="mt-auto flex flex-col gap-2.5">
       {/* Ma thiet bi — an khi thu gon thanh ben (khong du cho de doc). */}
       {collapsed || device === null ? null : (
-        <div className="flex flex-col gap-1 rounded-md border border-line bg-fill px-2.5 py-2">
-          <span className="text-[10px] font-semibold tracking-[.1em] text-ink3 uppercase">
+        <div className="flex flex-col gap-1 rounded-md border border-sidebar-line bg-sidebar-hover px-2.5 py-2">
+          <span className="text-[10px] font-semibold tracking-[.1em] text-sidebar-muted uppercase">
             Mã thiết bị
           </span>
           <div className="flex items-center gap-1.5">
             <span
               title={device}
-              className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink2"
+              className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-sidebar-muted"
             >
               {maskDeviceId(device)}
             </span>
@@ -65,7 +65,7 @@ export default function SidebarAccountFooter() {
               onClick={() => void copyDevice()}
               title="Sao chép mã đầy đủ"
               aria-label="Sao chép mã thiết bị"
-              className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] text-ink3 hover:bg-fill2 hover:text-ink"
+              className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg"
             >
               {copied ? "Đã chép" : "Chép"}
             </button>
@@ -79,7 +79,7 @@ export default function SidebarAccountFooter() {
         onClick={toggleTheme}
         title={collapsed ? (theme === "dark" ? "Giao diện sáng" : "Giao diện tối") : undefined}
         className={
-          "flex min-h-[36px] items-center rounded-md text-[12.5px] text-ink2 hover:bg-fill hover:text-ink " +
+          "flex min-h-[36px] items-center rounded-md text-[12.5px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg " +
           (collapsed ? "justify-center px-0" : "gap-2.5 px-2")
         }
       >
@@ -97,7 +97,7 @@ export default function SidebarAccountFooter() {
       </button>
 
       {collapsed ? null : (
-        <span className="border-t border-line px-2 pt-2 text-[10px] text-ink3">
+        <span className="border-t border-sidebar-line px-2 pt-2 text-[10px] text-sidebar-muted">
           {/* Doc THAT tu Tauri — truoc day viet cung "1.0.0", tang phien ban la dong nay noi doi. */}
           Phiên bản {version ?? "…"}
         </span>

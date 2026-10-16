@@ -26,10 +26,10 @@ export default function Dialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
+          <h2 className="text-sm font-semibold text-fg">{title}</h2>
           <button
             type="button"
-            className="rounded-md p-1 text-ink3 hover:bg-fill2 hover:text-ink"
+            className="rounded-md p-1 text-ink3 hover:bg-fill2 hover:text-fg"
             onClick={onClose}
             aria-label="Đóng"
           >

@@ -103,7 +103,7 @@ export default function AddApiKeyDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <fieldset className="m-0 border-none p-0">
-        <legend className="mb-2 p-0 text-[12.5px] font-semibold text-ink2">
+        <legend className="mb-2 p-0 text-[12.5px] font-semibold text-muted">
           Nhà cung cấp <span className="text-rose">*</span>
         </legend>
         <div className="grid grid-cols-3 gap-2">
@@ -152,13 +152,13 @@ export default function AddApiKeyDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => setSecret(e.target.value)}
               placeholder="Dán key vào đây"
               autoComplete="off"
-              className="min-w-0 flex-1 border-none bg-transparent font-mono text-[12.5px] text-ink outline-none placeholder:text-ink3"
+              className="min-w-0 flex-1 border-none bg-transparent font-mono text-[12.5px] text-fg outline-none placeholder:text-ink3"
             />
             <button
               type="button"
               aria-label={reveal ? "Ẩn key" : "Hiện key"}
               onClick={() => setReveal((v) => !v)}
-              className="grid h-8 w-8 place-items-center rounded-sm text-ink3 hover:text-ink"
+              className="grid h-8 w-8 place-items-center rounded-sm text-ink3 hover:text-fg"
             >
               <svg viewBox="0 0 24 24" className="h-[15px] w-[15px]" fill="none" stroke="currentColor" strokeWidth={1.8}>
                 <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
@@ -173,7 +173,7 @@ export default function AddApiKeyDialog({ onClose }: { onClose: () => void }) {
       </p>
 
       <fieldset className="m-0 border-none p-0">
-        <legend className="mb-2 p-0 text-[12.5px] font-semibold text-ink2">
+        <legend className="mb-2 p-0 text-[12.5px] font-semibold text-muted">
           Dùng cho node <span className="font-normal text-ink3">gợi ý theo khả năng của key</span>
         </legend>
         <NodeTagPicker value={nodes} onChange={setNodes} />

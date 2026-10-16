@@ -80,8 +80,8 @@ export default function TasksPage() {
               className={
                 "rounded-sm px-3.5 py-1.5 font-medium transition-colors " +
                 (view === v
-                  ? "bg-accent text-accent-ink shadow-sm"
-                  : "text-ink2 hover:bg-fill hover:text-ink")
+                  ? "bg-primary text-primary-fg shadow-sm"
+                  : "text-muted hover:bg-fill hover:text-fg")
               }
               onClick={() => setView(v)}
             >

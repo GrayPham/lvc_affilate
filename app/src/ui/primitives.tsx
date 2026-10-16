@@ -44,7 +44,7 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         style={{ width, boxShadow: "var(--dialog-shadow)" }}
-        className="max-w-full overflow-hidden rounded-xl border border-line2 bg-panel text-ink"
+        className="max-w-full overflow-hidden rounded-2xl border border-line bg-panel text-fg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2.5 border-b border-line px-[18px] py-4">
@@ -56,7 +56,7 @@ export function Dialog({
             type="button"
             onClick={onClose}
             aria-label={minimize ? "Ẩn xuống, vẫn chạy nền" : "Đóng"}
-            className="grid h-9 w-9 place-items-center rounded-md text-[16px] text-ink3 hover:bg-fill hover:text-ink"
+            className="grid h-9 w-9 place-items-center rounded-md text-[16px] text-ink3 hover:bg-fill hover:text-fg"
           >
             {minimize ? "–" : "✕"}
           </button>
@@ -87,11 +87,11 @@ export function DialogFooter({ hint, children }: { hint?: string; children: Reac
 type BtnVariant = "primary" | "secondary" | "danger";
 
 const BTN_BASE =
-  "inline-flex items-center justify-center rounded-md text-[13px] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center gap-1.5 rounded-full text-[13px] disabled:cursor-not-allowed disabled:opacity-50";
 const BTN_VARIANT: Record<BtnVariant, string> = {
-  primary: "bg-accent font-bold text-accent-ink hover:brightness-105",
-  secondary: "border border-line2 bg-fill text-ink2 hover:text-ink",
-  danger: "border border-rose/40 text-rose hover:bg-rose/10",
+  primary: "lvc-btn-primary font-bold",
+  secondary: "border border-line bg-panel text-fg hover:bg-hover",
+  danger: "border border-danger/40 text-danger hover:bg-danger/10",
 };
 
 export function Button({
@@ -130,13 +130,13 @@ export function Switch({
       onClick={() => onChange(!checked)}
       className={
         "relative h-5 w-9 shrink-0 rounded-[10px] transition-colors disabled:opacity-50 " +
-        (checked ? "bg-accent" : "bg-line2")
+        (checked ? "bg-primary" : "bg-line2")
       }
     >
       <span
         className={
           "absolute top-[3px] h-3.5 w-3.5 rounded-[7px] transition-[left] " +
-          (checked ? "left-[19px] bg-accent-ink" : "left-[3px] bg-ink3")
+          (checked ? "left-[19px] bg-primary-fg" : "left-[3px] bg-ink3")
         }
       />
     </button>
@@ -171,7 +171,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(v)}
             className={
               "min-h-[34px] rounded-sm px-3 text-[12.5px] " +
-              (on ? "bg-accent-soft font-semibold text-accent-text" : "text-ink2 hover:text-ink")
+              (on ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:text-fg")
             }
           >
             {text}
@@ -209,7 +209,7 @@ export function Chip({
       onClick={onClick}
       className={
         "inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] " +
-        (on ? "bg-accent font-bold text-accent-ink" : "border border-line2 text-ink2 hover:text-ink")
+        (on ? "bg-primary font-bold text-primary-fg" : "border border-line2 text-muted hover:text-fg")
       }
     >
       {dotColor && !on ? (
@@ -354,7 +354,7 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[12.5px] font-semibold text-ink2">
+      <span className="text-[12.5px] font-semibold text-muted">
         {label}
         {required ? <span className="text-rose"> *</span> : null}
         {hint ? <span className="ml-1.5 font-normal text-ink3">{hint}</span> : null}
@@ -365,7 +365,7 @@ export function Field({
 }
 
 export const INPUT_CLASS =
-  "min-h-10 w-full rounded-md border border-line2 bg-fill px-3 text-[13px] text-ink outline-none placeholder:text-ink3 focus:border-accent/60";
+  "min-h-10 w-full rounded-[10px] border border-line bg-panel px-3 text-[13px] text-fg outline-none placeholder:text-ink3 focus:border-primary";
 
 /** O tim kiem co icon kinh lup — dung o moi man danh sach. */
 export function SearchInput({
@@ -394,7 +394,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-ink outline-none placeholder:text-ink3"
+        className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-fg outline-none placeholder:text-ink3"
       />
     </label>
   );
@@ -419,12 +419,85 @@ export function SelectCard({
       aria-pressed={selected}
       onClick={onClick}
       className={
-        "flex min-h-12 items-center gap-2.5 rounded-md border px-3 text-left text-ink " +
-        (selected ? "border-accent/65 bg-accent-soft" : "border-line2 hover:border-line2 hover:bg-fill")
+        "flex min-h-12 items-center gap-2.5 rounded-md border px-3 text-left text-fg " +
+        (selected ? "border-primary/65 bg-accent-soft" : "border-line2 hover:border-line2 hover:bg-fill")
       }
       style={selected && ring ? { boxShadow: "0 0 0 3px rgb(245 165 36 / .14)" } : undefined}
     >
       {children}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tien ich chuan LVC Fox bo sung (dong bo apps/manager/src/components/ui.tsx).
+// ---------------------------------------------------------------------------------------------
+
+/** Ghep class, bo gia tri falsy (giong `clsx` rut gon). */
+export function cx(...parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(" ");
+}
+
+/** Vong xoay cho trang thai dang tai. */
+export function Spinner({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      className="animate-spin"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.4}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" className="opacity-25" />
+      <path d="M21 12a9 9 0 0 0-9-9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Dong bao loi do — khong hien gi neu `text` rong. */
+export function ErrorLine({ text }: { text?: string | null }) {
+  if (!text) return null;
+  return <span className="text-[12.5px] leading-[18px] text-danger">{text}</span>;
+}
+
+/** Nut chi-icon vuong bo tron; `title` BAT BUOC (tooltip + doc man hinh). */
+export function IconButton({
+  title,
+  active = false,
+  className = "",
+  children,
+  ...rest
+}: {
+  title: string;
+  active?: boolean;
+  children: ReactNode;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      className={cx(
+        "grid h-9 w-9 shrink-0 place-items-center rounded-full border text-[13px] disabled:cursor-not-allowed disabled:opacity-50",
+        active ? "border-primary/40 bg-sel text-fg" : "border-line bg-panel text-muted hover:bg-hover hover:text-fg",
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Thanh tien trinh mong (vd `value/total` buoc). */
+export function Progress({ value, total }: { value: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.max(0, (value / total) * 100)) : 0;
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-hover">
+      <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+    </div>
   );
 }

@@ -106,7 +106,7 @@ export default function SettingsPage() {
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-wrap items-start gap-2.5 border-b border-line px-6 pt-5 pb-4">
         <div className="min-w-[220px] flex-1">
-          <h1 className="text-xl font-bold tracking-[-0.01em] text-ink">Cài đặt</h1>
+          <h1 className="text-xl font-bold tracking-[-0.01em] text-fg">Cài đặt</h1>
           <p className="mt-1 text-[13px] text-ink3">
             Áp dụng cho toàn bộ workflow và tác vụ trên máy này.
           </p>
@@ -129,7 +129,7 @@ export default function SettingsPage() {
                 onClick={() => setSection(key)}
                 className={
                   "flex min-h-[38px] items-center rounded-lg px-2.5 text-left text-[13px] " +
-                  (on ? "bg-fill2 font-semibold text-ink" : "text-ink2 hover:text-ink")
+                  (on ? "bg-fill2 font-semibold text-fg" : "text-muted hover:text-fg")
                 }
               >
                 {label}
@@ -151,7 +151,7 @@ export default function SettingsPage() {
                 </ul>
               ) : null}
               {warnings.length > 0 ? (
-                <ul className="flex flex-col gap-1 rounded-md border border-warn/30 bg-warn/10 px-3 py-2.5 text-[12.5px] text-ink2">
+                <ul className="flex flex-col gap-1 rounded-md border border-warn/30 bg-warn/10 px-3 py-2.5 text-[12.5px] text-muted">
                   {warnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}

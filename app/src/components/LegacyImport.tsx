@@ -49,8 +49,8 @@ export default function LegacyImport() {
   }
 
   return (
-    <section className="flex flex-col gap-2 border-t border-line pt-4 text-ink">
-      <p className="text-sm font-medium text-ink">Nhập dữ liệu từ bản Python</p>
+    <section className="flex flex-col gap-2 border-t border-line pt-4 text-fg">
+      <p className="text-sm font-medium text-fg">Nhập dữ liệu từ bản Python</p>
       <p className="text-xs text-ink3">
         Chọn thư mục cài đặt bản Python cũ để nhập task/tài khoản/lượt dùng/cài đặt vào ứng dụng này.
       </p>

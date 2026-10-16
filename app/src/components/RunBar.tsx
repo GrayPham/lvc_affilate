@@ -363,9 +363,9 @@ export default function RunBar() {
   }
 
   return (
-    <div className="flex flex-col gap-2.5 border-b border-line bg-rail px-3 py-2.5 text-ink">
+    <div className="flex flex-col gap-2.5 border-b border-line bg-rail px-3 py-2.5 text-fg">
       <div className="flex items-center gap-1.5">
-        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent-text" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
           <path d="M14 3v4a1 1 0 0 0 1 1h4" />
         </svg>
@@ -374,7 +374,7 @@ export default function RunBar() {
             type="button"
             title="Bấm để đổi tên"
             onClick={() => setRenaming(workflowName)}
-            className="rounded px-1 text-sm font-semibold text-ink hover:bg-fill2"
+            className="rounded px-1 text-sm font-semibold text-fg hover:bg-fill2"
           >
             {workflowName}
           </button>
@@ -391,7 +391,7 @@ export default function RunBar() {
                 setRenaming(null);
               }
             }}
-            className="min-w-0 flex-1 rounded border border-amber-400/60 bg-fill px-1.5 py-0.5 text-sm font-semibold text-ink outline-none"
+            className="min-w-0 flex-1 rounded border border-amber-400/60 bg-fill px-1.5 py-0.5 text-sm font-semibold text-fg outline-none"
           />
         )}
         {workflowSaved ? null : (
@@ -402,7 +402,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleValidate()}
         >
           Kiểm tra
@@ -410,7 +410,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy || running}
-          className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-ink shadow-md shadow-amber-500/30 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+          className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-fg shadow-md shadow-amber-500/30 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           onClick={() => void handleRun()}
         >
           ▶ Chạy
@@ -427,7 +427,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleSave()}
         >
           Lưu <span className="ml-1 text-[10px] text-ink3">Ctrl+S</span>
@@ -435,7 +435,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => setShowOpen(true)}
         >
           Workflow của tôi
@@ -443,7 +443,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleNew()}
         >
           Mới
@@ -453,7 +453,7 @@ export default function RunBar() {
           type="button"
           disabled={busy}
           title="Xếp workflow này vào hàng chờ ở tab Tác vụ (chạy lần lượt)"
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleEnqueue()}
         >
           + Hàng chờ
@@ -461,7 +461,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={openTemplates}
         >
           Kho mẫu
@@ -469,7 +469,7 @@ export default function RunBar() {
         <button
           type="button"
           disabled={busy}
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void handleSaveTemplate()}
         >
           Lưu thành mẫu
@@ -478,15 +478,15 @@ export default function RunBar() {
           type="button"
           disabled={busy}
           title="Mở Pull Request đưa workflow này lên kho cộng đồng"
-          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border border-line bg-fill px-4 py-2 text-xs font-medium text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => setShowPublish(true)}
         >
           ↑ Publish
         </button>
         {running ? (
-          <span className="text-xs text-accent-text">Đang chạy (run {runId})…</span>
+          <span className="text-xs text-accent">Đang chạy (run {runId})…</span>
         ) : runStatus ? (
-          <span className="text-xs text-ink2">Lần chạy trước: {runStatus}</span>
+          <span className="text-xs text-muted">Lần chạy trước: {runStatus}</span>
         ) : null}
       </div>
 
@@ -497,7 +497,7 @@ export default function RunBar() {
         </p>
       ) : null}
 
-      {message ? <p className="text-xs text-ink2">{message}</p> : null}
+      {message ? <p className="text-xs text-muted">{message}</p> : null}
 
       {globalErrors.length > 0 || nodeErrorCount > 0 ? (
         <ul className="max-h-32 overflow-auto rounded-md border border-rose/35 bg-rose/10 p-2 text-xs text-rose">

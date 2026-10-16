@@ -62,31 +62,31 @@ export default function TaskFilters() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel p-2">
-      <label className="flex items-center gap-1 text-xs text-ink2">
+      <label className="flex items-center gap-1 text-xs text-muted">
         Run
         <select
-          className="rounded border border-line bg-fill px-2 py-1 text-xs text-ink"
+          className="rounded border border-line bg-fill px-2 py-1 text-xs text-fg"
           value={filter.runId ?? ""}
           onChange={(e) => setRunId(e.target.value === "" ? null : e.target.value)}
         >
-          <option value="" className="bg-panel text-ink">Tất cả</option>
+          <option value="" className="bg-panel text-fg">Tất cả</option>
           {runs.map((run) => (
-            <option key={run.id} value={run.id} className="bg-panel text-ink">
+            <option key={run.id} value={run.id} className="bg-panel text-fg">
               {formatRunLabel(run)}
             </option>
           ))}
         </select>
       </label>
 
-      <label className="flex items-center gap-1 text-xs text-ink2">
+      <label className="flex items-center gap-1 text-xs text-muted">
         Trạng thái
         <select
-          className="rounded border border-line bg-fill px-2 py-1 text-xs text-ink"
+          className="rounded border border-line bg-fill px-2 py-1 text-xs text-fg"
           value={filter.status}
           onChange={(e) => setStatus(e.target.value as StatusFilter)}
         >
           {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value} className="bg-panel text-ink">
+            <option key={opt.value} value={opt.value} className="bg-panel text-fg">
               {opt.label}
             </option>
           ))}
@@ -101,7 +101,7 @@ export default function TaskFilters() {
             ? "Chọn một lần chạy ở ô Run để xem chi tiết"
             : "Xem dòng thời gian từng node của lần chạy này"
         }
-        className="rounded border border-line bg-fill px-2 py-1 text-xs text-ink hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded border border-line bg-fill px-2 py-1 text-xs text-fg hover:bg-fill2 disabled:cursor-not-allowed disabled:opacity-40"
         onClick={() => {
           const run = runs.find((r) => r.id === filter.runId);
           if (run) {

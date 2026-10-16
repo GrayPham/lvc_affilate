@@ -110,12 +110,12 @@ export default function CaptureFramesPanel() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={close}>
       <div
-        className="flex max-h-[90vh] w-[720px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-panel p-3 text-ink shadow-2xl"
+        className="flex max-h-[90vh] w-[720px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-panel p-3 text-fg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Chụp khung hình · {target.label}</h3>
-          <button type="button" className="rounded-md px-2 py-1 text-ink2 hover:bg-fill2 hover:text-ink" onClick={close} aria-label="Đóng">
+          <button type="button" className="rounded-md px-2 py-1 text-muted hover:bg-fill2 hover:text-fg" onClick={close} aria-label="Đóng">
             ✕
           </button>
         </div>
@@ -147,7 +147,7 @@ export default function CaptureFramesPanel() {
           <button
             type="button"
             disabled={frames.length === 0 || busy}
-            className="ml-auto rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-ink hover:bg-sky-500 disabled:opacity-40"
+            className="ml-auto rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-fg hover:bg-sky-500 disabled:opacity-40"
             onClick={() => void addToCanvas()}
           >
             {busy ? "Đang thêm…" : `Thêm vào canvas (${frames.length})`}
@@ -163,10 +163,10 @@ export default function CaptureFramesPanel() {
             frames.map((fr, i) => (
               <div key={`${fr.label}-${i}`} className="relative">
                 <img src={fr.dataUrl} alt="" className="h-20 w-auto rounded border border-line object-cover" />
-                <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] text-ink">{fr.label}</span>
+                <span className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 text-[9px] text-fg">{fr.label}</span>
                 <button
                   type="button"
-                  className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl bg-black/70 text-[10px] text-ink hover:bg-red-600 hover:text-ink"
+                  className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl bg-black/70 text-[10px] text-fg hover:bg-red-600 hover:text-fg"
                   onClick={() => setFrames((f) => f.filter((_, j) => j !== i))}
                   aria-label="Bỏ khung"
                 >

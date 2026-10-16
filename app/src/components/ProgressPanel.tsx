@@ -46,11 +46,11 @@ const ROW_CLASS: Record<DisplayStatus, string> = {
 
 /** `node_state` tho tu Rust (`NODE_*` o `dag.rs`) -> mau hang, khop tinh than `ROW_CLASS`. */
 const NODE_ROW_CLASS: Record<string, string> = {
-  queued: "border-line bg-fill text-ink2",
+  queued: "border-line bg-fill text-muted",
   running: ROW_CLASS.running,
   done: ROW_CLASS.done,
   failed: ROW_CLASS.failed,
-  cancelled: "border-line bg-fill text-ink2",
+  cancelled: "border-line bg-fill text-muted",
 };
 
 export default function ProgressPanel() {
@@ -90,7 +90,7 @@ export default function ProgressPanel() {
   }, [runId]);
 
   if (!runId) {
-    return <p className="p-2 text-xs text-ink2">Chưa có lần chạy nào — bấm &quot;Chạy&quot; để bắt đầu.</p>;
+    return <p className="p-2 text-xs text-muted">Chưa có lần chạy nào — bấm &quot;Chạy&quot; để bắt đầu.</p>;
   }
 
   const ids = Array.from(new Set([...Object.keys(meta), ...Object.keys(liveTasks)]));
@@ -111,7 +111,7 @@ export default function ProgressPanel() {
   return (
     <div className="flex flex-col gap-1 overflow-auto p-2">
       {error ? <p className="text-xs text-rose">{error}</p> : null}
-      {ids.length === 0 && nodeOnlyIds.length === 0 ? <p className="text-xs text-ink2">Chưa có tác vụ nào.</p> : null}
+      {ids.length === 0 && nodeOnlyIds.length === 0 ? <p className="text-xs text-muted">Chưa có tác vụ nào.</p> : null}
       {nodeOnlyIds.map((nid) => {
         const n = nodeStates[nid];
         if (!n) {

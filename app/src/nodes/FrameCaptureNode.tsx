@@ -23,13 +23,13 @@ export default function FrameCaptureNode({ id, data, selected }: NodeProps<Frame
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
       <NodeShell label={NODE_LABEL_VI.frame_capture} kind="frame_capture" selected={selected} errors={errors} runState={runState}>
-        <label className="flex items-center gap-2 text-[11px] text-ink2">
+        <label className="flex items-center gap-2 text-[11px] text-muted">
           Thời điểm
           <input
             type="number"
             min={0}
             step={0.5}
-            className="nodrag w-16 rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-ink outline-none focus:border-sky-400/60"
+            className="nodrag w-16 rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-fg outline-none focus:border-sky-400/60"
             value={data.time}
             onChange={(e) => updateNodeData(id, { ...data, time: Number(e.target.value) || 0 })}
           />

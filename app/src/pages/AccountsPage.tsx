@@ -432,7 +432,7 @@ export default function AccountsPage() {
           />
           {selectedRows.length > 0 ? (
             <>
-              <span className="text-[12.5px] font-bold text-accent-text">
+              <span className="text-[12.5px] font-bold text-accent">
                 {selectedRows.length} đã chọn
               </span>
               <Button disabled={bulkBusy} onClick={() => void handleBulkVerify()}>
@@ -506,7 +506,7 @@ export default function AccountsPage() {
                         />
                       </td>
                       <td className={TD}>
-                        <span className="font-semibold text-ink">{row.label}</span>
+                        <span className="font-semibold text-fg">{row.label}</span>
                         {row.sublabel ? (
                           <span className="mt-0.5 block text-[12px] text-ink3">{row.sublabel}</span>
                         ) : null}
@@ -520,7 +520,7 @@ export default function AccountsPage() {
                             {look.letter}
                           </span>
                           <span className="flex flex-col leading-[1.3]">
-                            <span className="font-semibold text-ink">{look.name}</span>
+                            <span className="font-semibold text-fg">{look.name}</span>
                             <span className="text-[11.5px] text-ink3">{look.sub}</span>
                           </span>
                         </span>
@@ -561,17 +561,17 @@ export default function AccountsPage() {
                         />
                       </td>
                       <td className={`${TD} whitespace-nowrap`}>
-                        <span className="rounded-sm bg-fill px-[7px] py-0.5 text-[11px] text-ink2">
+                        <span className="rounded-sm bg-fill px-[7px] py-0.5 text-[11px] text-muted">
                           {row.proxyKind}
                         </span>
-                        <span className="ml-1 font-mono text-[12px] text-ink2">
+                        <span className="ml-1 font-mono text-[12px] text-muted">
                           {row.proxy === "" ? "—" : row.proxy}
                         </span>
                         {row.browser ? (
                           <span className="mt-[3px] block text-[12px] text-ink3">{row.browser}</span>
                         ) : null}
                       </td>
-                      <td className={`${TD} whitespace-nowrap text-ink2`}>
+                      <td className={`${TD} whitespace-nowrap text-muted`}>
                         {formatLastUsed(row.lastUsedAt, now)}
                       </td>
                       <td className={`${TD} whitespace-nowrap`}>
@@ -646,7 +646,7 @@ export default function AccountsPage() {
             <button
               key={label as string}
               type="button"
-              className="block w-full px-3 py-1.5 text-left text-ink2 hover:bg-fill hover:text-ink"
+              className="block w-full px-3 py-1.5 text-left text-muted hover:bg-fill hover:text-fg"
               onClick={() => {
                 setMenu(null);
                 (fn as () => void)();

@@ -257,9 +257,9 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
       {list === null ? (
         <p className="text-[12.5px] text-ink3">Đang tải danh sách workflow…</p>
       ) : list.length === 0 ? (
-        <p className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2.5 text-[12.5px] leading-[1.5] text-ink2">
+        <p className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2.5 text-[12.5px] leading-[1.5] text-muted">
           Chưa có workflow nào được lưu. Dựng một workflow trên canvas rồi bấm{" "}
-          <strong className="text-ink">Lưu</strong> trước đã.
+          <strong className="text-fg">Lưu</strong> trước đã.
         </p>
       ) : (
         <Field label="Workflow" required>
@@ -269,7 +269,7 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
             onChange={(e) => setPickedId(e.target.value)}
           >
             {list.map((w) => (
-              <option key={w.id} value={w.id} className="bg-panel text-ink">
+              <option key={w.id} value={w.id} className="bg-panel text-fg">
                 {w.name}
               </option>
             ))}
@@ -284,7 +284,7 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
           <span className="text-[13px] font-semibold text-rose">
             Đồ thị chưa chạy được — thiếu dữ liệu đầu vào
           </span>
-          <ul className="flex flex-col gap-1 text-[12.5px] leading-[1.5] text-ink2">
+          <ul className="flex flex-col gap-1 text-[12.5px] leading-[1.5] text-muted">
             {graphErrors.map((msg) => (
               <li key={msg}>• {msg}</li>
             ))}
@@ -293,7 +293,7 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
       ) : null}
 
       {missing.length > 0 ? (
-        <div className="flex gap-2.5 rounded-lg border border-accent/40 bg-accent/[0.07] p-3">
+        <div className="flex gap-2.5 rounded-lg border border-primary/40 bg-primary/[0.07] p-3">
           <svg
             width="18"
             height="18"
@@ -303,21 +303,21 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
             strokeWidth="2"
             strokeLinejoin="round"
             aria-hidden="true"
-            className="mt-px flex-none text-accent-text"
+            className="mt-px flex-none text-accent"
           >
             <path d="M12 3 2 20h20L12 3Z" />
             <path d="M12 10v4M12 17v.5" strokeLinecap="round" />
           </svg>
           <div className="flex flex-1 flex-col gap-1.5">
-            <span className="text-[13px] font-semibold text-ink">
+            <span className="text-[13px] font-semibold text-fg">
               Kho chưa có tài khoản cho {missing.length} loại node
             </span>
-            <ul className="flex flex-col gap-1 text-[12.5px] leading-[1.5] text-ink2">
+            <ul className="flex flex-col gap-1 text-[12.5px] leading-[1.5] text-muted">
               {missing.map((m) => (
                 <li key={m.nodeKind}>
-                  <strong className="text-ink">{m.nodeLabel}</strong>
+                  <strong className="text-fg">{m.nodeLabel}</strong>
                   {m.nodeCount > 1 ? ` ×${m.nodeCount}` : ""} cần{" "}
-                  <strong className="text-ink">{m.provider}</strong> ({m.kinds.join(" hoặc ")})
+                  <strong className="text-fg">{m.provider}</strong> ({m.kinds.join(" hoặc ")})
                 </li>
               ))}
             </ul>

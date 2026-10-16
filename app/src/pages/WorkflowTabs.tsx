@@ -248,8 +248,8 @@ export default function WorkflowTabs() {
             className={
               "group relative flex max-w-[16rem] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-2 text-xs " +
               (tab.id === activeId
-                ? "border-line bg-stage text-ink"
-                : "border-transparent text-ink3 hover:bg-fill hover:text-ink2")
+                ? "border-line bg-stage text-fg"
+                : "border-transparent text-ink3 hover:bg-fill hover:text-muted")
             }
           >
             <TabRunDot runStore={tab.runStore} />
@@ -260,7 +260,7 @@ export default function WorkflowTabs() {
                 type="button"
                 title="Đóng tab"
                 aria-label="Đóng tab"
-                className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-ink3 opacity-0 hover:bg-fill2 hover:text-ink group-hover:opacity-100"
+                className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-ink3 opacity-0 hover:bg-fill2 hover:text-fg group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleCloseTab(tab.id);
@@ -275,7 +275,7 @@ export default function WorkflowTabs() {
           type="button"
           title="Mở tab workflow mới"
           aria-label="Mở tab workflow mới"
-          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink3 hover:bg-fill2 hover:text-ink"
+          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink3 hover:bg-fill2 hover:text-fg"
           onClick={handleNewTab}
         >
           +

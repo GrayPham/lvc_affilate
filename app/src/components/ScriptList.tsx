@@ -13,11 +13,11 @@ import type { ScriptMeta } from "../ipc/types";
 
 const BTN = "rounded border px-2 py-1 text-xs disabled:opacity-50";
 const BTN_NEUTRAL = `${BTN} border-line2 hover:bg-fill2`;
-const BTN_PRIMARY = `${BTN} border-line2 bg-panel text-ink hover:bg-fill2`;
+const BTN_PRIMARY = `${BTN} border-line2 bg-panel text-fg hover:bg-fill2`;
 
 function CountsLine({ meta }: { meta: ScriptMeta }) {
   return (
-    <span className="block text-[10px] text-ink2">
+    <span className="block text-[10px] text-muted">
       {meta.total} tổng · {meta.done} xong · {meta.failed} lỗi · {meta.running} đang chạy
     </span>
   );
@@ -58,7 +58,7 @@ function ImportTxtModal({
       <div className="w-[32rem] max-w-full rounded-lg bg-panel p-4 shadow-lg">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Nhập TXT vào "{scriptName}"</h2>
-          <button type="button" className="text-ink2 hover:text-ink" onClick={onClose}>
+          <button type="button" className="text-muted hover:text-fg" onClick={onClose}>
             Đóng
           </button>
         </div>
@@ -68,7 +68,7 @@ function ImportTxtModal({
             <p className="text-sm text-emerald-700">Đã thay toàn bộ cảnh bằng {result} cảnh mới.</p>
             <button
               type="button"
-              className="self-end rounded bg-panel px-3 py-1 text-xs text-ink hover:bg-fill2"
+              className="self-end rounded bg-panel px-3 py-1 text-xs text-fg hover:bg-fill2"
               onClick={onClose}
             >
               Đóng
@@ -101,7 +101,7 @@ function ImportTxtModal({
               <button
                 type="button"
                 disabled={busy || text.trim() === ""}
-                className="rounded bg-panel px-3 py-1 text-xs text-ink hover:bg-fill2 disabled:opacity-50"
+                className="rounded bg-panel px-3 py-1 text-xs text-fg hover:bg-fill2 disabled:opacity-50"
                 onClick={() => void handleImport()}
               >
                 {busy ? "Đang nhập…" : "Nhập"}
@@ -178,7 +178,7 @@ export default function ScriptList() {
   return (
     <div className="flex w-72 shrink-0 flex-col gap-2 border-r border-line2 p-2">
       <div className="flex flex-wrap items-center gap-1">
-        <h2 className="mr-auto text-sm font-semibold text-ink">Kịch bản</h2>
+        <h2 className="mr-auto text-sm font-semibold text-fg">Kịch bản</h2>
         <button type="button" disabled={busy} className={BTN_PRIMARY} onClick={() => void handleCreate()}>
           Mới
         </button>
@@ -193,12 +193,12 @@ export default function ScriptList() {
         </button>
       </div>
 
-      {loadingList ? <p className="text-[11px] text-ink2">Đang tải…</p> : null}
+      {loadingList ? <p className="text-[11px] text-muted">Đang tải…</p> : null}
       {listError ? <p className="text-xs text-red-600">{listError}</p> : null}
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
       {scripts.length === 0 && !loadingList ? (
-        <p className="text-xs text-ink2">Chưa có kịch bản nào — bấm "Mới" để tạo.</p>
+        <p className="text-xs text-muted">Chưa có kịch bản nào — bấm "Mới" để tạo.</p>
       ) : (
         <ul className="flex flex-1 flex-col gap-1 overflow-auto">
           {scripts.map((meta) => (
@@ -247,7 +247,7 @@ export default function ScriptList() {
                     className="w-full px-2 py-1.5 text-left"
                     onClick={() => void selectScript(meta.id)}
                   >
-                    <span className="block text-sm font-medium text-ink">{meta.name}</span>
+                    <span className="block text-sm font-medium text-fg">{meta.name}</span>
                     <CountsLine meta={meta} />
                   </button>
                   <div className="flex gap-1 px-2 pb-1.5 text-[11px]">

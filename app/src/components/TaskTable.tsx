@@ -7,7 +7,7 @@ import { filterByStatus, useTasksStore } from "../store/tasks";
 import type { TaskDto } from "../ipc/types";
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
-  queued: "bg-fill text-ink2",
+  queued: "bg-fill text-muted",
   processing: "bg-sky-500/15 text-rest",
   completed: "bg-emerald-500/15 text-ok",
   failed: "bg-red-500/15 text-rose",
@@ -45,10 +45,10 @@ interface TaskRowProps {
 
 function TaskRow({ task, pending, onOpenFile, onResume, onCancel }: TaskRowProps) {
   const elapsedMs = elapsedMsOf(task);
-  const badgeClass = STATUS_BADGE_CLASS[task.status] ?? "bg-fill text-ink2";
+  const badgeClass = STATUS_BADGE_CLASS[task.status] ?? "bg-fill text-muted";
 
   return (
-    <tr className="border-b border-line text-xs text-ink2">
+    <tr className="border-b border-line text-xs text-muted">
       <td className="whitespace-nowrap px-2 py-1">{formatCreatedAt(task.createdAt)}</td>
       <td className="whitespace-nowrap px-2 py-1 font-mono" title={task.runId}>
         {shortRunId(task.runId)}

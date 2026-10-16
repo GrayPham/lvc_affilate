@@ -1,65 +1,70 @@
 @import "tailwindcss";
 
-/* ------------------------------------------------------------------------------------------------
-   DESIGN TOKEN (ban ban giao `references/lvc-ui-design/HANDOFF.md`) — nguon su that DUY NHAT cho mau
-   sac toan app. Gia tri THAT nam o `:root` (toi) / `:root[data-theme="light"]` (sang); khoi `@theme`
-   duoi chi TRO vao chung de Tailwind sinh ra lop tien ich (`bg-panel`, `text-ink2`, `border-line`…).
-   Doi theme = doi thuoc tinh `data-theme` tren <html> (xem `store/uiStore.ts`), KHONG sua file nao.
-   ------------------------------------------------------------------------------------------------ */
-:root {
-  --bg: #0a0a0c;
-  --stage: #0a0a0c;
-  --panel: #141417;
-  --rail: #0d0d10;
-  --fill: rgb(255 255 255 / 0.04);
-  --line: rgb(255 255 255 / 0.07);
-  --line2: rgb(255 255 255 / 0.13);
-  --ink: #e9e8e6;
-  --ink2: #b0aea9;
-  --ink3: #8a8882;
-  --accent: #f5a524;
-  --accent-ink: #1a1206;
-  --accent-text: #f7bc57;
-  --accent-soft: rgb(245 165 36 / 0.12);
-  /* Trang thai tai khoan — khop `accountState()` (format/accountRow.ts). */
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --rest: #38bdf8;
-  --limit: #e879f9;
-  --nocredit: #fb923c;
-  --unknown: #9a99a2;
-  /* Tag loai node tren tai khoan/API key. */
-  --tag-video: #fda4af;
-  --tag-image: #5eead4;
-  --tag-script: #a5b4fc;
-  --rose: #fb7185;
-  --rose-ink: #2a0a10;
-  --dialog-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.8);
+/* LVC Fox - he design token chuan, dong bo voi app quan ly (apps/manager).
+   Nguon quy tac: templates/lvc-ui-kit va docs/16-ui-design-system.md.
+   Gia tri that o :root (SANG, mac dinh) va .dark (TOI). Doi theme bang class dark tren <html>
+   (store/uiStore.ts), KHONG dung data-theme. Ten cu cua seedance duoc giu lam alias (xem cuoi file). */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Be Vietnam Pro / Inter nếu máy có; app chạy offline nên KHÔNG tải font qua mạng (CSP chặn). */
+  --font-sans: "Be Vietnam Pro", "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --font-mono: "Cascadia Mono", ui-monospace, Consolas, "Courier New", monospace;
+  /* Bo góc chuẩn LVC Fox: nút tròn, ô nhập 10px, thẻ 14px, card 18px, khung 20px. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 20px;
 }
 
-:root[data-theme="light"] {
-  /* Trang PHA XANH TROI, nhat — diu mat hon trang tinh hay trang am.
-     Mot bang mau lanh cung lam mau nhan (vang ho phach) noi han len, vi hai dau quang pho nguoc
-     nhau. Thu tu tang nen giu nguyen: stage (toi nhat) < bg < rail < panel (sang nhat), nho do
-     canvas lui ra sau con the node noi len truoc. */
-  --bg: #eef2f7;
-  --stage: #e2e8f0;
-  --panel: #f8fafc;
-  --rail: #f1f5f9;
-  /* Mau trung tinh + duong vien nga LANH theo nen; dung xam trung tinh se thanh mot mang duc
-     nam tren nen xanh. */
-  --fill: rgb(22 32 48 / 0.05);
-  --line: rgb(22 32 48 / 0.11);
-  --line2: rgb(22 32 48 / 0.18);
-  --ink: #141a23;
-  --ink2: #44505f;
-  --ink3: #697483;
-  --accent: #f5a524;
-  --accent-ink: #1a1206;
-  --accent-text: #9a4a08;
-  --accent-soft: rgb(245 165 36 / 0.18);
-  --ok: #047857;
-  --warn: #a14a06;
+/* ---- SÁNG (mặc định) ---- */
+:root {
+  --frame: linear-gradient(135deg, #fff1c4 0%, #ffd982 38%, #ffbf5e 72%, #ff9f4a 100%);
+  --bg: #fbf8f2;
+  --panel: #ffffff;
+  --panel-2: #fbf7ef;
+  --line: #efe8db;
+  --text: #221d16;
+  --muted: #8a8173;
+  --hover: #fbf3e2;
+  --sel: #fff5d9;
+  --primary: #f6b90f;
+  --primary-2: #ffc83d;
+  --primary-hover: #e8a800;
+  --primary-fg: #2a1f05;
+  --accent: #a86400;
+  --info: #2f6fea;
+  --success: #16a34a;
+  --success-hover: #12873d;
+  --danger: #e5484d;
+  --danger-hover: #cc343a;
+  --warn: #d97706;
+  --brand: #e39a12;
+  --sh-panel: 0 1px 2px rgb(120 80 10 / 0.06), 0 8px 28px rgb(140 90 10 / 0.12);
+  --sh-card: 0 1px 2px rgb(60 40 10 / 0.05), 0 2px 10px rgb(60 40 10 / 0.05);
+  --tag-mix: #1a1206;
+  /* Thanh bên luôn tối (cả hai theme). */
+  --sidebar: #17161a;
+  --sidebar-2: #1f1d22;
+  --sidebar-fg: #f4f1ea;
+  --sidebar-muted: #a29c91;
+  --sidebar-hover: rgb(255 255 255 / 0.06);
+  --sidebar-line: rgb(255 255 255 / 0.08);
+  --sidebar-active: rgb(246 185 15 / 0.16);
+  --sidebar-active-fg: #ffc83d;
+  --sidebar-glow: radial-gradient(120% 55% at 50% 108%, rgb(246 150 15 / 0.38) 0%, rgb(246 150 15 / 0.1) 45%, transparent 75%);
+  color-scheme: light;
+
+  /* --- Token RIÊNG seedance (giữ nguyên vai trò, chỉnh cho hợp nền kem) --- */
+  --stage: #f1ece1;          /* nền canvas, lùi sau nhất */
+  --rail: #f7f2e8;           /* nền cột phụ/panel-2 vùng graph */
+  --fill: rgb(60 40 10 / 0.04);
+  --fill2: var(--hover);
+  --line2: #e2d8c6;
+  --ink3: #a89f8f;           /* mức chữ mờ thứ 3 (seedance dày đặc) */
+  --ok: #16a34a;
   --rest: #0369a1;
   --limit: #a21caf;
   --nocredit: #c2410c;
@@ -67,32 +72,122 @@
   --tag-video: #be123c;
   --tag-image: #0f766e;
   --tag-script: #4338ca;
-  --rose: #e11d48;
+  --rose: #e5484d;
   --rose-ink: #ffffff;
-  --dialog-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.28);
+  --accent-soft: rgb(246 185 15 / 0.16);
+  --dialog-shadow: 0 24px 60px -24px rgb(90 60 10 / 0.28);
 }
 
-@theme inline {
-  /* Be Vietnam Pro neu may co cai; app chay offline nen KHONG tai font tu CDN. */
-  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+/* ---- TỐI ---- */
+.dark {
+  --frame: radial-gradient(120% 80% at 100% 100%, #3a2610 0%, transparent 55%), linear-gradient(135deg, #1b1a1d 0%, #141316 100%);
+  --bg: #1d1c20;
+  --panel: #252429;
+  --panel-2: #2a292f;
+  --line: #36343b;
+  --text: #ece8e1;
+  --muted: #a39e95;
+  --hover: #2e2c32;
+  --sel: #3a321e;
+  --primary: #f6b90f;
+  --primary-2: #ffc83d;
+  --primary-hover: #ffc83d;
+  --primary-fg: #241a03;
+  --accent: #f8c64a;
+  --info: #5b9bff;
+  --success: #22c55e;
+  --success-hover: #16a34a;
+  --danger: #f05252;
+  --danger-hover: #dc2626;
+  --warn: #f59e0b;
+  --brand: #f0b43a;
+  --sh-panel: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px rgb(0 0 0 / 0.35);
+  --sh-card: 0 1px 2px rgb(0 0 0 / 0.25);
+  --tag-mix: #ffffff;
+  --sidebar: #121114;
+  --sidebar-2: #1a191d;
+  color-scheme: dark;
 
+  --stage: #161519;
+  --rail: #1a191d;
+  --fill: rgb(255 255 255 / 0.04);
+  --fill2: var(--hover);
+  --line2: #433f49;
+  --ink3: #837d88;
+  --ok: #34d399;
+  --rest: #38bdf8;
+  --limit: #e879f9;
+  --nocredit: #fb923c;
+  --unknown: #9a99a2;
+  --tag-video: #fda4af;
+  --tag-image: #5eead4;
+  --tag-script: #a5b4fc;
+  --rose: #f05252;
+  --rose-ink: #2a0a10;
+  --accent-soft: rgb(246 185 15 / 0.14);
+  --dialog-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.8);
+}
+
+/* Alias tên CŨ → token chuẩn (để `var(--ink)`, `var(--ink2)`, `var(--accent-ink)`… trong style inline
+   vẫn chạy trong lúc chuyển dần). Đặt sau để kế thừa giá trị đúng theo theme hiện hành. */
+:root,
+.dark {
+  --ink: var(--text);
+  --ink2: var(--muted);
+  --accent-ink: var(--primary-fg);
+  --accent-text: var(--accent);
+}
+
+/* Cầu nối token → tiện ích Tailwind. Map CẢ tên chuẩn lẫn tên cũ của seedance. */
+@theme inline {
+  /* -- Chuẩn LVC -- */
   --color-bg: var(--bg);
-  --color-stage: var(--stage);
   --color-panel: var(--panel);
-  --color-rail: var(--rail);
-  --color-fill: var(--fill);
+  --color-panel-2: var(--panel-2);
   --color-line: var(--line);
-  --color-line2: var(--line2);
-  --color-ink: var(--ink);
-  --color-ink2: var(--ink2);
-  --color-ink3: var(--ink3);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-hover: var(--hover);
+  --color-sel: var(--sel);
+  --color-primary: var(--primary);
+  --color-primary-2: var(--primary-2);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
   --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-accent-text: var(--accent-text);
+  --color-info: var(--info);
+  --color-success: var(--success);
+  --color-success-hover: var(--success-hover);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-warn: var(--warn);
+  --color-brand: var(--brand);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-2: var(--sidebar-2);
+  --color-sidebar-fg: var(--sidebar-fg);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-line: var(--sidebar-line);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-fg: var(--sidebar-active-fg);
+  --shadow-panel: var(--sh-panel);
+  --shadow-card: var(--sh-card);
+  --shadow-sm: var(--sh-card);
+  --shadow-md: var(--sh-panel);
+  --shadow-lg: var(--sh-panel);
+
+  /* -- Tên CŨ seedance (alias, vẫn sinh tiện ích cũ: text-ink, bg-fill, bg-accent…) -- */
+  --color-ink: var(--text);
+  --color-ink2: var(--muted);
+  --color-ink3: var(--ink3);
+  --color-fill: var(--fill);
+  --color-fill2: var(--fill2);
+  --color-line2: var(--line2);
+  --color-stage: var(--stage);
+  --color-rail: var(--rail);
+  --color-accent-ink: var(--primary-fg);
+  --color-accent-text: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-ok: var(--ok);
-  --color-warn: var(--warn);
   --color-rest: var(--rest);
   --color-limit: var(--limit);
   --color-nocredit: var(--nocredit);
@@ -102,26 +197,34 @@
   --color-tag-script: var(--tag-script);
   --color-rose: var(--rose);
   --color-rose-ink: var(--rose-ink);
+}
 
-  /* Bo goc theo ban ban giao: nut/o nhap 9–10px, the 12–13px, dialog 16px. */
-  --radius-sm: 7px;
-  --radius-md: 9px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.18);
-  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.28);
-  --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.36);
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--frame);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+select {
+  user-select: text;
 }
 
 @layer base {
-  html {
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
-
-  /* Chuyen dong mem cho moi phan tu tuong tac — khong dung "all" (tranh giat layout khi w/h doi),
-     chi cac thuoc tinh thi giac thuong gap khi hover/focus/active. */
+  /* Chuyển động mềm cho phần tử tương tác (không dùng "all" để tránh giật layout). */
   button,
   a,
   input,
@@ -138,21 +241,15 @@
     transform: translateY(0.5px);
   }
 
-  input,
-  select,
-  textarea {
-    box-shadow: var(--shadow-sm);
-  }
-  input:focus-visible,
-  select:focus-visible,
-  textarea:focus-visible,
-  button:focus-visible,
-  [tabindex]:focus-visible {
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-    box-shadow: 0 0 0 3px rgb(217 119 6 / 0.3);
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line2) transparent;
+  }
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -171,33 +268,59 @@
   }
 }
 
-/* ------------------------------------------------------------------------------------------------
-   Canvas Workflow (P-lumina) — bổ trợ trực quan cho nối dây:
-   - Làm mờ node KHÔNG nối được trong lúc kéo: Workflow.tsx chèn <style> theo `data-id` (không đổi
-     object node để tránh kẹt kết nối của React Flow).
-   - Handle = nút tròn nối dây, rõ ràng; khi hover/chọn node phóng to thành vòng tròn có dấu "+".
-   ------------------------------------------------------------------------------------------------ */
+/* Lớp components chuẩn LVC Fox (copy từ lvc-ui-kit): khung cửa sổ, thanh bên, nút chính, chip, pulse. */
+@layer components {
+  .lvc-frame {
+    background: var(--frame);
+  }
+  .lvc-sidebar {
+    background: var(--sidebar-glow), linear-gradient(180deg, var(--sidebar-2) 0%, var(--sidebar) 100%);
+  }
+  .lvc-btn-primary {
+    background: linear-gradient(180deg, var(--primary-2) 0%, var(--primary) 100%);
+    color: var(--primary-fg);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.35) inset, 0 2px 8px rgb(246 160 15 / 0.28);
+  }
+  .lvc-btn-primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ffd25c 0%, var(--primary-hover) 100%);
+  }
+  .lvc-tag {
+    background: color-mix(in srgb, var(--tag) 14%, transparent);
+    color: color-mix(in srgb, var(--tag) 72%, var(--tag-mix));
+    border: 1px solid color-mix(in srgb, var(--tag) 22%, transparent);
+  }
+}
 
-/* Nút cổng mặc định: vòng tròn nhỏ gọn, viền tối tách khỏi card, luôn thấy có cổng. */
+@keyframes lvc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.lvc-pulse {
+  animation: lvc-pulse 1.4s ease-in-out infinite;
+}
+
+/* ================================================================================================
+   Canvas Workflow (React Flow) — giữ nguyên hành vi nối dây; màu theo token để đúng cả hai theme.
+   ================================================================================================ */
 .react-flow__handle {
   width: 13px;
   height: 13px;
-  border: 2px solid #0a0a0b;
+  border: 2px solid var(--stage);
   border-radius: 9999px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
   transition: width 0.12s ease, height 0.12s ease, box-shadow 0.12s ease;
 }
-
-/* Ló ra ngoài cạnh card một chút (khoảng hở kiểu Lumina) — React Flow đã căn giữa bằng
-   translate(-50%,-50%) nên chỉ cần dịch mép trái/phải, tâm cổng vẫn đúng chiều dọc. */
 .react-flow__handle-left {
   left: -5px;
 }
 .react-flow__handle-right {
   right: -5px;
 }
-
-/* Hover/chọn node, hoặc đang kéo dây tới/từ cổng này -> phóng to thành nút tròn rõ, có vòng sáng. */
 .react-flow__node:hover .react-flow__handle,
 .react-flow__node.selected .react-flow__handle,
 .react-flow__handle.connectingfrom,
@@ -208,8 +331,6 @@
   border-color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
 }
-
-/* Dấu "+" trắng, đậm, có bóng để nổi trên nền màu cổng — gợi ý "kéo để nối". */
 .react-flow__node:hover .react-flow__handle::after,
 .react-flow__node.selected .react-flow__handle::after {
   content: "+";
@@ -225,35 +346,26 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
   pointer-events: none;
 }
-
-/* React Flow tự style nút zoom/bản đồ thu nhỏ bằng CSS riêng của nó (nền trắng, chữ đen cố định).
-   Trên giao diện TỐI chúng thành khối trắng chói; trên giao diện SÁNG app từng hiện khối ĐEN giữa
-   trang (ảnh người dùng gửi 2026-10-14). Ghi đè bằng token để cả hai theme đều đúng. */
 .react-flow__controls {
   box-shadow: none;
 }
-
 .react-flow__controls-button {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
-  color: var(--ink2);
+  color: var(--muted);
 }
-
 .react-flow__controls-button:hover {
-  background: var(--fill2);
-  color: var(--ink);
+  background: var(--hover);
+  color: var(--text);
 }
-
 .react-flow__controls-button svg {
   fill: currentColor;
 }
-
 .react-flow__minimap {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
 }
-
 .react-flow__attribution {
   background: transparent;
   color: var(--ink3);

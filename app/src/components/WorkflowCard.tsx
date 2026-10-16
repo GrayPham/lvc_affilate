@@ -118,7 +118,7 @@ export default function WorkflowCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <h3 className="text-[13.5px] leading-[1.35] font-semibold text-ink">{title}</h3>
+        <h3 className="text-[13.5px] leading-[1.35] font-semibold text-fg">{title}</h3>
         <p className="flex-1 text-[12px] leading-[1.5] text-ink3">{description}</p>
         {footer}
         {action}

@@ -40,9 +40,10 @@ function store(key: string, value: string): void {
   }
 }
 
-/** Dat `data-theme` len <html> — moi bien mau trong `index.css` doi theo (xem khoi `:root`). */
+/** Bat/bo class `dark` tren <html> — chuan LVC Fox (xem `index.css`: `:root` sang, `.dark` toi).
+    Khong con dung `data-theme`. */
 export function applyTheme(theme: Theme): void {
-  document.documentElement.dataset.theme = theme;
+  document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
 const initialTheme = readStored<Theme>(THEME_KEY, ["dark", "light"], "dark");

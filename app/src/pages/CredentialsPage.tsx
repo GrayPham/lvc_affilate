@@ -248,7 +248,7 @@ export default function ApiKeyManager() {
             placeholder="Tìm theo tên key hoặc nhà cung cấp…"
           />
           {selectedRows.length > 0 ? (
-            <span className="text-[12.5px] font-bold text-accent-text">
+            <span className="text-[12.5px] font-bold text-accent">
               {selectedRows.length} đã chọn
             </span>
           ) : null}
@@ -318,7 +318,7 @@ export default function ApiKeyManager() {
                           className="mt-0.5 h-4 w-4 accent-[#F5A524]"
                         />
                       </td>
-                      <td className={`${TD} whitespace-nowrap font-semibold text-ink`}>{r.label}</td>
+                      <td className={`${TD} whitespace-nowrap font-semibold text-fg`}>{r.label}</td>
                       <td className={TD}>
                         <span className="flex items-center gap-2.5 whitespace-nowrap">
                           <span
@@ -327,12 +327,12 @@ export default function ApiKeyManager() {
                           >
                             {look.letter}
                           </span>
-                          <span className="font-semibold text-ink">{look.name}</span>
+                          <span className="font-semibold text-fg">{look.name}</span>
                         </span>
                       </td>
                       <td className={TD}>
                         <span
-                          className="inline-flex items-center whitespace-nowrap rounded-sm border border-line bg-fill px-2.5 py-1 font-mono text-[12px] text-ink2"
+                          className="inline-flex items-center whitespace-nowrap rounded-sm border border-line bg-fill px-2.5 py-1 font-mono text-[12px] text-muted"
                           title="Bí mật không bao giờ rời khỏi máy — chỉ hiện dạng che"
                         >
                           {r.secretHint}
@@ -364,7 +364,7 @@ export default function ApiKeyManager() {
                               return (
                                 <label
                                   key={k}
-                                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[12.5px] text-ink2 hover:bg-fill"
+                                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[12.5px] text-muted hover:bg-fill"
                                 >
                                   <input
                                     type="checkbox"
@@ -406,7 +406,7 @@ export default function ApiKeyManager() {
                           label={`Bật ${r.label}`}
                         />
                       </td>
-                      <td className={`${TD} whitespace-nowrap text-ink2`}>
+                      <td className={`${TD} whitespace-nowrap text-muted`}>
                         {formatLast(r.lastUsedAt, now)}
                       </td>
                       <td className={`${TD} whitespace-nowrap`}>

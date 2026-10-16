@@ -156,23 +156,23 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
     <Dialog title="Thêm tài khoản" onClose={onClose} width="36rem">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-3">
-          <label className="flex flex-col gap-1 text-xs text-ink2">
+          <label className="flex flex-col gap-1 text-xs text-muted">
             Nền tảng
             <select
-              className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-ink"
+              className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-fg"
               value={platform}
               disabled={busy}
               onChange={(e) => handlePlatformChange(e.target.value as Platform)}
             >
               {COOKIE_PROVIDERS.map((p) => (
-                <option key={p} value={p} className="bg-panel text-ink">
+                <option key={p} value={p} className="bg-panel text-fg">
                   {credentialProviderLabel(p)}
                 </option>
               ))}
             </select>
           </label>
 
-          <div className="flex flex-col gap-1 text-xs text-ink2">
+          <div className="flex flex-col gap-1 text-xs text-muted">
             Cách thêm
             <div className="flex overflow-hidden rounded-md border border-line">
               {methods.map((m) => (
@@ -183,8 +183,8 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
                   className={
                     "px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50 " +
                     (method === m
-                      ? "bg-accent text-accent-ink"
-                      : "bg-fill text-ink2 hover:bg-fill2")
+                      ? "bg-primary text-primary-fg"
+                      : "bg-fill text-muted hover:bg-fill2")
                   }
                   onClick={() => {
                     setMethod(m);
@@ -202,10 +202,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
 
         {method === "bulk" ? (
           <div className="flex flex-col gap-3 rounded-lg border border-line bg-fill p-3">
-            <label className="flex flex-col gap-1 text-xs text-ink2">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Proxy chung (tuỳ chọn)
               <input
-                className="rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-ink3"
+                className="rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-fg placeholder:text-ink3"
                 value={proxy}
                 disabled={busy}
                 onChange={(e) => setProxy(e.target.value)}
@@ -235,7 +235,7 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
                     <span className={b.ok ? "text-ok" : "text-rose"}>
                       {b.ok ? "✓" : "✗"}
                     </span>
-                    <span className="font-medium text-ink">{b.label}</span>
+                    <span className="font-medium text-fg">{b.label}</span>
                     {b.error ? <span className="text-rose">— {b.error}</span> : null}
                   </div>
                 ))}
@@ -244,10 +244,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="flex flex-col gap-3 rounded-lg border border-line bg-fill p-3">
-            <label className="flex flex-col gap-1 text-xs text-ink2">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               {platform === "dola" ? "Tên tài khoản" : "Nhãn"}
               <input
-                className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-ink placeholder:text-ink3"
+                className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-fg placeholder:text-ink3"
                 value={label}
                 disabled={busy}
                 onChange={(e) => setLabel(e.target.value)}
@@ -257,10 +257,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
             </label>
 
             {method === "paste" ? (
-              <label className="flex flex-col gap-1 text-xs text-ink2">
+              <label className="flex flex-col gap-1 text-xs text-muted">
                 Cookie / nội dung đăng nhập
                 <textarea
-                  className="h-28 resize-none rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-ink placeholder:text-ink3"
+                  className="h-28 resize-none rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-fg placeholder:text-ink3"
                   value={secret}
                   disabled={busy}
                   onChange={(e) => setSecret(e.target.value)}
@@ -274,10 +274,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
               </p>
             )}
 
-            <label className="flex flex-col gap-1 text-xs text-ink2">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Proxy (tuỳ chọn)
               <input
-                className="rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-ink3"
+                className="rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-fg placeholder:text-ink3"
                 value={proxy}
                 disabled={busy}
                 onChange={(e) => setProxy(e.target.value)}

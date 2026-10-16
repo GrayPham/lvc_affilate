@@ -31,7 +31,7 @@ export default function UpdateSettings() {
     <SettingCard title="Cập nhật" description="Tải từ kho phát hành chính thức">
       <SettingRow label="Phiên bản đang chạy" last>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[13px] text-ink">{version ? `v${version}` : "…"}</span>
+          <span className="font-mono text-[13px] text-fg">{version ? `v${version}` : "…"}</span>
           <Button disabled={busy} onClick={() => void checkForUpdate()}>
             Kiểm tra cập nhật
           </Button>

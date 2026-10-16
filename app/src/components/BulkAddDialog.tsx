@@ -253,10 +253,10 @@ export default function BulkAddDialog({ onClose, onAdded }: BulkAddDialogProps) 
             <span className="text-[13.5px] font-bold text-rose">
               {missingCount} workflow cần tài khoản mà kho chưa có
             </span>
-            <ul className="flex flex-col gap-1 text-[12.5px] leading-[1.5] text-ink2">
+            <ul className="flex flex-col gap-1 text-[12.5px] leading-[1.5] text-muted">
               {uniqueMissing.map((m) => (
                 <li key={`${m.provider}-${m.kinds.join(",")}`}>
-                  <strong className="text-ink">{m.provider}</strong> ({m.kinds.join(" hoặc ")}) —
+                  <strong className="text-fg">{m.provider}</strong> ({m.kinds.join(" hoặc ")}) —
                   cần cho {m.nodeLabel}
                 </li>
               ))}
@@ -270,7 +270,7 @@ export default function BulkAddDialog({ onClose, onAdded }: BulkAddDialogProps) 
 
       <h3 className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.1em] text-ink3 uppercase">
         Workflow đã chọn
-        <span className="tracking-normal normal-case text-accent-text">
+        <span className="tracking-normal normal-case text-accent">
           {checking
             ? "đang kiểm tra…"
             : `${ready.length} sẵn sàng${missingCount > 0 ? ` · ${missingCount} thiếu tài khoản` : ""}${brokenCount > 0 ? ` · ${brokenCount} đồ thị lỗi` : ""}`}
@@ -308,11 +308,11 @@ export default function BulkAddDialog({ onClose, onAdded }: BulkAddDialogProps) 
                   onChange={() => toggle(r.meta.id)}
                   aria-label={`Chọn ${r.meta.name}`}
                 />
-                <span className="inline-grid h-6 w-6 flex-none place-items-center rounded-sm bg-fill2 text-[11.5px] font-bold text-ink2">
+                <span className="inline-grid h-6 w-6 flex-none place-items-center rounded-sm bg-fill2 text-[11.5px] font-bold text-muted">
                   {i + 1}
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-                  <span className="truncate text-[13px] font-semibold text-ink">{r.meta.name}</span>
+                  <span className="truncate text-[13px] font-semibold text-fg">{r.meta.name}</span>
                   <span className="flex flex-wrap gap-1">
                     {cats.map((c) => (
                       <span

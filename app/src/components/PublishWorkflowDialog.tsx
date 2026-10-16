@@ -120,7 +120,7 @@ export default function PublishWorkflowDialog({
           </DialogFooter>
         }
       >
-        <p className="text-[13px] leading-[1.55] text-ink2">
+        <p className="text-[13px] leading-[1.55] text-muted">
           {result.updatedExisting
             ? "Đã cập nhật mục cùng id trong kho cộng đồng."
             : "Đã thêm một mục mới vào kho cộng đồng."}{" "}
@@ -128,13 +128,13 @@ export default function PublishWorkflowDialog({
         </p>
         <div className="flex flex-col gap-1.5 rounded-md border border-line bg-fill p-3 text-[12.5px]">
           <span className="text-ink3">Nhánh</span>
-          <span className="font-mono text-ink">{result.branch}</span>
+          <span className="font-mono text-fg">{result.branch}</span>
         </div>
         <a
           href={result.pullRequestUrl}
           target="_blank"
           rel="noreferrer"
-          className="break-all text-[12.5px] font-semibold text-accent-text hover:underline"
+          className="break-all text-[12.5px] font-semibold text-accent hover:underline"
         >
           {result.pullRequestUrl}
         </a>
@@ -159,9 +159,9 @@ export default function PublishWorkflowDialog({
       }
     >
       {tokens.length === 0 ? (
-        <p className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2.5 text-[12.5px] leading-[1.5] text-ink2">
-          Chưa có token GitHub nào trong kho. Sang tab <strong className="text-ink">API key</strong>{" "}
-          → "+ Thêm API key" → chọn nhà cung cấp <strong className="text-ink">GitHub</strong> rồi dán
+        <p className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2.5 text-[12.5px] leading-[1.5] text-muted">
+          Chưa có token GitHub nào trong kho. Sang tab <strong className="text-fg">API key</strong>{" "}
+          → "+ Thêm API key" → chọn nhà cung cấp <strong className="text-fg">GitHub</strong> rồi dán
           personal access token có quyền ghi repo.
         </p>
       ) : (
@@ -172,7 +172,7 @@ export default function PublishWorkflowDialog({
             onChange={(e) => setCredentialId(e.target.value)}
           >
             {tokens.map((t) => (
-              <option key={t.id} value={t.id} className="bg-panel text-ink">
+              <option key={t.id} value={t.id} className="bg-panel text-fg">
                 {t.label} · {t.secretHint}
               </option>
             ))}
@@ -201,7 +201,7 @@ export default function PublishWorkflowDialog({
             onChange={(e) => setCategory(e.target.value)}
           >
             {CATEGORIES.map((c) => (
-              <option key={c} value={c} className="bg-panel text-ink">
+              <option key={c} value={c} className="bg-panel text-fg">
                 {c}
               </option>
             ))}
@@ -258,7 +258,7 @@ export default function PublishWorkflowDialog({
               onClick={() => setCover(c)}
               className={
                 "h-[42px] w-[66px] overflow-hidden rounded-sm border " +
-                (cover === c ? "border-accent" : "border-line2 hover:border-ink3")
+                (cover === c ? "border-primary" : "border-line2 hover:border-ink3")
               }
             >
               <img src={`/covers/${c}.svg`} alt={c} loading="lazy" className="h-full w-full object-cover" />

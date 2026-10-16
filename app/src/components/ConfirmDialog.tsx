@@ -64,7 +64,7 @@ export default function ConfirmDialog({
         aria-modal="true"
         aria-label={title}
         style={{ boxShadow: "var(--dialog-shadow)" }}
-        className="w-[480px] max-w-full overflow-hidden rounded-xl border border-line2 bg-panel text-ink"
+        className="w-[480px] max-w-full overflow-hidden rounded-xl border border-line2 bg-panel text-fg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex gap-3.5 px-5 pb-4 pt-5">
@@ -83,7 +83,7 @@ export default function ConfirmDialog({
 
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <h2 className="text-[16px] font-bold leading-[1.35]">{title}</h2>
-            <p className="text-[13px] leading-[1.55] text-ink2">{body}</p>
+            <p className="text-[13px] leading-[1.55] text-muted">{body}</p>
 
             {list.length > 0 ? (
               <ul className="mt-0.5 flex flex-col gap-1">
@@ -106,7 +106,7 @@ export default function ConfirmDialog({
                   return (
                     <label
                       key={o.value}
-                      className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border px-3 text-[13px] text-ink"
+                      className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border px-3 text-[13px] text-fg"
                       style={{ borderColor: on ? "rgb(245 165 36 / .6)" : "var(--line2)" }}
                     >
                       <input

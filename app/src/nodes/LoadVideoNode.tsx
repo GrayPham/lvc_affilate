@@ -140,14 +140,14 @@ export default function LoadVideoNode({ id, data, selected }: NodeProps<LoadVide
               <MuteButton />
             </>
           ) : (
-            <div className="flex flex-col items-center gap-2 text-ink2">
+            <div className="flex flex-col items-center gap-2 text-muted">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <path d="m10 9 5 3-5 3z" />
               </svg>
               <button
                 type="button"
-                className="nodrag rounded-md border border-line2 bg-fill px-2.5 py-1 text-[11px] text-ink hover:bg-fill2"
+                className="nodrag rounded-md border border-line2 bg-fill px-2.5 py-1 text-[11px] text-fg hover:bg-fill2"
                 onClick={() => void pick()}
               >
                 Chọn video…

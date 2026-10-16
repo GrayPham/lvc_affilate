@@ -41,7 +41,7 @@ const LOGO_LABEL_VI: Record<LogoMode, string> = {
 };
 
 const SELECT_CLASS =
-  "rounded-md border border-line bg-fill px-2 py-1 text-xs text-ink outline-none focus:border-sky-400/60";
+  "rounded-md border border-line bg-fill px-2 py-1 text-xs text-fg outline-none focus:border-sky-400/60";
 
 export default function VideoParamsPanel() {
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
@@ -75,15 +75,15 @@ export default function VideoParamsPanel() {
   }
 
   return (
-    <div className="pointer-events-auto flex max-w-[calc(100%-2rem)] flex-col gap-2 rounded-2xl border border-line bg-panel/95 px-3 py-2.5 text-ink shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-auto flex max-w-[calc(100%-2rem)] flex-col gap-2 rounded-2xl border border-line bg-panel/95 px-3 py-2.5 text-fg shadow-2xl backdrop-blur-md">
       {/* Chip tham chieu (cong refs) */}
       {chips.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-line pb-2">
-          <span className="text-[11px] text-ink2">Tham chiếu:</span>
+          <span className="text-[11px] text-muted">Tham chiếu:</span>
           {chips.map((chip) => (
             <span
               key={chip.edgeId}
-              className="flex items-center gap-1 rounded-md bg-fill2 py-0.5 pl-2 pr-1 text-[11px] text-ink"
+              className="flex items-center gap-1 rounded-md bg-fill2 py-0.5 pl-2 pr-1 text-[11px] text-fg"
               title={chip.label}
             >
               <span className="max-w-[9rem] truncate">{chip.label}</span>
@@ -91,7 +91,7 @@ export default function VideoParamsPanel() {
                 type="button"
                 title="Bỏ tham chiếu"
                 aria-label={`Bỏ tham chiếu ${chip.label}`}
-                className="flex h-4 w-4 items-center justify-center rounded text-ink2 hover:bg-fill2 hover:text-ink"
+                className="flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-fill2 hover:text-fg"
                 onClick={() => onEdgesChange([{ type: "remove", id: chip.edgeId }])}
               >
                 ×
@@ -121,7 +121,7 @@ export default function VideoParamsPanel() {
             </option>
           ))}
         </select>
-        <span className="rounded-md bg-fill px-2 py-1 text-xs text-ink2" title="Độ phân giải">
+        <span className="rounded-md bg-fill px-2 py-1 text-xs text-muted" title="Độ phân giải">
           1080p
         </span>
         <select
@@ -143,7 +143,7 @@ export default function VideoParamsPanel() {
         >
           Tùy chọn nâng cao {showAdvanced ? "▲" : "▼"}
         </button>
-        <span className="ml-auto rounded-md bg-fill px-2 py-1 text-xs text-ink2" title="Số lượng video">
+        <span className="ml-auto rounded-md bg-fill px-2 py-1 text-xs text-muted" title="Số lượng video">
           1×
         </span>
       </div>
@@ -151,7 +151,7 @@ export default function VideoParamsPanel() {
       {/* Nang cao: che do / logo / tai khoan */}
       {showAdvanced ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
-          <label className="flex items-center gap-1 text-[11px] text-ink2">
+          <label className="flex items-center gap-1 text-[11px] text-muted">
             Chế độ
             <select className={SELECT_CLASS} value={data.mode} onChange={(e) => setMode(e.target.value as Mode)}>
               {ModeSchema.options.map((m) => (
@@ -161,7 +161,7 @@ export default function VideoParamsPanel() {
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-ink2">
+          <label className="flex items-center gap-1 text-[11px] text-muted">
             Logo
             <select className={SELECT_CLASS} value={data.logo} onChange={(e) => updateNodeData(id, { ...data, logo: e.target.value as LogoMode })}>
               {LogoModeSchema.options.map((l) => (
@@ -171,7 +171,7 @@ export default function VideoParamsPanel() {
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-ink2">
+          <label className="flex items-center gap-1 text-[11px] text-muted">
             Tài khoản
             <input
               type="text"

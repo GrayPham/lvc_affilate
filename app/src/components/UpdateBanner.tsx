@@ -42,18 +42,18 @@ export default function UpdateBanner() {
       {phase === "error" ? (
         <>
           <p className="text-sm font-semibold text-rose">Kiểm tra cập nhật thất bại</p>
-          <p className="mt-1 text-xs text-ink2">{error}</p>
+          <p className="mt-1 text-xs text-muted">{error}</p>
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-md px-2 py-1 text-xs text-ink2 hover:bg-fill2 hover:text-ink"
+              className="rounded-md px-2 py-1 text-xs text-muted hover:bg-fill2 hover:text-fg"
               onClick={dismiss}
             >
               Đóng
             </button>
             <button
               type="button"
-              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-ink hover:bg-amber-400"
+              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-fg hover:bg-amber-400"
               onClick={() => void checkForUpdate()}
             >
               Thử lại
@@ -64,21 +64,21 @@ export default function UpdateBanner() {
 
       {phase === "available" && update ? (
         <>
-          <p className="text-sm font-semibold text-ink">Có bản cập nhật v{update.version}</p>
+          <p className="text-sm font-semibold text-fg">Có bản cập nhật v{update.version}</p>
           {notes ? (
-            <p className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-ink2">{notes}</p>
+            <p className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-xs text-muted">{notes}</p>
           ) : null}
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-md px-2 py-1 text-xs text-ink2 hover:bg-fill2 hover:text-ink"
+              className="rounded-md px-2 py-1 text-xs text-muted hover:bg-fill2 hover:text-fg"
               onClick={dismiss}
             >
               Để sau
             </button>
             <button
               type="button"
-              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-ink hover:bg-amber-400"
+              className="rounded-md bg-amber-400/90 px-2 py-1 text-xs font-medium text-fg hover:bg-amber-400"
               onClick={() => void install()}
             >
               Cài đặt
@@ -89,7 +89,7 @@ export default function UpdateBanner() {
 
       {phase === "downloading" ? (
         <>
-          <p className="text-sm font-semibold text-ink">Đang tải bản cập nhật…</p>
+          <p className="text-sm font-semibold text-fg">Đang tải bản cập nhật…</p>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-fill2">
             <div
               className="h-full bg-amber-400 transition-all"

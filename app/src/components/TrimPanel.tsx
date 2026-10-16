@@ -122,12 +122,12 @@ export default function TrimPanel() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={close}>
       <div
-        className="flex max-h-[92vh] w-[760px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-panel p-3 text-ink shadow-2xl"
+        className="flex max-h-[92vh] w-[760px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-panel p-3 text-fg shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Cắt video · {target.label}</h3>
-          <button type="button" className="rounded-md px-2 py-1 text-ink2 hover:bg-fill2 hover:text-ink" onClick={close} aria-label="Đóng">
+          <button type="button" className="rounded-md px-2 py-1 text-muted hover:bg-fill2 hover:text-fg" onClick={close} aria-label="Đóng">
             ✕
           </button>
         </div>
@@ -167,10 +167,10 @@ export default function TrimPanel() {
               title="Kéo: điểm kết thúc"
             />
           </div>
-          <div className="mt-1 flex items-center justify-between text-[11px] text-ink2">
-            <span>Bắt đầu <span className="font-mono text-ink">{fmt(start)}</span></span>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
+            <span>Bắt đầu <span className="font-mono text-fg">{fmt(start)}</span></span>
             <span>Đoạn <span className="font-mono text-rest">{fmt(selDur)}</span></span>
-            <span>Kết thúc <span className="font-mono text-ink">{fmt(end)}</span></span>
+            <span>Kết thúc <span className="font-mono text-fg">{fmt(end)}</span></span>
           </div>
           {duration <= 0 ? <p className="mt-1 text-[11px] text-ink3">Đang tải video…</p> : null}
         </div>
@@ -184,7 +184,7 @@ export default function TrimPanel() {
           <button
             type="button"
             disabled={busy || selDur <= 0 || duration <= 0}
-            className="rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-ink hover:bg-sky-500 disabled:opacity-40"
+            className="rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-fg hover:bg-sky-500 disabled:opacity-40"
             onClick={() => void confirm()}
           >
             {busy ? "Đang cắt…" : "Cắt & thêm vào canvas"}

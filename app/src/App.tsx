@@ -134,10 +134,10 @@ export default function App() {
   const otherTabs = TABS.filter((t) => t.group === "other");
 
   return (
-    <div className="flex h-screen w-screen bg-bg text-ink">
+    <div className="flex h-screen w-screen bg-bg text-fg">
       <aside
         className={
-          "relative flex shrink-0 flex-col gap-[18px] border-r border-line bg-rail px-3 py-4 transition-[width] duration-200 " +
+          "lvc-sidebar relative flex shrink-0 flex-col gap-[18px] border-r border-sidebar-line px-3 py-4 text-sidebar-fg transition-[width] duration-200 " +
           (sidebarCollapsed ? "w-[68px]" : "w-[200px]")
         }
       >
@@ -147,7 +147,7 @@ export default function App() {
           onClick={toggleSidebar}
           title={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
           aria-label={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
-          className="absolute right-[-12px] top-[22px] z-10 grid h-6 w-6 place-items-center rounded-full border border-line2 bg-panel text-ink2 shadow-sm hover:text-ink"
+          className="absolute right-[-12px] top-[22px] z-10 grid h-6 w-6 place-items-center rounded-full border border-sidebar-line bg-sidebar-2 text-sidebar-muted shadow-card hover:text-sidebar-fg"
         >
           <IconChevronLeft
             className={"h-3 w-3 transition-transform " + (sidebarCollapsed ? "rotate-180" : "")}
@@ -164,8 +164,8 @@ export default function App() {
           />
           {sidebarCollapsed ? null : (
             <div className="flex min-w-0 flex-col leading-[1.25]">
-              <span className="truncate text-[13px] font-bold text-ink">LVC Affiliate</span>
-              <span className="truncate text-[10.5px] text-ink3">Affiliate video studio</span>
+              <span className="truncate text-[13px] font-bold text-sidebar-fg">LVC Affiliate</span>
+              <span className="truncate text-[10.5px] text-sidebar-muted">Affiliate video studio</span>
             </div>
           )}
         </div>
@@ -177,9 +177,9 @@ export default function App() {
           ] as const).map(([group, tabs]) => (
             <div key={group} className="flex flex-col gap-0.5">
               {sidebarCollapsed ? (
-                <span className="mx-2 mb-1.5 border-t border-line" />
+                <span className="mx-2 mb-1.5 border-t border-sidebar-line" />
               ) : (
-                <span className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[.12em] text-ink3">
+                <span className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[.12em] text-sidebar-muted">
                   {GROUP_LABEL[group]}
                 </span>
               )}
@@ -198,8 +198,8 @@ export default function App() {
                       (sidebarCollapsed ? "justify-center px-0" : "gap-2.5 px-2.5") +
                       " " +
                       (active
-                        ? "bg-accent-soft font-semibold text-accent-text"
-                        : "text-ink2 hover:bg-fill hover:text-ink")
+                        ? "bg-sidebar-active font-semibold text-sidebar-active-fg"
+                        : "text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg")
                     }
                   >
                     <Icon className="h-[17px] w-[17px] shrink-0" />

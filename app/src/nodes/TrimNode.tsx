@@ -14,7 +14,7 @@ type TrimKind = Extract<NodeKind, { kind: "trim" }>;
 export type TrimRFNode = RFNodeBase<TrimKind, "trim">;
 
 const NUM_CLASS =
-  "nodrag w-16 rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-ink outline-none focus:border-sky-400/60";
+  "nodrag w-16 rounded-md border border-line bg-fill px-1.5 py-1 text-xs text-fg outline-none focus:border-sky-400/60";
 
 export default function TrimNode({ id, data, selected }: NodeProps<TrimRFNode>) {
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
@@ -26,7 +26,7 @@ export default function TrimNode({ id, data, selected }: NodeProps<TrimRFNode>) 
       <NodeFloatingToolbar nodeId={id} />
       <Handle type="target" position={Position.Left} id="in" style={{ background: PORT_TYPE_COLOR.video }} />
       <NodeShell label={NODE_LABEL_VI.trim} kind="trim" selected={selected} errors={errors} runState={runState}>
-        <div className="flex items-center gap-2 text-[11px] text-ink2">
+        <div className="flex items-center gap-2 text-[11px] text-muted">
           <label className="flex items-center gap-1">
             Từ
             <input

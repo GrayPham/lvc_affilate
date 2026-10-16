@@ -62,7 +62,7 @@ export default function Palette({
 
   return (
     <div className="flex max-h-[70vh] w-56 flex-col gap-1.5 rounded-2xl border border-line bg-panel/95 p-2 shadow-2xl backdrop-blur-md">
-      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ink2">
+      <h2 className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
         {connectFrom ? "Nối tới node" : "Thêm node"}
       </h2>
       <input
@@ -70,7 +70,7 @@ export default function Palette({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Tìm node…"
-        className="nodrag w-full rounded-lg border border-line bg-fill px-2 py-1 text-xs text-ink placeholder-slate-500 outline-none focus:border-sky-400/60"
+        className="nodrag w-full rounded-lg border border-line bg-fill px-2 py-1 text-xs text-fg placeholder-slate-500 outline-none focus:border-sky-400/60"
       />
       <div className="flex flex-col gap-2 overflow-y-auto pr-0.5">
         {groups.length === 0 ? (
@@ -159,7 +159,7 @@ function PaletteItem({
       className={
         "select-none rounded-lg border px-2 py-1.5 text-xs transition-colors " +
         (enabled
-          ? "cursor-grab border-line bg-fill text-ink hover:bg-fill2 active:cursor-grabbing"
+          ? "cursor-grab border-line bg-fill text-fg hover:bg-fill2 active:cursor-grabbing"
           : "cursor-not-allowed border-dashed border-line bg-fill text-ink3")
       }
     >
