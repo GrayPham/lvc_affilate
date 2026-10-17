@@ -6,8 +6,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countImageNodes,
   countPromptNodes,
   countSaveNodes,
+  withImages,
   withOutDir,
   withPromptText,
 } from "../src/components/AddWorkflowDialog";
@@ -21,6 +23,8 @@ function graph(): Graph {
       { id: "p", kind: { kind: "prompt", text: "canh 1" }, x: 0, y: 0 },
       { id: "s1", kind: { kind: "save", out_dir: "cu" }, x: 0, y: 0 },
       { id: "s2", kind: { kind: "save", out_dir: "" }, x: 0, y: 0 },
+      // Them o CUOI de chi so cac node khac giu nguyen cho test ghim theo vi tri.
+      { id: "img", kind: { kind: "image_upload", paths: ["cu.png"] }, x: 0, y: 0 },
     ],
     edges: [],
   } as unknown as Graph;
@@ -103,5 +107,37 @@ describe("dem", () => {
     const trong = { version: 2, nodes: [], edges: [] } as unknown as Graph;
     expect(countSaveNodes(trong)).toBe(0);
     expect(countPromptNodes(trong)).toBe(0);
+  });
+});
+
+// "input dau vao chi viec nhap text, chon anh" — anh tham chieu tiem vao anh chup, workflow goc
+// khong doi (cung ly do voi withPromptText/withOutDir).
+describe("withImages", () => {
+  it("thay paths cua MOI node image_upload", () => {
+    const out = withImages(graph(), ["a.png", "b.jpg"]);
+    const img = out.nodes.find((n) => n.kind.kind === "image_upload")!;
+    expect((img.kind as { paths: string[] }).paths).toEqual(["a.png", "b.jpg"]);
+  });
+
+  it("KHONG sua do thi goc", () => {
+    const g = graph();
+    withImages(g, ["moi.png"]);
+    const img = g.nodes.find((n) => n.kind.kind === "image_upload")!;
+    expect((img.kind as { paths: string[] }).paths).toEqual(["cu.png"]);
+  });
+
+  it("danh sach rong -> giu nguyen (dung anh da co trong workflow)", () => {
+    expect(withImages(graph(), [])).toEqual(graph());
+  });
+
+  it("khong cham node khac image_upload", () => {
+    const out = withImages(graph(), ["x.png"]);
+    expect(out.nodes.find((n) => n.id === "p")!.kind).toEqual({ kind: "prompt", text: "canh 1" });
+  });
+
+  it("countImageNodes dem dung", () => {
+    expect(countImageNodes(graph())).toBe(1);
+    const trong = { version: 2, nodes: [], edges: [] } as unknown as Graph;
+    expect(countImageNodes(trong)).toBe(0);
   });
 });

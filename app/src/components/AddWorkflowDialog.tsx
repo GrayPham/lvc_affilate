@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   nodeCatalog,
   pickDirectory,
+  pickFiles,
   workflowGet,
   workflowList,
   workflowValidate,
@@ -37,6 +38,9 @@ const SAVE_KIND = "save";
 
 /** Kind cua node "Prompt" — noi nhan du lieu dau vao (moi DONG mot canh). */
 const PROMPT_KIND = "prompt";
+
+/** Kind cua node "Tải ảnh lên" — noi nhan anh tham chieu (cong `refs` cua node video). */
+const IMAGE_KIND = "image_upload";
 
 /**
  * Tra ve ban SAO cua do thi voi moi node `save` doi `out_dir` thanh `dir`. `dir` rong -> giu nguyen.
@@ -67,6 +71,30 @@ export function countSaveNodes(graph: Graph): number {
 /** So node `prompt` — do thi khong co node nao thi khong co cho nhan dau vao. */
 export function countPromptNodes(graph: Graph): number {
   return graph.nodes.filter((n) => n.kind.kind === PROMPT_KIND).length;
+}
+
+/** So node `image_upload` — do thi co thi hien o chon anh, khong thi an. */
+export function countImageNodes(graph: Graph): number {
+  return graph.nodes.filter((n) => n.kind.kind === IMAGE_KIND).length;
+}
+
+/**
+ * Tra ban SAO cua do thi voi moi node `image_upload` thay `paths` bang danh sach anh moi. Rong ->
+ * giu nguyen (dung anh da cau hinh san trong workflow, neu co).
+ *
+ * THUAN, export de test. Cung ly do voi `withPromptText`: hang cho luu ANH CHUP, nen sua anh chup
+ * — workflow goc tren canvas KHONG doi.
+ */
+export function withImages(graph: Graph, paths: readonly string[]): Graph {
+  if (paths.length === 0) {
+    return graph;
+  }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.kind.kind === IMAGE_KIND ? { ...n, kind: { ...n.kind, paths: [...paths] } } : n,
+    ),
+  };
 }
 
 /**
@@ -111,6 +139,11 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
   const [graph, setGraph] = useState<Graph | null>(null);
   const [outDir, setOutDir] = useState("");
   const [promptText, setPromptText] = useState("");
+  /** Anh tham chieu nguoi dung chon — tiem vao node `image_upload` cua anh chup do thi. */
+  const [images, setImages] = useState<string[]>([]);
+  /** So ban dong nhat xep vao hang cho. AI sinh moi lan mot khac, nen chay N lan la cach "tao
+   * nhieu phien ban de chon cai dep nhat". */
+  const [count, setCount] = useState(1);
   const [videoTotal, setVideoTotal] = useState<number | null>(null);
   const [graphErrors, setGraphErrors] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
@@ -191,6 +224,7 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
   );
   const saveCount = useMemo(() => (graph ? countSaveNodes(graph) : 0), [graph]);
   const promptCount = useMemo(() => (graph ? countPromptNodes(graph) : 0), [graph]);
+  const imageCount = useMemo(() => (graph ? countImageNodes(graph) : 0), [graph]);
   const picked = list?.find((w) => w.id === pickedId);
 
   async function pickOutDir(): Promise<void> {
@@ -211,17 +245,31 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
     }
     setBusy(true);
     setError(null);
+    // Tiem text + anh + thu muc vao ANH CHUP; workflow goc khong doi.
+    const snapshot = withOutDir(withImages(withPromptText(graph, promptText), images), outDir);
+    const n = Math.max(1, Math.min(count, 50));
     try {
-      await enqueue(
-        picked.id,
-        picked.name,
-        withOutDir(withPromptText(graph, promptText), outDir),
-      );
-      onAdded?.(picked.name);
+      for (let i = 0; i < n; i += 1) {
+        // Ten kem so thu tu khi xep nhieu ban, de phan biet trong hang cho.
+        await enqueue(picked.id, n > 1 ? `${picked.name} (${i + 1}/${n})` : picked.name, snapshot);
+      }
+      onAdded?.(n > 1 ? `${picked.name} ×${n}` : picked.name);
       onClose();
     } catch (e) {
       setError(errorText(e));
       setBusy(false);
+    }
+  }
+
+  async function pickImages(): Promise<void> {
+    setError(null);
+    try {
+      const picked = await pickFiles(true);
+      if (picked.length > 0) {
+        setImages(picked);
+      }
+    } catch (e) {
+      setError(errorText(e));
     }
   }
 
@@ -349,6 +397,58 @@ export default function AddWorkflowDialog({ onClose, onAdded }: AddWorkflowDialo
             Thay prompt của {promptCount > 1 ? `${promptCount} node Prompt` : "node Prompt"} cho
             riêng lần chạy này. Workflow đã lưu không bị đổi.
           </span>
+        </Field>
+      ) : null}
+
+      {imageCount > 0 ? (
+        <Field
+          label="Ảnh tham chiếu"
+          hint={images.length === 0 ? "để trống = dùng ảnh đã có trong workflow" : `${images.length} ảnh`}
+        >
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button onClick={() => void pickImages()}>Chọn ảnh…</Button>
+            {images.length > 0 ? (
+              <Button variant="danger" onClick={() => setImages([])}>
+                Bỏ ảnh
+              </Button>
+            ) : null}
+          </div>
+          {images.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {images.map((p) => (
+                <span
+                  key={p}
+                  title={p}
+                  className="max-w-[160px] truncate rounded-sm bg-fill2 px-2 py-0.5 font-mono text-[11px] text-ink2"
+                >
+                  {p.split(/[\/]/).pop()}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <span className="text-xs leading-[1.5] text-ink3">
+            Tiêm vào {imageCount > 1 ? `${imageCount} node Tải ảnh` : "node Tải ảnh"} cho riêng lần
+            chạy này. Dùng chung cho mọi cảnh.
+          </span>
+        </Field>
+      ) : null}
+
+      {!blocked && graph !== null ? (
+        <Field label="Số lượng" hint="xếp bao nhiêu bản vào hàng chờ">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={50}
+              className={`w-24 ${INPUT_CLASS} text-right font-mono`}
+              value={count}
+              onChange={(e) => setCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+            />
+            <span className="text-xs leading-[1.5] text-ink3">
+              Mỗi bản là một lần chạy riêng. AI sinh mỗi lần một khác — chạy nhiều để chọn bản đẹp
+              nhất. Hàng chờ chạy lần lượt.
+            </span>
+          </div>
         </Field>
       ) : null}
 
