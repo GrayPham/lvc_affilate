@@ -30,6 +30,9 @@ pub enum CoreError {
     // browsers.py:46 `normalize_browser` — BROWSERS chỉ có chromium/chrome/opera (không có edge).
     #[error("browser must be one of chromium, chrome, opera (got {})", py_repr(.0))]
     InvalidBrowser(String),
+    // Engine (trực giao với BrowserKind): chromium (CDP) hoặc firefox_portable (tiêm cookie, dùng tay).
+    #[error("engine must be one of chromium, firefox_portable (got {})", py_repr(.0))]
+    InvalidEngine(String),
     #[error("prompt is empty")]
     EmptyPrompt,
     #[error("prompt too long ({actual} > {limit} chars)")]

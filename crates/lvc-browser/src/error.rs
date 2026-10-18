@@ -84,6 +84,13 @@ pub enum BrowserError {
     /// chua mat khau proxy (`reqwest::Error::without_url()` + `ProxySpec` che mat khau).
     #[error("kiem tra proxy that bai: {0}")]
     ProxyTest(String),
+    /// Engine `FirefoxPortable` (`firefox/locate.rs`): khong tim thay `firefox.exe`. `tried` = moi
+    /// duong dan da thu; chi dan nguoi dung dat `LVC_FIREFOX` tro toi firefox.exe cua ban Portable.
+    #[error(
+        "khong tim thay firefox.exe - da thu: {}. Dat bien moi truong LVC_FIREFOX tro toi firefox.exe (vd ...\\FirefoxPortable\\App\\Firefox64\\firefox.exe)",
+        tried_display(.tried)
+    )]
+    FirefoxNotFound { tried: Vec<PathBuf> },
 }
 
 /// `#[from]` thu cong: kenh lenh dong (`ChannelSendError` = handler da dung / oneshot bi huy) →

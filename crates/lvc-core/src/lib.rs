@@ -1,6 +1,7 @@
 //! Miền thuần của LVC Seedance: chế độ, cảnh, định dạng TXT.
 //! Không I/O, không DB, không trình duyệt — test được không tốn lượt Dola.
 
+pub mod browser_engine;
 pub mod browser_kind;
 pub mod bulk;
 pub mod chain;
@@ -23,6 +24,7 @@ pub mod settings;
 pub mod value;
 pub mod video_url;
 
+pub use browser_engine::BrowserEngine;
 pub use browser_kind::BrowserKind;
 pub use bulk::{bulk_scenes, split_bulk};
 pub use chain::{
