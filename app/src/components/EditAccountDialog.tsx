@@ -1,23 +1,31 @@
-// Dialog "Sửa proxy" cho MỘT dòng trong bảng tài khoản đã hợp nhất (AccountsPage). CHỈ còn sửa
-// Proxy — Kiểm tra/Mở trình duyệt/Bật-Tắt/Xoá đã TÁCH RA thành nút riêng trực tiếp trên mỗi hàng +
-// menu chuột phải ở `AccountsPage.tsx` (review người dùng: "tách bớt chức năng của nút sửa ra, chứ
-// sao gom hết vào được, có ai làm vậy đâu" — trước đây dialog này ôm cả 5 việc).
+// Dialog "Proxy & trình duyệt" cho MOT dong trong bang tai khoan hop nhat (AccountsPage). Dung theo
+// `references/lvc-ui-design/screens/AssignProxy.dc.html` (ban mot-tai-khoan): chon "Kiểu kết nối"
+// (IP máy / Proxy cố định / Proxy chung) + kiem proxy + luu. Cac chuc nang khac (Kiểm tra/Mở trình
+// duyệt/Bật-Tắt/Xoá) da tach ra nut rieng tren moi hang + menu chuot phai o `AccountsPage.tsx`.
+//
+// Engine Firefox Portable (credential co `meta.engine === "firefox_portable"`): hien BADGE + canh
+// bao "chi dung tay" — tai khoan nay KHONG verify/chay workflow tu dong (khong co driver CDP cho
+// Firefox, xem docs/superpowers/plans/2026-10-18-firefox-portable-cookie-profiles.md).
 import { useState } from "react";
 
+import ConnectionModeFields from "./ConnectionModeFields";
 import Dialog from "./Dialog";
 import { BTN_NEUTRAL_SM, BTN_PRIMARY_SM } from "../ui/buttonStyles";
 import { useAccountsStore } from "../store/accounts";
 import { useCredentialsStore } from "../store/credentials";
-import { validateProxy } from "../format/account";
 import { credentialProviderLabel, describeCredentialError } from "../format/credential";
-import { describeAccountError } from "../format/account";
-import { proxyTest } from "../ipc/commands";
-import { errorText } from "../ipc/error_text";
-import type { AccountStatus, CredentialView, ProxyProbe } from "../ipc/types";
+import { describeAccountError, validateProxy } from "../format/account";
+import { modeToProxy, proxyToMode } from "../format/proxyMode";
+import type { AccountStatus, CredentialView } from "../ipc/types";
 
 export type EditTarget =
   | { source: "dola"; row: AccountStatus }
   | { source: "credential"; row: CredentialView };
+
+/** `true` khi credential gan engine Firefox Portable (`meta.engine`). Dola khong co khai niem nay. */
+function isFirefoxEngine(target: EditTarget): boolean {
+  return target.source === "credential" && target.row.meta.engine === "firefox_portable";
+}
 
 export default function EditAccountDialog({
   target,
@@ -30,51 +38,39 @@ export default function EditAccountDialog({
   const updateCredential = useCredentialsStore((s) => s.update);
 
   const initialProxy = target.source === "dola" ? target.row.proxy : target.row.proxyMasked;
-  const [proxy, setProxy] = useState(initialProxy);
+  const [mode, setMode] = useState(() => proxyToMode(initialProxy));
+  // Chuoi proxy o che do "fixed" — khoi tao bang gia tri da luu neu no la proxy co dinh.
+  const [proxyInput, setProxyInput] = useState(() =>
+    proxyToMode(initialProxy) === "fixed" ? initialProxy : "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
-  const [testing, setTesting] = useState(false);
-  const [probe, setProbe] = useState<ProxyProbe | null>(null);
-  const [probeError, setProbeError] = useState<string | null>(null);
-
-  const proxyChanged = proxy !== initialProxy;
-  const proxyError = proxy === "" ? null : validateProxy(proxy);
-  // Proxy da luu hien dang che mat khau (`••••`) — khong gui chuoi che di kiem (se sai mat khau).
-  // Phai nhap lai proxy moi test duoc; proxy rong (= IP may) van test duoc de xem IP hien tai.
-  const proxyMasked = proxy.includes("•");
-  const canTest = !testing && !busy && proxyError === null && !proxyMasked;
-
-  async function testProxy(): Promise<void> {
-    setTesting(true);
-    setProbe(null);
-    setProbeError(null);
-    try {
-      setProbe(await proxyTest(proxy));
-    } catch (e) {
-      setProbeError(errorText(e));
-    } finally {
-      setTesting(false);
-    }
-  }
-
   const name = target.source === "dola" ? target.row.name : target.row.label;
   const platformLabel =
     target.source === "dola" ? "Dola" : credentialProviderLabel(target.row.provider);
+  const firefox = isFirefoxEngine(target);
+
+  const targetProxy = modeToProxy(mode, proxyInput);
+  // Save bat khi: gia tri se luu khac gia tri ban dau. O che do "fixed" ma input con dang che `••••`
+  // (chua sua) thi targetProxy === initialProxy -> khong "dirty" -> khong gui chuoi che di (dung).
+  const dirty = targetProxy !== initialProxy;
+  // Chan save khi proxy co dinh RO RANG sai dinh dang (bo qua chuoi con che `••••` — khong tu validate
+  // duoc, nhung luc do khong "dirty" nen cung khong save).
+  const proxyInvalid =
+    mode === "fixed" && !proxyInput.includes("•") && validateProxy(proxyInput) !== null;
+  const canSave = !busy && dirty && !proxyInvalid;
 
   async function saveProxy(): Promise<void> {
-    if (proxyError !== null) {
-      return;
-    }
     setBusy(true);
     setError(null);
     setOkMsg(null);
     try {
       if (target.source === "dola") {
-        await setProxyDola(target.row.name, proxy);
+        await setProxyDola(target.row.name, targetProxy);
       } else {
-        await updateCredential(target.row.id, { proxy });
+        await updateCredential(target.row.id, { proxy: targetProxy });
       }
       setOkMsg("Đã lưu proxy.");
     } catch (e) {
@@ -85,89 +81,58 @@ export default function EditAccountDialog({
   }
 
   return (
-    <Dialog title={`Sửa proxy — ${name}`} onClose={onClose} width="26rem">
+    <Dialog title={`Proxy & trình duyệt — ${name}`} onClose={onClose} width="30rem">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between text-xs text-muted">
           <span>Nền tảng</span>
           <span className="font-medium text-fg">{platformLabel}</span>
         </div>
 
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Proxy
-          <div className="flex gap-2">
-            <input
-              className="flex-1 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-sm text-fg placeholder:text-ink3"
-              value={proxy}
-              disabled={busy}
-              onChange={(e) => {
-                setProxy(e.target.value);
-                // Ket qua kiem cu khong con dung voi chuoi vua sua — xoa di.
-                setProbe(null);
-                setProbeError(null);
-              }}
-              placeholder="để trống, hoặc ip:port, hoặc direct"
-            />
-            <button
-              type="button"
-              disabled={busy || !proxyChanged || proxyError !== null}
-              className={BTN_NEUTRAL_SM}
-              onClick={() => void saveProxy()}
-            >
-              Lưu
-            </button>
+        {firefox ? (
+          <div className="flex flex-col gap-1 rounded-md border border-accent/30 bg-accent/5 px-3 py-2 text-xs">
+            <span className="flex items-center gap-2 font-semibold text-accent">
+              <span className="rounded-sm bg-accent/15 px-1.5 py-0.5 text-[11px]">
+                🦊 Firefox Portable
+              </span>
+            </span>
+            <span className="leading-[1.5] text-ink3">
+              Tài khoản này chỉ dùng tay: mở trình duyệt ra đã đăng nhập sẵn. KHÔNG verify/chạy
+              workflow tự động (Firefox không có driver tự động hoá). Proxy sẽ ghi vào profile; proxy
+              có mật khẩu thì Firefox hỏi lúc chạy.
+            </span>
           </div>
-          {proxyError ? <span className="text-rose">{proxyError}</span> : null}
-        </label>
+        ) : null}
 
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={!canTest}
-              className={BTN_NEUTRAL_SM}
-              onClick={() => void testProxy()}
-              title={
-                proxyMasked
-                  ? "Nhập lại proxy để kiểm tra — mật khẩu đã lưu đang được ẩn"
-                  : "Nối thử qua proxy để xem IP ra, vị trí, độ trễ"
-              }
-            >
-              {testing ? "Đang kiểm tra…" : "Kiểm tra proxy"}
-            </button>
-            {proxyMasked ? (
-              <span className="text-[11px] text-ink3">Nhập lại proxy để kiểm tra (mật khẩu đã ẩn)</span>
-            ) : proxy === "" ? (
-              <span className="text-[11px] text-ink3">Để trống = kiểm tra IP máy (không proxy)</span>
-            ) : null}
-          </div>
+        <ConnectionModeFields
+          mode={mode}
+          onModeChange={setMode}
+          proxyValue={proxyInput}
+          onProxyChange={setProxyInput}
+          disabled={busy}
+        />
 
-          {probe ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-ok/30 bg-ok/10 px-3 py-2 text-xs">
-              <span className="font-semibold text-ok">✓ Kết nối được</span>
-              <span className="text-muted">
-                IP ra: <span className="font-mono text-fg">{probe.outboundIp || "—"}</span>
-              </span>
-              <span className="text-muted">
-                Vị trí: <span className="text-fg">{probe.location || "—"}</span>
-              </span>
-              <span className="text-muted">
-                Độ trễ: <span className="text-fg">{probe.latencyMs} ms</span>
-              </span>
-            </div>
-          ) : null}
-          {probeError ? (
-            <div className="rounded-md border border-rose/30 bg-rose/10 px-3 py-2 text-xs text-rose">
-              ✕ {probeError}
-            </div>
-          ) : null}
+        <div className="flex items-start gap-2 rounded-md border border-line px-3 py-2 text-[12px] leading-[1.5] text-ink3">
+          <span aria-hidden>ⓘ</span>
+          <span>
+            Đổi proxy có thể đăng xuất phiên ở một số nền tảng. Hãy kiểm tra lại đăng nhập sau khi
+            lưu.
+          </span>
         </div>
 
         {error ? <p className="text-xs text-rose">{error}</p> : null}
         {okMsg ? <p className="text-xs text-ok">{okMsg}</p> : null}
 
-        <div className="flex justify-end border-t border-line pt-3">
-          <button type="button" className={BTN_PRIMARY_SM} onClick={onClose}>
+        <div className="flex justify-end gap-2 border-t border-line pt-3">
+          <button type="button" className={BTN_NEUTRAL_SM} onClick={onClose}>
             Đóng
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            className={BTN_PRIMARY_SM}
+            onClick={() => void saveProxy()}
+          >
+            {busy ? "Đang lưu…" : "Lưu proxy"}
           </button>
         </div>
       </div>

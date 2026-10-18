@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AddAccountDialog from "../components/AddAccountDialog";
+import AssignProxyDialog from "../components/AssignProxyDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import CheckProgressDialog, { type CheckItem } from "../components/CheckProgressDialog";
 import EditAccountDialog, { type EditTarget } from "../components/EditAccountDialog";
@@ -148,6 +149,8 @@ export default function AccountsPage() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   /** Danh sach tai khoan dang kiem trong hop thoai tien do; `null` = dong. */
   const [checkItems, setCheckItems] = useState<CheckItem[] | null>(null);
+  /** `true` = dang mo hop thoai gan proxy hang loat cho cac dong da chon. */
+  const [showAssignProxy, setShowAssignProxy] = useState(false);
 
   useEffect(() => {
     void loadDola();
@@ -459,6 +462,9 @@ export default function AccountsPage() {
               <Button disabled={bulkBusy} onClick={handleBulkVerify}>
                 {bulkBusy ? "Đang kiểm tra…" : "Kiểm tra"}
               </Button>
+              <Button disabled={bulkBusy} onClick={() => setShowAssignProxy(true)}>
+                Gán proxy…
+              </Button>
               <Button variant="danger" disabled={bulkBusy} onClick={() => setConfirmBulkDelete(true)}>
                 Xoá
               </Button>
@@ -708,6 +714,12 @@ export default function AccountsPage() {
 
       {showAdd ? <AddAccountDialog onClose={() => setShowAdd(false)} /> : null}
       {editing ? <EditAccountDialog target={editing} onClose={() => setEditing(null)} /> : null}
+      {showAssignProxy ? (
+        <AssignProxyDialog
+          rows={selectedRows.map((r) => ({ key: r.key, label: r.label, target: r.target }))}
+          onClose={() => setShowAssignProxy(false)}
+        />
+      ) : null}
       {checkItems ? (
         <CheckProgressDialog items={checkItems} onClose={() => setCheckItems(null)} />
       ) : null}
