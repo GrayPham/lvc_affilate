@@ -17,6 +17,7 @@ import {
   WorkflowUpdateSchema,
   CredentialListSchema,
   CredentialViewSchema,
+  ProxyProbeSchema,
   VerifyOutcomeSchema,
   ImportCookiesReportSchema,
   LegacyImportReportSchema,
@@ -56,6 +57,7 @@ import {
   type LegacyImportReport,
   type NodeCatalog,
   type PlanSummary,
+  type ProxyProbe,
   type PublishResult,
   type QueueItem,
   type QueueState,
@@ -419,6 +421,15 @@ export async function accountSetScheduling(name: string, on: boolean): Promise<n
 export async function accountSetProxy(name: string, proxy: string): Promise<null> {
   const res = await invoke<unknown>("account_set_proxy", { name, proxy });
   return z.null().parse(res);
+}
+
+/**
+ * Kiem tra proxy (nut o hop thoai Proxy & trinh duyet): noi thu qua `proxy` toi dich vu "IP cua
+ * ban" va tra IP ra + vi tri + do tre. `""`/`"direct"` = khong proxy -> do IP may. Khong ton credit.
+ */
+export async function proxyTest(proxy: string): Promise<ProxyProbe> {
+  const res = await invoke<unknown>("proxy_test", { proxy });
+  return ProxyProbeSchema.parse(res);
 }
 
 /** `false` = khong co gi de xoa (idempotent — xem `account_delete_impl`). */

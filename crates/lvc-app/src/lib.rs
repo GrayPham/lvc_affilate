@@ -112,6 +112,7 @@ pub fn run() {
             commands::accounts::account_delete,
             commands::accounts::account_open_viewer,
             commands::accounts::legacy_import,
+            commands::proxy::proxy_test,
             commands::credentials::credential_list,
             commands::credentials::credential_add,
             commands::credentials::credential_update,

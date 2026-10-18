@@ -30,6 +30,7 @@ pub mod credentials;
 pub mod device;
 pub mod login;
 pub mod media;
+pub mod proxy;
 pub mod publish;
 pub mod queue;
 pub mod scripts;
@@ -104,6 +105,19 @@ impl From<EngineError> for IpcError {
                 Self::new(code, msg)
             }
         }
+    }
+}
+
+/// Loi trinh duyet (hien chi dung cho lenh `proxy_test`): `ProxyTest` -> ma `PROXY_TEST`, con lai
+/// -> ma chung `BROWSER`. Thong diep da an mat khau proxy (xem `lvc_browser::BrowserError`).
+impl From<lvc_browser::BrowserError> for IpcError {
+    fn from(e: lvc_browser::BrowserError) -> Self {
+        use lvc_browser::BrowserError as E;
+        let code = match e {
+            E::ProxyTest(_) => "PROXY_TEST",
+            _ => "BROWSER",
+        };
+        Self::new(code, e.to_string())
     }
 }
 

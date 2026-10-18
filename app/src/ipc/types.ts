@@ -849,6 +849,14 @@ export const VerifyOutcomeSchema = z.object({
 });
 export type VerifyOutcome = z.infer<typeof VerifyOutcomeSchema>;
 
+/** Ket qua `proxy_test` — IP ra sau proxy, vi tri (quoc gia), do tre (ms). */
+export const ProxyProbeSchema = z.object({
+  outboundIp: z.string(),
+  location: z.string(),
+  latencyMs: z.number(),
+});
+export type ProxyProbe = z.infer<typeof ProxyProbeSchema>;
+
 /** `lvc_store::scripts::SceneRow` — ket qua `script_put_scenes` (khong kem trang thai task, khac
  * `SceneDto`). */
 export const SceneRowSchema = z.object({

@@ -79,6 +79,11 @@ pub enum BrowserError {
     /// bao gio gia tri).
     #[error("moi phien thieu cookie dang nhap thuc (chi thay ten: {0})")]
     MissingAuthCookie(String),
+    /// Nut "Kiem tra proxy" (`proxy_probe.rs`): khong noi duoc qua proxy (proxy chet/sai), qua
+    /// thoi gian, hoac dich vu "IP cua ban" tra loi khong doc duoc. Thong diep DA bo URL va KHONG
+    /// chua mat khau proxy (`reqwest::Error::without_url()` + `ProxySpec` che mat khau).
+    #[error("kiem tra proxy that bai: {0}")]
+    ProxyTest(String),
 }
 
 /// `#[from]` thu cong: kenh lenh dong (`ChannelSendError` = handler da dung / oneshot bi huy) →

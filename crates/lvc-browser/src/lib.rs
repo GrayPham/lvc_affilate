@@ -20,6 +20,7 @@ pub mod fake;
 pub mod job;
 pub mod ops;
 pub mod profile;
+pub mod proxy_probe;
 pub mod veo3;
 
 pub use dola::DolaError;
@@ -29,3 +30,4 @@ pub use executable::{
     SearchRoots, ms_playwright_chromium_dirs, resolve_executable, resolve_executable_in,
 };
 pub use fake::{FakeCall, FakeDriver, FakeSession, FakeStep};
+pub use proxy_probe::{ProxyProbe, test_proxy};
