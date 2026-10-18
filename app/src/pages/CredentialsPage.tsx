@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AddApiKeyDialog from "../components/AddApiKeyDialog";
+import CheckProgressDialog, { type CheckItem } from "../components/CheckProgressDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useCredentialsStore } from "../store/credentials";
 import { platformBadgeBg, platformLook } from "../format/platform";
@@ -101,7 +102,7 @@ export default function ApiKeyManager() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [deleting, setDeleting] = useState<CredentialView | null>(null);
-  const [checkingAll, setCheckingAll] = useState(false);
+  const [checkItems, setCheckItems] = useState<CheckItem[] | null>(null);
   const [tagMenu, setTagMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,15 +163,18 @@ export default function ApiKeyManager() {
   const selectedRows = visible.filter((r) => selected.has(r.id));
   const allSelected = visible.length > 0 && selectedRows.length === visible.length;
 
-  async function handleCheckAll(): Promise<void> {
-    setCheckingAll(true);
-    try {
-      for (const r of selectedRows.length > 0 ? selectedRows : visible) {
-        await verify(r.id);
-      }
-    } finally {
-      setCheckingAll(false);
-    }
+  function handleCheckAll(): void {
+    // Hop thoai tu chay tuan tu + hien tien do tung key (xem CheckProgressDialog); verify(id) tra
+    // thang VerifyOutcome nen khong can quy doi nhu ben tai khoan Dola.
+    const targets = selectedRows.length > 0 ? selectedRows : visible;
+    setCheckItems(
+      targets.map((r) => ({
+        key: r.id,
+        name: r.label,
+        platform: platformLook(r.provider).name,
+        run: () => verify(r.id),
+      })),
+    );
   }
 
   const TH =
@@ -191,12 +195,10 @@ export default function ApiKeyManager() {
           <Button variant="primary" onClick={() => setShowAdd(true)}>
             + Thêm API key
           </Button>
-          <Button disabled={checkingAll || visible.length === 0} onClick={() => void handleCheckAll()}>
-            {checkingAll
-              ? "Đang kiểm tra…"
-              : selectedRows.length > 0
-                ? `Kiểm tra ${selectedRows.length} đã chọn`
-                : "Kiểm tra tất cả"}
+          <Button disabled={visible.length === 0} onClick={handleCheckAll}>
+            {selectedRows.length > 0
+              ? `Kiểm tra ${selectedRows.length} đã chọn`
+              : "Kiểm tra tất cả"}
           </Button>
         </div>
 
@@ -429,6 +431,15 @@ export default function ApiKeyManager() {
       </div>
 
       {showAdd ? <AddApiKeyDialog onClose={() => setShowAdd(false)} /> : null}
+
+      {checkItems ? (
+        <CheckProgressDialog
+          items={checkItems}
+          noun="key"
+          subtitle="Gọi lần lượt từng key để tránh dồn dập lên nhà cung cấp."
+          onClose={() => setCheckItems(null)}
+        />
+      ) : null}
 
       {deleting ? (
         <ConfirmDialog

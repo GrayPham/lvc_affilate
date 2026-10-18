@@ -37,9 +37,18 @@ interface RowState {
 interface CheckProgressDialogProps {
   items: readonly CheckItem[];
   onClose: () => void;
+  /** Danh tu dem trong tieu de ("tài khoản" / "key"…). */
+  noun?: string;
+  /** Giai thich vi sao chay tuan tu — khac nhau theo loai (trinh duyet vs. goi mang). */
+  subtitle?: string;
 }
 
-export default function CheckProgressDialog({ items, onClose }: CheckProgressDialogProps) {
+export default function CheckProgressDialog({
+  items,
+  onClose,
+  noun = "tài khoản",
+  subtitle = "Chạy lần lượt từng tài khoản để không nghẽn trình duyệt.",
+}: CheckProgressDialogProps) {
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(items.map((i) => [i.key, { phase: "waiting", detail: "Chờ tới lượt" }])),
   );
@@ -100,8 +109,8 @@ export default function CheckProgressDialog({ items, onClose }: CheckProgressDia
 
   return (
     <Dialog
-      title={`Đang kiểm tra ${total} tài khoản`}
-      subtitle="Chạy lần lượt từng tài khoản để không nghẽn trình duyệt."
+      title={`Đang kiểm tra ${total} ${noun}`}
+      subtitle={subtitle}
       width={560}
       onClose={onClose}
       footer={
