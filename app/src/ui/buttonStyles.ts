@@ -5,8 +5,8 @@
 // Bo goc tron (`rounded-full`) + chuyen dong/active dinh nghia global o `index.css`.
 //
 // Hai mat do (giu kich thuoc cu, chi doi mau/bo goc):
-// - `Xs` (11px) — dong trong bang day dac (SceneRow).
-// - `Sm` (12px) — nut toolbar/trang (SceneTable, ScriptList, AccountsPage...).
+// - `Xs` (11px) — dong trong bang day dac.
+// - `Sm` (12px) — nut toolbar/trang (AccountsPage...).
 const BASE =
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
 
