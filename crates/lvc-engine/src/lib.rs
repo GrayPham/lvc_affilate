@@ -31,6 +31,8 @@ pub mod cli;
 pub mod dag;
 pub mod error;
 pub mod events;
+/// Engine `FirefoxPortable`: tiem cookie vao cookies.sqlite + mo Firefox dung tay (khong CDP).
+pub mod firefox_profile;
 pub mod generate;
 pub mod limiter;
 pub mod login;

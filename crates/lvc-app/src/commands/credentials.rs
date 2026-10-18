@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use lvc_browser::BrowserDriver;
+use lvc_core::BrowserEngine;
 use lvc_vault::{AddCredential, CredentialView, VerifyOutcome};
 
 use super::login::platform::login_url;
@@ -166,16 +167,21 @@ pub async fn credential_open_viewer_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
     id: &str,
 ) -> Result<(), IpcError> {
-    let (provider, profile_dir, proxy) = ctx.vault.profile_dir_and_proxy(id).await?;
+    let (provider, profile_dir, proxy, engine) = ctx.vault.profile_dir_and_proxy(id).await?;
     let Some(profile_dir) = profile_dir else {
         return Err(IpcError::new(
             "PROFILE_NOT_FOUND",
             "tài khoản này chưa có profile trình duyệt (chưa tiêm cookie thành công) — thêm lại cookie rồi thử lại",
         ));
     };
+    let profile_dir = PathBuf::from(profile_dir);
+    // Engine Firefox: mở firefox.exe trên profile (không CDP). Chromium (mặc định): đường cũ.
+    if BrowserEngine::parse(&engine).unwrap_or_default() == BrowserEngine::FirefoxPortable {
+        return Ok(ctx.engine.open_firefox_viewer(&profile_dir)?);
+    }
     Ok(ctx
         .engine
-        .open_profile_viewer(&PathBuf::from(profile_dir), login_url(&provider), &proxy)
+        .open_profile_viewer(&profile_dir, login_url(&provider), &proxy)
         .await?)
 }
 

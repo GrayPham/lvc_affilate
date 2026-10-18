@@ -849,6 +849,14 @@ export const VerifyOutcomeSchema = z.object({
 });
 export type VerifyOutcome = z.infer<typeof VerifyOutcomeSchema>;
 
+/**
+ * Engine trinh duyet cua MOT tai khoan credential (`meta.engine`). "chromium" = CDP, tu dong hoa
+ * day du; "firefox_portable" = tiem cookie vao cookies.sqlite, CHI dung tay (khong verify/chay
+ * workflow tu dong). Khop `lvc_core::BrowserEngine`.
+ */
+export const BrowserEngineIdSchema = z.enum(["chromium", "firefox_portable"]);
+export type BrowserEngineId = z.infer<typeof BrowserEngineIdSchema>;
+
 /** Ket qua `proxy_test` — IP ra sau proxy, vi tri (quoc gia), do tre (ms). */
 export const ProxyProbeSchema = z.object({
   outboundIp: z.string(),

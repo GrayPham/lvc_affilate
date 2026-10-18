@@ -11,6 +11,7 @@
 use std::path::Path;
 
 use lvc_browser::BrowserDriver;
+use lvc_core::BrowserEngine;
 use lvc_vault::{AddCredential, CredentialView};
 use tracing::warn;
 
@@ -29,7 +30,29 @@ async fn provision_meta<D: BrowserDriver + 'static>(
     label: &str,
     cookie_text: &str,
     proxy: &str,
+    engine: BrowserEngine,
 ) -> Result<serde_json::Value, IpcError> {
+    // Engine Firefox: ghi cookie thang vao cookies.sqlite (khong CDP, khong proxy — xem plan). Mat
+    // cookie KHONG CHAN luu credential (phuong an lui giong Chromium): chi canh bao, meta thieu
+    // profile_dir. Cookie rong (COOKIE_INVALID) la loi cung.
+    if engine == BrowserEngine::FirefoxPortable {
+        return match ctx
+            .engine
+            .provision_firefox_profile(provider, label, cookie_text)
+            .await
+        {
+            Ok(dir) => Ok(serde_json::json!({
+                "mode": "cookie",
+                "engine": "firefox_portable",
+                "profile_dir": dir.to_string_lossy(),
+            })),
+            Err(e) if e.code() == "COOKIE_INVALID" => Err(e.into()),
+            Err(e) => {
+                warn!(provider, label, error = %e, "khong tiem duoc cookie vao profile Firefox - chi luu cookie tho");
+                Ok(serde_json::json!({ "mode": "cookie", "engine": "firefox_portable" }))
+            }
+        };
+    }
     match ctx
         .engine
         .provision_profile(provider, label, cookie_text, proxy)
@@ -65,8 +88,9 @@ pub async fn login_cookie_text_impl<D: BrowserDriver + 'static>(
     label: &str,
     cookie_text: &str,
     proxy: &str,
+    engine: BrowserEngine,
 ) -> Result<CredentialView, IpcError> {
-    let meta = provision_meta(ctx, provider, label, cookie_text, proxy).await?;
+    let meta = provision_meta(ctx, provider, label, cookie_text, proxy, engine).await?;
     let req = AddCredential {
         provider: provider.to_string(),
         kind: "session".to_string(),
@@ -89,8 +113,11 @@ pub async fn login_cookie_text(
     label: String,
     cookie_text: String,
     proxy: String,
+    engine: String,
 ) -> Result<CredentialView, IpcError> {
-    login_cookie_text_impl(&state, &provider, &label, &cookie_text, &proxy).await
+    let engine = BrowserEngine::parse(&engine)
+        .map_err(|e| IpcError::new("INVALID_ENGINE", e.to_string()))?;
+    login_cookie_text_impl(&state, &provider, &label, &cookie_text, &proxy, engine).await
 }
 
 /// Kết quả nạp MỘT file trong lô.
@@ -140,7 +167,17 @@ pub async fn login_import_cookie_files_impl<D: BrowserDriver + 'static>(
                 continue;
             }
         };
-        let meta = match provision_meta(ctx, provider, &label, &content, proxy).await {
+        // Nap tu FILE giu nguyen engine Chromium (luong nay chua co chon engine tren UI).
+        let meta = match provision_meta(
+            ctx,
+            provider,
+            &label,
+            &content,
+            proxy,
+            BrowserEngine::Chromium,
+        )
+        .await
+        {
             Ok(m) => m,
             Err(e) => {
                 out.push(LoginImportItem {
@@ -197,9 +234,16 @@ mod tests {
     #[tokio::test]
     async fn login_cookie_text_impl_thanh_cong_luu_profile_dir_trong_meta() {
         let (dir, ctx, _driver) = ctx_with(vec![FakeStep::Launch(Ok(()))], &[]).await;
-        let view = login_cookie_text_impl(&ctx, "google", "Gmail acc1", COOKIE_TEXT, "")
-            .await
-            .unwrap();
+        let view = login_cookie_text_impl(
+            &ctx,
+            "google",
+            "Gmail acc1",
+            COOKIE_TEXT,
+            "",
+            BrowserEngine::Chromium,
+        )
+        .await
+        .unwrap();
         assert_eq!(view.provider, "google");
         assert_eq!(view.kind, "session");
         let expected_dir = dir
@@ -215,11 +259,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn login_cookie_text_impl_firefox_ghi_cookies_sqlite_va_meta_engine() {
+        // Engine Firefox KHONG dung driver (ghi thang cookies.sqlite) — khong can FakeStep::Launch.
+        let (dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let view = login_cookie_text_impl(
+            &ctx,
+            "museai",
+            "ff acc",
+            COOKIE_TEXT,
+            "",
+            BrowserEngine::FirefoxPortable,
+        )
+        .await
+        .unwrap();
+        assert_eq!(view.meta["engine"], "firefox_portable");
+        let profile_dir = dir
+            .path()
+            .join("accounts")
+            .join(".logins")
+            .join("firefox")
+            .join("museai")
+            .join("ff_acc");
+        assert_eq!(
+            view.meta["profile_dir"],
+            profile_dir.to_string_lossy().to_string()
+        );
+        assert!(
+            profile_dir.join("cookies.sqlite").is_file(),
+            "phai ghi cookies.sqlite cho profile Firefox"
+        );
+    }
+
+    #[tokio::test]
     async fn login_cookie_text_impl_cookie_rong_khong_luu_credential() {
         let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
-        let err = login_cookie_text_impl(&ctx, "google", "acc1", "khong-phai-cookie", "")
-            .await
-            .unwrap_err();
+        let err = login_cookie_text_impl(
+            &ctx,
+            "google",
+            "acc1",
+            "khong-phai-cookie",
+            "",
+            BrowserEngine::Chromium,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.code, "COOKIE_INVALID");
         assert!(ctx.vault.list(None).await.unwrap().is_empty());
     }
@@ -235,9 +318,16 @@ mod tests {
             &[],
         )
         .await;
-        let view = login_cookie_text_impl(&ctx, "google", "acc1", COOKIE_TEXT, "")
-            .await
-            .unwrap();
+        let view = login_cookie_text_impl(
+            &ctx,
+            "google",
+            "acc1",
+            COOKIE_TEXT,
+            "",
+            BrowserEngine::Chromium,
+        )
+        .await
+        .unwrap();
         assert_eq!(view.meta.get("profile_dir"), None);
     }
 

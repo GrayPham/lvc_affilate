@@ -26,7 +26,7 @@ import {
 } from "../format/credential";
 import { loginCookieText, loginImportCookieFiles, loginOpenInteractive, pickFiles } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
-import type { CredentialProvider } from "../ipc/types";
+import type { BrowserEngineId, CredentialProvider } from "../ipc/types";
 
 type Platform = CredentialProvider; // "dola" la mot gia tri cua CredentialProvider, xu ly rieng ben duoi.
 type Method = "paste" | "bulk" | "browser";
@@ -53,6 +53,9 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
   const [label, setLabel] = useState("");
   const [secret, setSecret] = useState("");
   const [proxy, setProxy] = useState("");
+  // Engine cho luong "Dan cookie" nen tang KHAC Dola: chromium (tu dong) hoac firefox_portable
+  // (tiem cookie vao profile Firefox, CHI dung tay).
+  const [engine, setEngine] = useState<BrowserEngineId>("chromium");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -73,6 +76,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
     if (!nextMethods.includes(method)) {
       setMethod(nextMethods[0]!);
     }
+    // Firefox chi ap cho nen tang credential; ve Dola thi quay lai Chromium.
+    if (next === "dola") {
+      setEngine("chromium");
+    }
     setError(null);
     setOkMsg(null);
     setBulkResult(null);
@@ -86,9 +93,10 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
       if (platform === "dola") {
         await importCookies(label.trim(), secret, proxy.trim());
       } else {
-        // Tiem cookie vao profile Chrome that (Phan A) thay vi chi luu chuoi tho qua credentialAdd —
-        // lenh Rust tu dung `credential_add` phia sau, khong can goi store rieng o day.
-        await loginCookieText(platform, label.trim(), secret, proxy.trim());
+        // Tiem cookie vao profile that (Phan A) thay vi chi luu chuoi tho qua credentialAdd —
+        // lenh Rust tu dung `credential_add` phia sau, khong can goi store rieng o day. `engine`
+        // chon Chromium (CDP) hay Firefox Portable (ghi cookies.sqlite, dung tay).
+        await loginCookieText(platform, label.trim(), secret, proxy.trim(), engine);
         await useCredentialsStore.getState().load();
       }
       setOkMsg(`Đã thêm "${label.trim()}".`);
@@ -257,16 +265,55 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
             </label>
 
             {method === "paste" ? (
-              <label className="flex flex-col gap-1 text-xs text-muted">
-                Cookie / nội dung đăng nhập
-                <textarea
-                  className="h-28 resize-none rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-fg placeholder:text-ink3"
-                  value={secret}
-                  disabled={busy}
-                  onChange={(e) => setSecret(e.target.value)}
-                  placeholder="Dán cookie/nội dung đăng nhập vào đây"
-                />
-              </label>
+              <>
+                <label className="flex flex-col gap-1 text-xs text-muted">
+                  Cookie / nội dung đăng nhập
+                  <textarea
+                    className="h-28 resize-none rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-fg placeholder:text-ink3"
+                    value={secret}
+                    disabled={busy}
+                    onChange={(e) => setSecret(e.target.value)}
+                    placeholder="Dán cookie/nội dung đăng nhập vào đây"
+                  />
+                </label>
+
+                {platform !== "dola" ? (
+                  <div className="flex flex-col gap-1 text-xs text-muted">
+                    Trình duyệt
+                    <div className="flex overflow-hidden rounded-md border border-line self-start">
+                      {(
+                        [
+                          ["chromium", "Chrome"],
+                          ["firefox_portable", "Firefox Portable"],
+                        ] as ReadonlyArray<readonly [BrowserEngineId, string]>
+                      ).map(([id, text]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          disabled={busy}
+                          className={
+                            "px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50 " +
+                            (engine === id
+                              ? "bg-primary text-primary-fg"
+                              : "bg-fill text-muted hover:bg-fill2")
+                          }
+                          onClick={() => setEngine(id)}
+                        >
+                          {text}
+                        </button>
+                      ))}
+                    </div>
+                    {engine === "firefox_portable" ? (
+                      <span className="text-[11px] text-warn">
+                        Firefox Portable: cookie được tiêm vào profile để bạn mở xem/dùng TAY. Tài
+                        khoản này sẽ không verify/chạy workflow tự động (tự động hoá chỉ chạy trên
+                        Chrome). Cần đặt biến môi trường LVC_FIREFOX trỏ tới firefox.exe nếu chưa
+                        tìm thấy.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             ) : (
               <p className="text-[11px] text-ink3">
                 Cửa sổ trình duyệt sẽ mở tới trang đăng nhập. Bạn TỰ đăng nhập trong cửa sổ đó; phiên

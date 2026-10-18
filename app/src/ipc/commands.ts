@@ -40,6 +40,7 @@ import {
   IpcErrorSchema,
   type AccountStatus,
   type AppSettings,
+  type BrowserEngineId,
   type CacheInfo,
   type SceneIn,
   type SceneRow,
@@ -376,15 +377,23 @@ export async function loginImportCookieFiles(
   return z.array(LoginImportItemSchema).parse(res);
 }
 
-/** (A) Dan MOT doan cookie (khong qua file) cho nen tang bat ky KHAC Dola — tiem vao profile
- * Chrome that roi luu credential kind `session` (xem `lvc_engine::Engine::provision_profile`). */
+/** (A) Dan MOT doan cookie (khong qua file) cho nen tang bat ky KHAC Dola — tiem vao profile roi
+ * luu credential kind `session`. `engine`: "chromium" (CDP, mac dinh) hoac "firefox_portable"
+ * (ghi cookies.sqlite, chi dung tay — xem BrowserEngine). */
 export async function loginCookieText(
   provider: string,
   label: string,
   cookieText: string,
   proxy: string,
+  engine: BrowserEngineId = "chromium",
 ): Promise<CredentialView> {
-  const res = await invoke<unknown>("login_cookie_text", { provider, label, cookieText, proxy });
+  const res = await invoke<unknown>("login_cookie_text", {
+    provider,
+    label,
+    cookieText,
+    proxy,
+    engine,
+  });
   return CredentialViewSchema.parse(res);
 }
 

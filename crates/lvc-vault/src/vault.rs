@@ -376,10 +376,13 @@ impl Vault {
     ///
     /// # Errors
     /// [`VaultRepoError::NotFound`] nếu không có credential nào với `id` này.
+    /// Trả `(provider, profile_dir, proxy, engine)` để "Mở trình duyệt" chọn đúng nhánh.
+    /// `engine` = `meta.engine` (chuỗi thô; rỗng khi chưa gắn → caller coi là "chromium"); KHÔNG
+    /// chạm secret.
     pub async fn profile_dir_and_proxy(
         &self,
         id: &str,
-    ) -> Result<(String, Option<String>, String), VaultRepoError> {
+    ) -> Result<(String, Option<String>, String, String), VaultRepoError> {
         let row = self.repo.get(id).await?.ok_or(VaultRepoError::NotFound)?;
         let meta: serde_json::Value =
             serde_json::from_str(&row.meta).unwrap_or(serde_json::Value::Null);
@@ -387,7 +390,12 @@ impl Vault {
             .get("profile_dir")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        Ok((row.provider, profile_dir, row.proxy))
+        let engine = meta
+            .get("engine")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        Ok((row.provider, profile_dir, row.proxy, engine))
     }
 }
 
@@ -482,10 +490,25 @@ mod tests {
         req.proxy = "1.2.3.4:8080".to_string();
         let view = v.add(&req).await.unwrap();
 
-        let (provider, profile_dir, proxy) = v.profile_dir_and_proxy(&view.id).await.unwrap();
+        let (provider, profile_dir, proxy, engine) =
+            v.profile_dir_and_proxy(&view.id).await.unwrap();
         assert_eq!(provider, "google");
         assert_eq!(profile_dir, Some("/tmp/profile-x".to_string()));
         assert_eq!(proxy, "1.2.3.4:8080");
+        assert_eq!(
+            engine, "",
+            "meta khong co 'engine' -> rong (caller coi la chromium)"
+        );
+    }
+
+    #[tokio::test]
+    async fn profile_dir_and_proxy_doc_engine_firefox_tu_meta() {
+        let v = vault().await;
+        let mut req = add("museai", "session", "cookie-nhay-cam");
+        req.meta = serde_json::json!({"mode": "cookie", "engine": "firefox_portable", "profile_dir": "/tmp/ff"});
+        let view = v.add(&req).await.unwrap();
+        let (_, _, _, engine) = v.profile_dir_and_proxy(&view.id).await.unwrap();
+        assert_eq!(engine, "firefox_portable");
     }
 
     #[tokio::test]
@@ -545,7 +568,7 @@ mod tests {
     async fn profile_dir_and_proxy_chua_co_profile_tra_none() {
         let v = vault().await;
         let view = v.add(&add("gemini", "api_key", "AIzaKEY")).await.unwrap();
-        let (_, profile_dir, _) = v.profile_dir_and_proxy(&view.id).await.unwrap();
+        let (_, profile_dir, _, _) = v.profile_dir_and_proxy(&view.id).await.unwrap();
         assert_eq!(profile_dir, None);
     }
 

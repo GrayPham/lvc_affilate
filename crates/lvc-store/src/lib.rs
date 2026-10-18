@@ -4,6 +4,7 @@ pub mod accounts;
 pub mod credentials;
 pub mod db;
 pub mod error;
+pub mod firefox_cookies;
 pub mod legacy;
 pub mod queue;
 pub mod remote_scripts;
