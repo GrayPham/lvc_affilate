@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import AddAccountDialog from "../components/AddAccountDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
+import CheckProgressDialog, { type CheckItem } from "../components/CheckProgressDialog";
 import EditAccountDialog, { type EditTarget } from "../components/EditAccountDialog";
 import { useAccountsStore } from "../store/accounts";
 import { useCredentialsStore } from "../store/credentials";
@@ -34,6 +35,7 @@ import {
   Switch,
   type NodeTypeKey,
 } from "../ui/primitives";
+import type { VerifyOutcome, VerifyReport } from "../ipc/types";
 
 /** Mau cham theo trang thai — bien CSS doi theo theme (xem `index.css`). */
 const STATE_COLOR: Record<AccountState, string> = {
@@ -44,6 +46,19 @@ const STATE_COLOR: Record<AccountState, string> = {
   no_credit: "var(--nocredit)",
   unknown: "var(--unknown)",
 };
+
+// `account_verify` (Dola) tra TRANG THAI PHIEN, khong phai `CredentialStatus` nhu credential chung.
+// Quy ve cung kieu de hop thoai tien do hien dong nhat moi nen tang.
+function dolaOutcome(r: VerifyReport): VerifyOutcome {
+  switch (r.state) {
+    case "logged_in":
+      return { status: "ok", detail: "Phiên còn đăng nhập" };
+    case "logged_out":
+      return { status: "expired", detail: "Phiên đã đăng xuất — cần đăng nhập lại" };
+    default:
+      return { status: "unknown", detail: "Chưa xác định được trạng thái phiên" };
+  }
+}
 
 interface UnifiedRow {
   key: string;
@@ -131,6 +146,8 @@ export default function AccountsPage() {
   /** `true` = đang hỏi trước khi xoá hàng loạt. Xoá tài khoản là KHÔNG hoàn tác được (mất cả
    * cookie/phiên đăng nhập đã nạp), nên không bao giờ xoá thẳng từ một cú bấm. */
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  /** Danh sach tai khoan dang kiem trong hop thoai tien do; `null` = dong. */
+  const [checkItems, setCheckItems] = useState<CheckItem[] | null>(null);
 
   useEffect(() => {
     void loadDola();
@@ -315,15 +332,19 @@ export default function AccountsPage() {
   }
 
   /** Kiem tra TUAN TU — tranh ban song song N lenh mo trinh duyet cung luc. */
-  async function handleBulkVerify(): Promise<void> {
-    setBulkBusy(true);
-    try {
-      for (const row of selectedRows) {
-        await handleVerify(row);
-      }
-    } finally {
-      setBulkBusy(false);
-    }
+  function handleBulkVerify(): void {
+    // Hop thoai tu chay vong lap tuan tu va hien tien do tung tai khoan (xem CheckProgressDialog).
+    setCheckItems(
+      selectedRows.map((row) => ({
+        key: row.key,
+        name: row.label,
+        platform: platformLook(row.platformKey as never).name,
+        run: () =>
+          row.target.source === "dola"
+            ? verifyDola(row.target.row.name).then(dolaOutcome)
+            : verifyCred(row.target.row.id),
+      })),
+    );
   }
 
   async function handleBulkDelete(): Promise<void> {
@@ -435,7 +456,7 @@ export default function AccountsPage() {
               <span className="text-[12.5px] font-bold text-accent">
                 {selectedRows.length} đã chọn
               </span>
-              <Button disabled={bulkBusy} onClick={() => void handleBulkVerify()}>
+              <Button disabled={bulkBusy} onClick={handleBulkVerify}>
                 {bulkBusy ? "Đang kiểm tra…" : "Kiểm tra"}
               </Button>
               <Button variant="danger" disabled={bulkBusy} onClick={() => setConfirmBulkDelete(true)}>
@@ -687,6 +708,9 @@ export default function AccountsPage() {
 
       {showAdd ? <AddAccountDialog onClose={() => setShowAdd(false)} /> : null}
       {editing ? <EditAccountDialog target={editing} onClose={() => setEditing(null)} /> : null}
+      {checkItems ? (
+        <CheckProgressDialog items={checkItems} onClose={() => setCheckItems(null)} />
+      ) : null}
     </div>
   );
 }
