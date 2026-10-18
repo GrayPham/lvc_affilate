@@ -1,0 +1,21 @@
+{
+  "name": "MuseAI: Demo tính năng sản phẩm",
+  "category": "Bán hàng/Sản phẩm",
+  "description": "Demo tính năng bằng MuseAI trong MỘT video dọc 9:16: hook nêu vấn đề → định vị sản phẩm → demo 2-3 tính năng nổi bật cận cảnh → CTA chốt đơn. Ảnh sản phẩm + ảnh người giới thiệu làm tham chiếu.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "product", "kind": { "kind": "image_upload", "paths": [], "label": "sản phẩm" }, "x": 60, "y": 80 },
+      { "id": "host", "kind": { "kind": "image_upload", "paths": [], "label": "người giới thiệu" }, "x": 60, "y": 300 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "UGC dọc 9:16 quay bằng điện thoại chân thực, ánh sáng bàn làm việc mềm, chỉ tiếng động môi trường, không nhạc nền. Mạch liền một hơi: người giới thiệu giơ sản phẩm sát camera, câu mở gây tò mò về một vấn đề thường gặp (hook 1-2s) → xoay chậm khoe thiết kế, nói ngắn gọn công dụng chính → cận cảnh macro thao tác tính năng nổi bật thứ nhất → cận cảnh tính năng thứ hai đang hoạt động, góc nghiêng khoe chi tiết → kết: gật đầu hài lòng, chỉ tay kêu gọi mua ngay kèm ưu đãi, nhìn thẳng camera" }, "x": 60, "y": 520 },
+      { "id": "video", "kind": { "kind": "museai_video", "account": "", "aspect": "9:16", "duration": 15 }, "x": 470, "y": 240 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 240 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "product", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "host", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e3", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e4", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

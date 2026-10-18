@@ -1,0 +1,23 @@
+{
+  "name": "MuseAI: Product unboxing (UGC)",
+  "category": "Bán hàng/Sản phẩm",
+  "description": "Mở hộp UGC bằng MuseAI: ảnh nhân vật + trang phục + sản phẩm làm tham chiếu → một video selfie dọc 9:16 mở hộp chân thực, lưu ra thư mục. Tài khoản MuseAI để trống = tự chọn từ kho.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "character", "kind": { "kind": "image_upload", "paths": [], "label": "nhân vật" }, "x": 60, "y": 60 },
+      { "id": "cloths", "kind": { "kind": "image_upload", "paths": [], "label": "trang phục" }, "x": 60, "y": 250 },
+      { "id": "package", "kind": { "kind": "image_upload", "paths": [], "label": "sản phẩm/hộp" }, "x": 60, "y": 440 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "Real iPhone vertical UGC selfie unboxing footage, 9:16, 12-15s, photorealistic raw phone camera texture, soft natural bedroom window light, slight handheld shake, ambient sound only, no background music, printed brand logo on the paper bag" }, "x": 60, "y": 630 },
+      { "id": "video", "kind": { "kind": "museai_video", "account": "", "aspect": "9:16", "duration": 15 }, "x": 470, "y": 300 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 300 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "character", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "cloths", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e3", "from": "package", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e4", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e5", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

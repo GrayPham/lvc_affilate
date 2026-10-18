@@ -1,0 +1,21 @@
+{
+  "name": "MuseAI: Before / After (lột xác)",
+  "category": "Bán hàng/Sản phẩm",
+  "description": "Before/after bán hàng bằng MuseAI trong MỘT video dọc 9:16: hook giữ chân → tình trạng TRƯỚC → khoảnh khắc dùng sản phẩm → kết quả SAU rõ rệt → chốt đơn. Ảnh nhân vật + ảnh sản phẩm làm tham chiếu.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "model", "kind": { "kind": "image_upload", "paths": [], "label": "nhân vật" }, "x": 60, "y": 80 },
+      { "id": "product", "kind": { "kind": "image_upload", "paths": [], "label": "sản phẩm" }, "x": 60, "y": 300 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "UGC selfie dọc 9:16 quay bằng điện thoại chân thực, ánh sáng cửa sổ tự nhiên, rung tay nhẹ, chỉ tiếng động môi trường, không nhạc nền. Mạch cảnh liền một hơi: mở đầu người mẫu nhìn thẳng camera vẻ thất vọng chỉ vào vùng vấn đề (hook 1-2s) → cận cảnh tình trạng TRƯỚC khi dùng, tông hơi xỉn để nhấn tương phản → người mẫu mở và thoa/sử dụng sản phẩm, động tác tự nhiên → kết quả SAU cải thiện rõ, da/vật thể sáng khỏe hơn, biểu cảm rạng rỡ → kết: cầm sản phẩm khoe nhãn, chỉ tay kêu gọi mua ngay kèm nụ cười tự tin" }, "x": 60, "y": 520 },
+      { "id": "video", "kind": { "kind": "museai_video", "account": "", "aspect": "9:16", "duration": 15 }, "x": 470, "y": 240 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 240 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "model", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "product", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e3", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e4", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

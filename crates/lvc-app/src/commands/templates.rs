@@ -64,8 +64,19 @@ struct PublicTemplate {
     graph: Graph,
 }
 
+/// Dola đang bị chặn (2026-10) → tạm ẩn các mẫu Public dùng node `dola_video` khỏi gallery
+/// (`template_list`). Mở lại = đổi thành `false`. `template_get` KHÔNG chặn (workflow cũ dựng từ
+/// mẫu Dola vẫn mở được nếu biết id); chỉ ẩn khỏi danh sách để người dùng không chọn mẫu đang hỏng.
+const HIDE_DOLA_TEMPLATES: bool = true;
+
+/// Mẫu Public có dùng node Dola không — soát trên JSON thô (rẻ, không cần parse Graph). Đủ tin vì
+/// kind luôn là chuỗi `"dola_video"` trong JSON mẫu.
+fn uses_dola(raw: &str) -> bool {
+    raw.contains("\"dola_video\"")
+}
+
 /// `(id, raw json)` mỗi mẫu Public. id ổn định `public:<tên file>` (lưu trong workflow người dùng).
-pub(crate) const PUBLIC: [(&str, &str); 17] = [
+pub(crate) const PUBLIC: [(&str, &str); 21] = [
     (
         "public:affiliate-review",
         include_str!("../../templates/affiliate-review.json"),
@@ -133,6 +144,22 @@ pub(crate) const PUBLIC: [(&str, &str); 17] = [
     (
         "public:affiliate-museai-review",
         include_str!("../../templates/affiliate-museai-review.json"),
+    ),
+    (
+        "public:museai-product-unboxing",
+        include_str!("../../templates/museai-product-unboxing.json"),
+    ),
+    (
+        "public:museai-before-after",
+        include_str!("../../templates/museai-before-after.json"),
+    ),
+    (
+        "public:museai-feature-demo",
+        include_str!("../../templates/museai-feature-demo.json"),
+    ),
+    (
+        "public:museai-testimonial",
+        include_str!("../../templates/museai-testimonial.json"),
     ),
 ];
 
@@ -250,6 +277,10 @@ pub async fn template_list_impl<D: BrowserDriver + 'static>(
     let mut out = Vec::new();
     if want != Some("private") && want != Some("remote") {
         for (id, raw) in PUBLIC {
+            // Dola đang bị chặn → ẩn mẫu dùng node Dola khỏi gallery (xem HIDE_DOLA_TEMPLATES).
+            if HIDE_DOLA_TEMPLATES && uses_dola(raw) {
+                continue;
+            }
             if let Some(d) = public_doc(id, raw) {
                 out.push(d.meta);
             }
@@ -480,11 +511,18 @@ mod tests {
         let only_public = template_list_impl(&ctx, Some("public".into()))
             .await
             .unwrap();
-        assert_eq!(only_public.len(), 17);
+        // Dola bị ẩn (HIDE_DOLA_TEMPLATES): 21 mẫu Public - 14 mẫu Dola = 7 hiện ra.
+        assert_eq!(only_public.len(), 7);
         assert!(only_public.iter().all(|t| t.scope == "public"));
-        // Nhóm được khai đúng: có ít nhất một mẫu mỗi nhóm chính.
+        // KHÔNG còn mẫu Dola nào trong danh sách.
+        assert!(
+            !only_public
+                .iter()
+                .any(|t| t.id.contains("affiliate-review")),
+            "mẫu Dola phải bị ẩn"
+        );
+        // Nhóm được khai đúng: có ít nhất một mẫu mỗi nhóm còn lại (Storyboard toàn Dola → mất).
         assert!(only_public.iter().any(|t| t.category == "Affiliate"));
-        assert!(only_public.iter().any(|t| t.category == "Storyboard"));
         assert!(
             only_public
                 .iter()
@@ -492,6 +530,7 @@ mod tests {
         );
         assert!(only_public.iter().any(|t| t.category == "Cơ bản"));
 
+        // template_get KHÔNG bị chặn kể cả với mẫu Dola đã ẩn (mở được nếu biết id).
         let g = template_get_impl(&ctx, "public:product-unboxing")
             .await
             .unwrap()
@@ -504,12 +543,42 @@ mod tests {
         assert_eq!(meta.category, "Cơ bản");
 
         let all = template_list_impl(&ctx, None).await.unwrap();
-        assert_eq!(all.len(), 18);
+        assert_eq!(all.len(), 8);
         let priv_only = template_list_impl(&ctx, Some("private".into()))
             .await
             .unwrap();
         assert_eq!(priv_only.len(), 1);
         assert_eq!(priv_only[0].name, "cua toi");
+    }
+
+    #[tokio::test]
+    async fn gallery_an_het_dola_va_co_mau_museai_ban_hang() {
+        let (_dir, ctx, _d) = ctx_with(vec![], &[]).await;
+        let pub_list = template_list_impl(&ctx, Some("public".into()))
+            .await
+            .unwrap();
+        // Không mẫu hiển thị nào dùng Dola (soát lại trên graph đã nạp).
+        for m in &pub_list {
+            let doc = template_get_impl(&ctx, &m.id).await.unwrap();
+            let json = serde_json::to_string(&doc.graph).unwrap();
+            assert!(!json.contains("dola_video"), "mẫu {} vẫn là Dola", m.id);
+        }
+        // Có đủ 5 mẫu bán hàng MuseAI để test.
+        for id in [
+            "public:affiliate-museai-review",
+            "public:museai-product-unboxing",
+            "public:museai-before-after",
+            "public:museai-feature-demo",
+            "public:museai-testimonial",
+        ] {
+            assert!(pub_list.iter().any(|m| m.id == id), "thiếu mẫu {id}");
+        }
+    }
+
+    #[test]
+    fn uses_dola_soat_dung() {
+        assert!(uses_dola(r#"{"kind":{"kind":"dola_video"}}"#));
+        assert!(!uses_dola(r#"{"kind":{"kind":"museai_video"}}"#));
     }
 
     #[tokio::test]

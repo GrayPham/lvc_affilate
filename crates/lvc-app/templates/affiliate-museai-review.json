@@ -1,17 +1,21 @@
 {
-  "name": "Video affiliate MuseAI (mô tả sản phẩm)",
-  "category": "Affiliate",
-  "description": "Mẫu affiliate dùng MuseAI: chỉ cần mô tả sản phẩm bằng chữ (MuseAI v1 chưa nhận ảnh tham chiếu) → video quảng cáo sản phẩm, lưu ra thư mục. Tài khoản MuseAI để trống sẽ tự chọn từ kho — điền tên cụ thể nếu muốn ép dùng đúng một tài khoản.",
+  "name": "MuseAI: Video review sản phẩm (affiliate)",
+  "category": "Bán hàng/Sản phẩm",
+  "description": "Affiliate/TikTok bằng MuseAI: ảnh người mẫu (KOL) + ảnh sản phẩm làm tham chiếu + prompt review bán hàng → video dọc 9:16 kèm CTA, lưu ra thư mục. Tài khoản MuseAI để trống sẽ tự chọn từ kho — điền tên cụ thể nếu muốn ép dùng đúng một tài khoản.",
   "graph": {
     "version": 2,
     "nodes": [
-      { "id": "prompt", "kind": { "kind": "prompt", "text": "Một sản phẩm đặt trên bàn với ánh sáng studio ấm áp, nền mờ trang trí tinh tế, phong cách quảng cáo sản phẩm cao cấp, cận cảnh sản phẩm xoay nhẹ khoe chi tiết" }, "x": 60, "y": 240 },
-      { "id": "video", "kind": { "kind": "museai_video", "account": "", "aspect": "", "duration": null }, "x": 470, "y": 240 },
+      { "id": "kol", "kind": { "kind": "image_upload", "paths": [], "label": "người mẫu" }, "x": 60, "y": 80 },
+      { "id": "product", "kind": { "kind": "image_upload", "paths": [], "label": "sản phẩm" }, "x": 60, "y": 300 },
+      { "id": "prompt", "kind": { "kind": "prompt", "text": "UGC TikTok affiliate review dọc 9:16, người mẫu cầm và giới thiệu sản phẩm một cách tự nhiên, biểu cảm hào hứng, ánh sáng phòng mềm, quay bằng điện thoại, có nhịp mở hộp - dùng thử - chốt đơn (call to action), 12-15 giây, không nhạc nền lớn" }, "x": 60, "y": 520 },
+      { "id": "video", "kind": { "kind": "museai_video", "account": "", "aspect": "9:16", "duration": 15 }, "x": 470, "y": 240 },
       { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 840, "y": 240 }
     ],
     "edges": [
-      { "id": "e1", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
-      { "id": "e2", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
+      { "id": "e1", "from": "kol", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e2", "from": "product", "from_port": "out", "to": "video", "to_port": "refs" },
+      { "id": "e3", "from": "prompt", "from_port": "out", "to": "video", "to_port": "prompt" },
+      { "id": "e4", "from": "video", "from_port": "out", "to": "save", "to_port": "video" }
     ]
   }
 }
