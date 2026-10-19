@@ -24,7 +24,8 @@ fn has_quota(c: &CredentialView) -> bool {
     c.enabled
         && c.kind == "api_key"
         && c.status != "quota"
-        && c.daily_limit.is_none_or(|lim| lim <= 0 || c.used_today < lim)
+        && c.daily_limit
+            .is_none_or(|lim| lim <= 0 || c.used_today < lim)
 }
 
 /// Chọn credential id để dùng — THUẦN (tách khỏi I/O để test). Trả về `&CredentialView`.
@@ -44,7 +45,12 @@ fn pick<'a>(
         return list
             .iter()
             .find(|c| is_api(c) && c.label == wanted)
-            .or_else(|| wanted.is_empty().then(|| list.iter().find(is_api)).flatten())
+            .or_else(|| {
+                wanted
+                    .is_empty()
+                    .then(|| list.iter().find(is_api))
+                    .flatten()
+            })
             .ok_or_else(|| not_found_msg(provider, wanted));
     }
 
@@ -78,7 +84,9 @@ fn not_found_msg(provider: &str, wanted: &str) -> String {
 }
 
 fn all_exhausted_msg(provider: &str) -> String {
-    format!("moi API key '{provider}' da het han muc hom nay (tat 'Tu xoay vong key' de chay bat chap, hoac them key)")
+    format!(
+        "moi API key '{provider}' da het han muc hom nay (tat 'Tu xoay vong key' de chay bat chap, hoac them key)"
+    )
 }
 
 /// Resolver backed by [`Vault`]: tra API key `kind = "api_key"` theo `provider` + `name` (label).
@@ -91,10 +99,7 @@ pub struct VaultTextResolver {
 impl VaultTextResolver {
     #[must_use]
     pub fn new(vault: Arc<Vault>, auto_rotate: Arc<AtomicBool>) -> Self {
-        Self {
-            vault,
-            auto_rotate,
-        }
+        Self { vault, auto_rotate }
     }
 }
 
@@ -152,7 +157,12 @@ mod tests {
         }
     }
 
-    fn view(label: &str, used_today: i64, daily_limit: Option<i64>, status: &str) -> CredentialView {
+    fn view(
+        label: &str,
+        used_today: i64,
+        daily_limit: Option<i64>,
+        status: &str,
+    ) -> CredentialView {
         CredentialView {
             id: format!("id-{label}"),
             provider: "gemini".into(),

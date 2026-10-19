@@ -1,0 +1,21 @@
+{
+  "name": "MuseAI: Ảnh → Video món ăn (UGC viral)",
+  "category": "Bán hàng/Sản phẩm",
+  "description": "Kịch bản MuseAI tạo CẢ ẢNH LẪN VIDEO: trước tiên MuseAI tạo ảnh nhân vật nữ trong bếp (làm gương mặt gốc nhất quán), rồi dùng ảnh đó làm tham chiếu để MuseAI dựng video UGC ẩm thực dọc 9:16 — hook nguyên liệu tươi gây tò mò → sơ chế/nấu → pha nước chấm → bê món khoe camera. Tài khoản MuseAI để trống = tự chọn từ kho.",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "anh_prompt", "kind": { "kind": "prompt", "text": "Chân dung một cô gái trẻ châu Á xinh xắn, tóc đen dài, đứng trong căn bếp căn hộ hiện đại sáng sủa, ánh sáng tự nhiên mềm từ cửa sổ, phong cách ảnh chụp bằng điện thoại chân thực (UGC), bố cục dọc 9:16, biểu cảm tươi tắn thân thiện. Ảnh rõ mặt, chi tiết, dùng làm nhân vật GỐC để giữ gương mặt nhất quán cho video." }, "x": 60, "y": 120 },
+      { "id": "tao_anh", "kind": { "kind": "museai_image", "account": "" }, "x": 420, "y": 120 },
+      { "id": "video_prompt", "kind": { "kind": "prompt", "text": "Video UGC ẩm thực dọc 9:16 quay bằng điện thoại chân thực, ánh sáng trong nhà, rung tay nhẹ, chỉ tiếng động môi trường, không nhạc nền lớn, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu. Mạch cảnh nối tiếp khoảng 20 giây: mở đầu cô gái mang nguyên liệu tươi về căn hộ với biểu cảm hào hứng gây tò mò (hook 1-2s) → cận cảnh sơ chế và thả thịt vào nồi nước đang sôi trên bếp → pha chén nước chấm, rưới tương ớt vào nước mắm, khuấy đều cận cảnh → cô gái bê bát món ăn nóng hổi khoe thẳng vào camera, mỉm cười mời người xem, kết bằng ánh nhìn thân thiện." }, "x": 60, "y": 420 },
+      { "id": "tao_video", "kind": { "kind": "museai_video", "account": "", "aspect": "9:16", "duration": null }, "x": 780, "y": 240 },
+      { "id": "save", "kind": { "kind": "save", "out_dir": "" }, "x": 1120, "y": 240 }
+    ],
+    "edges": [
+      { "id": "e1", "from": "anh_prompt", "from_port": "out", "to": "tao_anh", "to_port": "prompt" },
+      { "id": "e2", "from": "tao_anh", "from_port": "out", "to": "tao_video", "to_port": "refs" },
+      { "id": "e3", "from": "video_prompt", "from_port": "out", "to": "tao_video", "to_port": "prompt" },
+      { "id": "e4", "from": "tao_video", "from_port": "out", "to": "save", "to_port": "video" }
+    ]
+  }
+}

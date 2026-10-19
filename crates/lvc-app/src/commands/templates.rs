@@ -76,7 +76,7 @@ fn uses_dola(raw: &str) -> bool {
 }
 
 /// `(id, raw json)` mỗi mẫu Public. id ổn định `public:<tên file>` (lưu trong workflow người dùng).
-pub(crate) const PUBLIC: [(&str, &str); 21] = [
+pub(crate) const PUBLIC: [(&str, &str); 22] = [
     (
         "public:affiliate-review",
         include_str!("../../templates/affiliate-review.json"),
@@ -160,6 +160,10 @@ pub(crate) const PUBLIC: [(&str, &str); 21] = [
     (
         "public:museai-testimonial",
         include_str!("../../templates/museai-testimonial.json"),
+    ),
+    (
+        "public:museai-anh-video-mon-an",
+        include_str!("../../templates/museai-anh-video-mon-an.json"),
     ),
 ];
 
@@ -511,8 +515,8 @@ mod tests {
         let only_public = template_list_impl(&ctx, Some("public".into()))
             .await
             .unwrap();
-        // Dola bị ẩn (HIDE_DOLA_TEMPLATES): 21 mẫu Public - 14 mẫu Dola = 7 hiện ra.
-        assert_eq!(only_public.len(), 7);
+        // Dola bị ẩn (HIDE_DOLA_TEMPLATES): 22 mẫu Public - 14 mẫu Dola = 8 hiện ra.
+        assert_eq!(only_public.len(), 8);
         assert!(only_public.iter().all(|t| t.scope == "public"));
         // KHÔNG còn mẫu Dola nào trong danh sách.
         assert!(
@@ -543,7 +547,7 @@ mod tests {
         assert_eq!(meta.category, "Cơ bản");
 
         let all = template_list_impl(&ctx, None).await.unwrap();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 9);
         let priv_only = template_list_impl(&ctx, Some("private".into()))
             .await
             .unwrap();
