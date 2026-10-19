@@ -162,8 +162,8 @@ pub(crate) const PUBLIC: [(&str, &str); 22] = [
         include_str!("../../templates/museai-testimonial.json"),
     ),
     (
-        "public:museai-anh-video-mon-an",
-        include_str!("../../templates/museai-anh-video-mon-an.json"),
+        "public:museai-reel-mon-an",
+        include_str!("../../templates/museai-reel-mon-an.json"),
     ),
 ];
 
