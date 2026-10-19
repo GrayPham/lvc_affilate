@@ -600,6 +600,12 @@ export async function credentialSetNodeTypes(id: string, nodeTypes: string[]): P
   return z.null().parse(res);
 }
 
+/** Dat nguong "han muc/ngay" cho mot api_key (`null`/`0` = khong gioi han). */
+export async function credentialSetDailyLimit(id: string, limit: number | null): Promise<null> {
+  const res = await invoke<unknown>("credential_set_daily_limit", { id, limit });
+  return z.null().parse(res);
+}
+
 // ---- templates.rs (P4d kho template + P7 kho cong dong) --------------------------------------
 // 4 lenh `template_*`. Tham so Rust snake_case -> JS camelCase tu dong (giong moi lenh khac).
 // Mau Public/Remote (`id` bat dau "public:"/"remote:") CHI DOC — luu de/xoa se bi backend tu choi

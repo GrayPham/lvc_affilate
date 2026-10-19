@@ -59,6 +59,11 @@ pub async fn settings_set_impl<D: BrowserDriver + 'static>(
     drop(guard);
 
     ctx.engine.apply_settings(&normalized);
+    // Cập nhật cờ "Tự xoay vòng key" cho resolver thấy ngay (xem Ctx::api_key_auto_rotate).
+    ctx.api_key_auto_rotate.store(
+        normalized.api_key_auto_rotate,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     Ok(warnings)
 }
 

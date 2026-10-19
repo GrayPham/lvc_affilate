@@ -499,6 +499,8 @@ export const AppSettingsSchema = z.object({
   onError: z.enum(["skip", "stop"]),
   restBetween: z.number(),
   missingAccount: z.enum(["skip", "wait"]),
+  // Nhom "API key": bat thi tu xoay vong key cung nha cung cap khi het han muc/quota.
+  apiKeyAutoRotate: z.boolean(),
 });
 export type AppSettings = z.infer<typeof AppSettingsSchema>;
 export type DolaChannel = AppSettings["dolaChannel"];
@@ -835,6 +837,9 @@ export const CredentialViewSchema = z.object({
   proxyMasked: z.string(),
   status: CredentialStatusSchema,
   enabled: z.boolean(),
+  // Han muc/ngay: nguong (null = khong gioi han) + so lan da dung hom nay (gio Tokyo).
+  dailyLimit: z.number().nullable(),
+  usedToday: z.number(),
   lastUsedAt: z.number(),
   lastVerifiedAt: z.number(),
 });

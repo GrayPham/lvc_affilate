@@ -169,10 +169,17 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
     );
 
     let vault = Arc::new(lvc_vault::Vault::new(&db, lvc_vault::default_box()));
-    // P4d (ADR-R014): cap nguon API key cho dich vu sinh text cua engine (node script_gen) — engine
-    // resolve TEN credential -> key qua Vault. Bi mat KHONG bao gio ra event/log/UI.
+    // Cờ "Tự xoay vòng key" chia sẻ giữa resolver (chọn api_key) và lệnh lưu cài đặt — khởi tạo
+    // theo cài đặt hiện tại; `settings_set_impl` cập nhật khi người dùng bật/tắt.
+    let api_key_auto_rotate = Arc::new(std::sync::atomic::AtomicBool::new(
+        settings.api_key_auto_rotate,
+    ));
+    // P4d (ADR-R014): cap nguon API key cho dich vu sinh text/anh/video cua engine — engine
+    // resolve TEN credential -> key qua Vault. Bi mat KHONG bao gio ra event/log/UI. Resolver tu
+    // xoay vong key cung provider khi het han muc (neu bat), xem crate::textgen.
     engine.set_text_secret_resolver(Arc::new(crate::textgen::VaultTextResolver::new(
         Arc::clone(&vault),
+        Arc::clone(&api_key_auto_rotate),
     )));
     // P5 Task 9b (composition root): cap nguon profile_dir cho VeoSessionHost — engine resolve
     // TEN credential Google (`account`) -> profile_dir qua Vault. Thieu dong nay = moi lan tao
@@ -206,6 +213,7 @@ pub async fn run_bootstrap(app: &tauri::AppHandle) -> Result<(), RunBootstrapErr
         template_registry_url: lvc_template_registry::DEFAULT_INDEX_URL.to_string(),
         queue_running: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         queue_cancel: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        api_key_auto_rotate,
     });
     Ok(())
 }

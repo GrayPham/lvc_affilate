@@ -5,15 +5,18 @@
 // phia Rust. Ban thiet ke co nut "Hiện key"/"Sao chép key" nhung backend CO Y khong mo duong dua
 // plaintext ra IPC (luat #3 CLAUDE.md) — nen o day chi hien chuoi da che, KHONG lam 2 nut do.
 //
-// CHUA CO BACKEND (de "—", khong bia so lieu):
-// - Cot "Hạn mức" (% da dung trong ngay): `CredentialView` chua co bo dem su dung.
-// - Cong tac "Tự xoay vòng key cùng nhà cung cấp": chua co co trong DB.
+// Cot "Hạn mức": used_today / daily_limit (bo dem theo ngay gio Tokyo, tang o `lease_secret`); o
+// input dat nguong (rong = khong gioi han). Cong tac "Tự xoay vòng key" = cai dat toan cuc
+// `api_key_auto_rotate` — khi bat, resolver (lvc-app::textgen) tu chon key cung provider con han
+// muc. Backend: migration 0011 + Vault + VaultTextResolver.
 import { useEffect, useMemo, useState } from "react";
 
 import AddApiKeyDialog from "../components/AddApiKeyDialog";
 import CheckProgressDialog, { type CheckItem } from "../components/CheckProgressDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useCredentialsStore } from "../store/credentials";
+import { settingsGet, settingsSet } from "../ipc/commands";
+import { errorText } from "../ipc/error_text";
 import { platformBadgeBg, platformLook } from "../format/platform";
 import {
   Button,
@@ -85,6 +88,61 @@ function formatLast(epochSeconds: number, now: number): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Ô cột "Hạn mức": số lần dùng hôm nay / ngưỡng + thanh %, kèm ô đặt ngưỡng (rỗng = ∞). */
+function QuotaCell({
+  row,
+  disabled,
+  onSet,
+}: {
+  row: CredentialView;
+  disabled: boolean;
+  onSet: (id: string, limit: number | null) => Promise<void>;
+}) {
+  const limit = row.dailyLimit ?? 0;
+  const used = row.usedToday;
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const over = limit > 0 && used >= limit;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-[12px]">
+        <span className={over ? "font-semibold text-rose" : "text-fg"}>{used}</span>
+        <span className="text-ink3">/</span>
+        <input
+          type="number"
+          min={0}
+          defaultValue={limit > 0 ? String(limit) : ""}
+          disabled={disabled}
+          placeholder="∞"
+          title="Ngưỡng dùng mỗi ngày (để trống = không giới hạn)"
+          aria-label={`Hạn mức/ngày ${row.label}`}
+          className="w-14 rounded border border-line bg-fill px-1.5 py-0.5 text-[12px] text-fg placeholder:text-ink3"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            const next = v === "" ? null : Math.max(0, Math.floor(Number(v) || 0));
+            const cur = row.dailyLimit ?? null;
+            if ((next ?? 0) !== (cur ?? 0)) {
+              void onSet(row.id, next);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.currentTarget.blur();
+            }
+          }}
+        />
+      </div>
+      {limit > 0 ? (
+        <span className="block h-1 w-[72px] overflow-hidden rounded bg-fill2">
+          <span
+            className="block h-full"
+            style={{ width: `${pct}%`, background: over ? "var(--nocredit)" : "var(--accent)" }}
+          />
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ApiKeyManager() {
   const rows = useCredentialsStore((s) => s.rows);
   const loading = useCredentialsStore((s) => s.loading);
@@ -95,6 +153,12 @@ export default function ApiKeyManager() {
   const update = useCredentialsStore((s) => s.update);
   const remove = useCredentialsStore((s) => s.remove);
   const setNodeTypes = useCredentialsStore((s) => s.setNodeTypes);
+  const setDailyLimit = useCredentialsStore((s) => s.setDailyLimit);
+
+  // "Tự xoay vòng key" là cài đặt toàn cục — đọc/ghi qua settingsGet/settingsSet trực tiếp để
+  // KHÔNG đụng `draft` dang-sửa của màn Cài đặt (store settings dùng chung draft).
+  const [autoRotate, setAutoRotate] = useState<boolean | null>(null);
+  const [rotateBusy, setRotateBusy] = useState(false);
 
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<StatusGroup | "all">("all");
@@ -108,6 +172,29 @@ export default function ApiKeyManager() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    // Nạp trạng thái "Tự xoay vòng key" một lần (bỏ qua lỗi — toggle ẩn nếu chưa đọc được).
+    settingsGet()
+      .then((s) => setAutoRotate(s.apiKeyAutoRotate))
+      .catch(() => setAutoRotate(null));
+  }, []);
+
+  async function toggleAutoRotate(next: boolean): Promise<void> {
+    setRotateBusy(true);
+    const prev = autoRotate;
+    setAutoRotate(next); // lạc quan
+    try {
+      const current = await settingsGet();
+      await settingsSet({ ...current, apiKeyAutoRotate: next });
+    } catch (e) {
+      setAutoRotate(prev); // khôi phục nếu lỗi
+      // eslint-disable-next-line no-console
+      console.error("luu 'Tu xoay vong key' loi:", errorText(e));
+    } finally {
+      setRotateBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!tagMenu) {
@@ -254,6 +341,17 @@ export default function ApiKeyManager() {
               {selectedRows.length} đã chọn
             </span>
           ) : null}
+          {autoRotate !== null ? (
+            <span className="ml-auto inline-flex items-center gap-2 text-[12.5px] text-ink2">
+              <Switch
+                checked={autoRotate}
+                disabled={rotateBusy}
+                onChange={(on) => void toggleAutoRotate(on)}
+                label="Tự xoay vòng key"
+              />
+              Tự xoay vòng key cùng nhà cung cấp khi hết hạn mức
+            </span>
+          ) : null}
         </div>
       </header>
 
@@ -398,8 +496,10 @@ export default function ApiKeyManager() {
                           {STATUS_VI[r.status]}
                         </span>
                       </td>
-                      {/* Hạn mức: backend chưa có bộ đếm sử dụng — để "—" thay vì bịa %. */}
-                      <td className={`${TD} text-ink3`}>—</td>
+                      {/* Hạn mức: used/limit + ô đặt ngưỡng (rỗng = không giới hạn). */}
+                      <td className={TD}>
+                        <QuotaCell row={r} disabled={rowBusy} onSet={setDailyLimit} />
+                      </td>
                       <td className={TD}>
                         <Switch
                           checked={r.enabled}

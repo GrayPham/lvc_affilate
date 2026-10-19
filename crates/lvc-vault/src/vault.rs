@@ -8,6 +8,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{SecretBox, VaultError, mask};
 
+/// Giây epoch hiện tại (cho `tokyo_day`).
+fn now_unix() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+}
+
 /// Loại provider hỗ trợ (mở rộng dần). `kind` hợp lệ theo provider kiểm ở [`Vault::add`].
 pub const PROVIDERS: [&str; 13] = [
     "dola",
@@ -87,6 +95,10 @@ pub struct CredentialView {
     pub proxy_masked: String,
     pub status: String,
     pub enabled: bool,
+    /// Ngưỡng hạn mức/ngày; `None` = không giới hạn. UI cột "Hạn mức".
+    pub daily_limit: Option<i64>,
+    /// Số lần dùng trong ngày hiện tại (giờ Tokyo); 0 nếu đã sang ngày mới mà chưa dùng.
+    pub used_today: i64,
     pub last_used_at: f64,
     pub last_verified_at: f64,
 }
@@ -187,6 +199,14 @@ impl Vault {
             proxy_masked: lvc_core::mask_proxy(&row.proxy),
             status: row.status.clone(),
             enabled: row.enabled,
+            daily_limit: row.daily_limit,
+            // Bộ đếm chỉ có nghĩa cho NGÀY hiện tại — đã sang ngày khác thì coi như 0 (chưa dùng
+            // hôm nay), khớp cách `touch_used` sẽ reset ở lần dùng kế.
+            used_today: if row.used_day == lvc_core::tokyo_day(now_unix()) {
+                row.used_today
+            } else {
+                0
+            },
             last_used_at: row.last_used_at,
             last_verified_at: row.last_verified_at,
         })
@@ -272,6 +292,17 @@ impl Vault {
     /// [`VaultRepoError`] khi ghi lỗi.
     pub async fn set_proxy(&self, id: &str, proxy: &str) -> Result<(), VaultRepoError> {
         self.repo.set_proxy(id, proxy).await?;
+        Ok(())
+    }
+
+    /// Đặt ngưỡng hạn mức/ngày cho api_key (`None`/`Some(0)` = không giới hạn).
+    ///
+    /// # Errors
+    /// [`VaultRepoError`] khi ghi lỗi.
+    pub async fn set_daily_limit(&self, id: &str, limit: Option<i64>) -> Result<(), VaultRepoError> {
+        // Chuẩn hoá 0 -> None (không giới hạn) để UI/engine chỉ cần kiểm `Some(>0)`.
+        let limit = limit.filter(|&n| n > 0);
+        self.repo.set_daily_limit(id, limit).await?;
         Ok(())
     }
 
@@ -364,7 +395,10 @@ impl Vault {
     ) -> Result<(String, serde_json::Value), VaultRepoError> {
         let row = self.repo.get(id).await?.ok_or(VaultRepoError::NotFound)?;
         let plain = self.secret_box.decrypt(&row.secret)?;
-        self.repo.touch_used(id).await?;
+        // Tăng bộ đếm hạn mức theo ngày Tokyo (đồng bộ với tài khoản Dola). Mọi node dùng key đều
+        // qua đây nên đếm đúng dù node nào gọi.
+        let today = lvc_core::tokyo_day(now_unix());
+        self.repo.touch_used(id, &today).await?;
         let meta = serde_json::from_str(&row.meta).unwrap_or(serde_json::Value::Null);
         Ok((String::from_utf8_lossy(&plain).into_owned(), meta))
     }

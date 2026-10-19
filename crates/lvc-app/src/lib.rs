@@ -120,6 +120,7 @@ pub fn run() {
             commands::credentials::credential_delete,
             commands::credentials::credential_open_viewer,
             commands::credentials::credential_set_node_types,
+            commands::credentials::credential_set_daily_limit,
             commands::login::cookie::login_import_cookie_files,
             commands::login::cookie::login_cookie_text,
             commands::login::interactive::login_open_interactive,

@@ -14,5 +14,6 @@
   "duplicatePolicy": "number",
   "onError": "skip",
   "restBetween": 30,
-  "missingAccount": "skip"
+  "missingAccount": "skip",
+  "apiKeyAutoRotate": false
 }

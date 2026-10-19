@@ -93,6 +93,11 @@ pub struct AppSettings {
     pub rest_between: u16,
     /// Khoá `missing_account` — tới lượt mà không có tài khoản dùng được thì bỏ qua hay chờ.
     pub missing_account: MissingAccount,
+
+    // --- Nhóm "API key" ---
+    /// Khoá `api_key_auto_rotate` — bật thì khi một api_key hết hạn mức/bị quota, tự chọn key khác
+    /// cùng nhà cung cấp còn hạn mức (xem `lvc-app::textgen` resolver). Mặc định tắt.
+    pub api_key_auto_rotate: bool,
 }
 
 impl Default for AppSettings {
@@ -114,6 +119,7 @@ impl Default for AppSettings {
             on_error: OnError::default(),
             rest_between: REST_DEFAULT,
             missing_account: MissingAccount::default(),
+            api_key_auto_rotate: false,
         }
     }
 }
@@ -209,6 +215,7 @@ impl AppSettings {
             on_error: run::parse_on_error(map, &mut warnings),
             rest_between: run::parse_rest_between(map, &mut warnings),
             missing_account: run::parse_missing_account(map, &mut warnings),
+            api_key_auto_rotate: parse_bool(map, "api_key_auto_rotate", false, &mut warnings),
         };
         (settings, warnings)
     }
@@ -270,6 +277,10 @@ impl AppSettings {
             (
                 "missing_account".to_string(),
                 self.missing_account.as_str().to_string(),
+            ),
+            (
+                "api_key_auto_rotate".to_string(),
+                bool_str(self.api_key_auto_rotate).to_string(),
             ),
         ])
     }
@@ -563,6 +574,7 @@ mod tests {
             on_error: OnError::Stop,
             rest_between: 60,
             missing_account: MissingAccount::Wait,
+            api_key_auto_rotate: true,
         };
         let m = original.to_map();
         let (roundtripped, warnings) = AppSettings::from_map(&m);

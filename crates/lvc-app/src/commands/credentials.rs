@@ -133,6 +133,28 @@ pub async fn credential_set_node_types(
     credential_set_node_types_impl(&state, &id, &node_types).await
 }
 
+/// Đặt ngưỡng "hạn mức/ngày" cho một api_key (`None`/`0` = không giới hạn). Màn API key.
+///
+/// # Errors
+/// `IpcError` `STORE` khi ghi lỗi.
+pub async fn credential_set_daily_limit_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    id: &str,
+    limit: Option<i64>,
+) -> Result<(), IpcError> {
+    ctx.vault.set_daily_limit(id, limit).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn credential_set_daily_limit(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    limit: Option<i64>,
+) -> Result<(), IpcError> {
+    credential_set_daily_limit_impl(&state, &id, limit).await
+}
+
 /// Thân `credential_verify` — với `api_key` (openai/gemini) gọi list-models bằng key rồi ghi
 /// `status`; provider khác trả `unknown` (kiểm bằng trình duyệt để sau).
 ///

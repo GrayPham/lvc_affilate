@@ -232,6 +232,11 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     pub queue_running: Arc<std::sync::atomic::AtomicBool>,
     /// Token huỷ của bộ chạy hàng chờ; `None` = không chạy.
     pub queue_cancel: Arc<std::sync::Mutex<Option<CancellationToken>>>,
+    /// Cờ "Tự xoay vòng key" (`settings.api_key_auto_rotate`) — CHIA SẺ với `VaultTextResolver`
+    /// (điểm chọn api_key). `settings::settings_set_impl` cập nhật cờ này mỗi lần lưu để resolver
+    /// thấy ngay mà không phải đọc lại DB. `Arc<AtomicBool>` vì resolver sống trong Engine, lâu hơn
+    /// một lệnh IPC.
+    pub api_key_auto_rotate: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Ho tro dung chung cho test cac lenh (`workflow.rs`/`tasks.rs`/`settings.rs`) — dung
@@ -280,6 +285,7 @@ pub(crate) mod test_support {
             template_registry_url: lvc_template_registry::DEFAULT_INDEX_URL.to_string(),
             queue_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             queue_cancel: Arc::new(std::sync::Mutex::new(None)),
+            api_key_auto_rotate: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
         (dir, ctx, driver)
     }

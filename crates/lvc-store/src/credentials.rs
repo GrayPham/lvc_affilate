@@ -26,6 +26,10 @@ pub struct CredentialRow {
     pub status: String,
     pub enabled: bool,
     pub daily_limit: Option<i64>,
+    /// Số lần dùng (lease_secret) trong `used_day`; sang ngày mới reset. Xem `touch_used`.
+    pub used_today: i64,
+    /// Ngày (giờ Tokyo, `lvc_core::tokyo_day`) ứng với `used_today`; rỗng = chưa dùng lần nào.
+    pub used_day: String,
     pub cooldown_until: f64,
     pub last_used_at: f64,
     pub last_verified_at: f64,
@@ -70,6 +74,8 @@ fn row_from(r: &sqlx::sqlite::SqliteRow) -> Result<CredentialRow, StoreError> {
         status: r.try_get("status")?,
         enabled: r.try_get::<i64, _>("enabled")? != 0,
         daily_limit: r.try_get("daily_limit")?,
+        used_today: r.try_get("used_today")?,
+        used_day: r.try_get("used_day")?,
         cooldown_until: r.try_get("cooldown_until")?,
         last_used_at: r.try_get("last_used_at")?,
         last_verified_at: r.try_get("last_verified_at")?,
@@ -201,15 +207,39 @@ impl CredentialRepo {
         Ok(r.rows_affected() > 0)
     }
 
+    /// Ghi nhận một lần DÙNG key: cập nhật `last_used_at` và tăng bộ đếm ngày. `today` = ngày giờ
+    /// Tokyo (`lvc_core::tokyo_day`); nếu khác `used_day` hiện tại thì reset về 1, cùng ngày thì +1.
+    /// Một câu lệnh (CASE) để tránh đua đọc-rồi-ghi.
+    ///
     /// # Errors
     /// `StoreError` khi ghi lỗi.
-    pub async fn touch_used(&self, id: &str) -> Result<(), StoreError> {
-        sqlx::query("UPDATE credentials SET last_used_at = ? WHERE id = ?")
-            .bind(now())
+    pub async fn touch_used(&self, id: &str, today: &str) -> Result<(), StoreError> {
+        sqlx::query(
+            "UPDATE credentials SET \
+               last_used_at = ?1, \
+               used_today = CASE WHEN used_day = ?2 THEN used_today + 1 ELSE 1 END, \
+               used_day = ?2 \
+             WHERE id = ?3",
+        )
+        .bind(now())
+        .bind(today)
+        .bind(id)
+        .execute(self.db.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Đặt ngưỡng hạn mức/ngày (`None`/`Some(0)` = không giới hạn).
+    ///
+    /// # Errors
+    /// `StoreError` khi ghi lỗi.
+    pub async fn set_daily_limit(&self, id: &str, limit: Option<i64>) -> Result<bool, StoreError> {
+        let r = sqlx::query("UPDATE credentials SET daily_limit = ? WHERE id = ?")
+            .bind(limit)
             .bind(id)
             .execute(self.db.pool())
             .await?;
-        Ok(())
+        Ok(r.rows_affected() > 0)
     }
 
     /// # Errors
