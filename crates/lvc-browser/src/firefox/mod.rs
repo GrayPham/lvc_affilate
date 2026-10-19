@@ -5,8 +5,11 @@
 //!
 //! Chia nhỏ: một file một trách nhiệm.
 //! - `locate`: dò `firefox.exe`.
-//! - `cookies_db`: ghi cookie vào `cookies.sqlite` của profile (GĐ2).
+//! - `prefs`: dựng nội dung `user.js` đặt proxy cho profile (hàm thuần).
+//! (Ghi cookie vào `cookies.sqlite` nằm ở `lvc_store::firefox_cookies` — xem doc crate đó.)
 
 pub mod locate;
+pub mod prefs;
 
 pub use locate::{FirefoxRoots, resolve_firefox, resolve_firefox_in};
+pub use prefs::user_js_for_proxy;

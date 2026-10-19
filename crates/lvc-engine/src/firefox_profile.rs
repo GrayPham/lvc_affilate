@@ -14,7 +14,8 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lvc_browser::BrowserDriver;
-use lvc_browser::firefox::resolve_firefox;
+use lvc_browser::firefox::{resolve_firefox, user_js_for_proxy};
+use lvc_core::proxy::effective_proxy;
 
 use crate::accounts::AccountError;
 use crate::generate::Engine;
@@ -35,15 +36,26 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     ///
     /// Firefox PHẢI chưa chạy trên profile này (nếu không `cookies.sqlite` bị khoá).
     ///
+    /// `proxy` (chuỗi người dùng nhập; rỗng = theo proxy chung, `direct` = không proxy) được ghi
+    /// vào `user.js` của profile dưới dạng pref `network.proxy.*` để Firefox dùng đúng IP. Proxy có
+    /// `user:pass` thì Firefox sẽ HỎI user/pass lúc chạy (prefs không đặt được auth) — KHÔNG ghi mật
+    /// khẩu vào file. Xem [`user_js_for_proxy`].
+    ///
     /// # Errors
+    /// - [`AccountError::InvalidProxy`]: `proxy` (hoặc proxy chung khi `proxy` rỗng) sai định dạng.
     /// - [`AccountError::CookieInvalid`]: `cookie_text` không đọc được cookie nào.
     /// - [`AccountError::Store`]: không ghi được `cookies.sqlite` (vd Firefox đang mở giữ khoá).
+    /// - [`AccountError::Io`]: không ghi được `user.js`.
     pub async fn provision_firefox_profile(
         &self,
         provider: &str,
         label: &str,
         cookie_text: &str,
+        proxy: &str,
     ) -> Result<PathBuf, AccountError> {
+        // Kiểm proxy THUẦN trước — sai thì không tạo rác thư mục / không ghi cookie.
+        let proxy_spec = effective_proxy(proxy, &self.cfg.global_proxy)
+            .map_err(|e| AccountError::InvalidProxy(e.to_string()))?;
         let cookies = lvc_core::cookie::parse_netscape(cookie_text);
         if cookies.is_empty() {
             return Err(AccountError::CookieInvalid(
@@ -59,6 +71,12 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .join(safe_component(provider))
             .join(safe_component(label));
         lvc_store::firefox_cookies::write_cookies(&profile_dir, &cookies, now_micros()).await?;
+        // Ghi proxy vào user.js (type=0 nếu không proxy) để Firefox đi đúng IP khi người dùng mở.
+        tokio::fs::write(
+            profile_dir.join("user.js"),
+            user_js_for_proxy(proxy_spec.as_ref()),
+        )
+        .await?;
         Ok(profile_dir)
     }
 
@@ -91,7 +109,7 @@ mod tests {
         let f = fx(&[], vec![]).await;
         let dir = f
             .engine
-            .provision_firefox_profile("museai", "acc 1", COOKIE_TEXT)
+            .provision_firefox_profile("museai", "acc 1", COOKIE_TEXT, "")
             .await
             .unwrap();
         let expected = f
@@ -105,6 +123,46 @@ mod tests {
             dir.join("cookies.sqlite").is_file(),
             "phai ghi cookies.sqlite vao profile Firefox"
         );
+        // Khong proxy -> user.js dat type=0 (direct).
+        let user_js = std::fs::read_to_string(dir.join("user.js")).unwrap();
+        assert!(user_js.contains("network.proxy.type\", 0"), "{user_js}");
+    }
+
+    #[tokio::test]
+    async fn provision_firefox_ghi_proxy_vao_user_js() {
+        let f = fx(&[], vec![]).await;
+        let dir = f
+            .engine
+            .provision_firefox_profile("museai", "acc1", COOKIE_TEXT, "1.2.3.4:8080")
+            .await
+            .unwrap();
+        let user_js = std::fs::read_to_string(dir.join("user.js")).unwrap();
+        assert!(
+            user_js.contains("network.proxy.http\", \"1.2.3.4\""),
+            "{user_js}"
+        );
+        assert!(
+            user_js.contains("network.proxy.http_port\", 8080"),
+            "{user_js}"
+        );
+    }
+
+    #[tokio::test]
+    async fn provision_firefox_proxy_sai_bao_loi_khong_tao_thu_muc() {
+        let f = fx(&[], vec![]).await;
+        let err = f
+            .engine
+            .provision_firefox_profile("museai", "acc1", COOKIE_TEXT, "khong-phai-proxy")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "INVALID_PROXY");
+        let dir = f
+            .accounts_dir()
+            .join(".logins")
+            .join("firefox")
+            .join("museai")
+            .join("acc1");
+        assert!(!dir.exists(), "proxy sai thi khong tao rac");
     }
 
     #[tokio::test]
@@ -112,7 +170,7 @@ mod tests {
         let f = fx(&[], vec![]).await;
         let err = f
             .engine
-            .provision_firefox_profile("museai", "acc1", "khong-phai-cookie")
+            .provision_firefox_profile("museai", "acc1", "khong-phai-cookie", "")
             .await
             .unwrap_err();
         assert_eq!(err.code(), "COOKIE_INVALID");

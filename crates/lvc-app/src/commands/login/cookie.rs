@@ -32,13 +32,13 @@ async fn provision_meta<D: BrowserDriver + 'static>(
     proxy: &str,
     engine: BrowserEngine,
 ) -> Result<serde_json::Value, IpcError> {
-    // Engine Firefox: ghi cookie thang vao cookies.sqlite (khong CDP, khong proxy — xem plan). Mat
-    // cookie KHONG CHAN luu credential (phuong an lui giong Chromium): chi canh bao, meta thieu
-    // profile_dir. Cookie rong (COOKIE_INVALID) la loi cung.
+    // Engine Firefox: ghi cookie thang vao cookies.sqlite + proxy vao user.js (khong CDP — xem
+    // plan). Mat cookie KHONG CHAN luu credential (phuong an lui giong Chromium): chi canh bao, meta
+    // thieu profile_dir. Cookie rong (COOKIE_INVALID) la loi cung.
     if engine == BrowserEngine::FirefoxPortable {
         return match ctx
             .engine
-            .provision_firefox_profile(provider, label, cookie_text)
+            .provision_firefox_profile(provider, label, cookie_text, proxy)
             .await
         {
             Ok(dir) => Ok(serde_json::json!({
