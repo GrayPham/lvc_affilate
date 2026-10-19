@@ -18,3 +18,5 @@ app/dist
 crates/lvc-app/gen
 cookie_test/*
 references/
+# Video mau/output cuc bo — khong dua binary vao source
+/video/
