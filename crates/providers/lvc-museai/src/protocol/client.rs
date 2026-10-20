@@ -312,6 +312,42 @@ fn build_video_prompt(
     format!("{user_prompt} Output video: {}.", fmt.join(", "))
 }
 
+/// Tải các video MỚI về `output_dir`. Trả `(video tải được, lỗi tải)`. `attempt` để ghi thông điệp.
+async fn download_videos(
+    fs: &MuseFilesystem,
+    videos: &[VideoRef],
+    output_dir: &std::path::Path,
+    request_timeout: Duration,
+    attempt: usize,
+) -> (Vec<std::path::PathBuf>, Vec<String>) {
+    let mut downloaded = Vec::new();
+    let mut errors = Vec::new();
+    let mut used_names: HashSet<String> = HashSet::new();
+    for (index, r) in videos.iter().enumerate() {
+        let mut filename = filename_for(r, index);
+        let mut suffix = 1u32;
+        while used_names.contains(&filename) || output_dir.join(&filename).exists() {
+            let stem = std::path::Path::new(&filename_for(r, index))
+                .file_stem()
+                .map_or_else(
+                    || format!("muse_video_{}", index + 1),
+                    |s| s.to_string_lossy().into_owned(),
+                );
+            filename = format!("{stem}_{suffix}.mp4");
+            suffix += 1;
+        }
+        used_names.insert(filename.clone());
+        let destination = output_dir.join(&filename);
+        match download_video(fs, r, &destination, request_timeout).await {
+            Ok(()) => downloaded.push(destination),
+            Err(e) => {
+                errors.push(format!("lan {attempt} video[{}] {}: {e}", index + 1, r.identity()));
+            }
+        }
+    }
+    (downloaded, errors)
+}
+
 /// Luồng đầy đủ: gửi prompt → chờ video mới xuất hiện trong lịch sử → tải xuống `output_dir`.
 ///
 /// # Errors
@@ -336,73 +372,82 @@ pub async fn generate_video(
     };
 
     let baseline_history = history(conn, params.session_id, 80, request_timeout).await?;
-    let baseline: HashSet<String> = extract_video_refs(&baseline_history)
+    let mut baseline: HashSet<String> = extract_video_refs(&baseline_history)
         .iter()
         .map(VideoRef::identity)
         .collect();
 
     let prompt = build_video_prompt(params.prompt, params.aspect, params.duration_secs);
-    let events = chat_stream(
-        conn,
-        params.device_id,
-        &prompt,
-        params.images,
-        params.session_id,
-        stream_timeout,
-    )
-    .await?;
-    let resolved_session = resolve_session_id(
-        conn,
-        params.session_id,
-        &events,
-        &sessions_before,
-        request_timeout,
-    )
-    .await;
-
-    let videos = wait_for_videos(
-        conn,
-        &baseline,
-        &WaitForVideosParams {
-            session_id: resolved_session.as_deref(),
-            timeout: params.timeout,
-            poll_interval,
-            settle,
-            min_videos: params.min_videos,
-            request_timeout,
-        },
-    )
-    .await?;
-
     let fs = MuseFilesystem::new(conn.clone());
-    let mut downloaded = Vec::new();
-    let mut download_errors = Vec::new();
-    let mut used_names: HashSet<String> = HashSet::new();
-    for (index, r) in videos.iter().enumerate() {
-        let mut filename = filename_for(r, index);
-        let mut suffix = 1u32;
-        while used_names.contains(&filename) || params.output_dir.join(&filename).exists() {
-            let stem = std::path::Path::new(&filename_for(r, index))
-                .file_stem()
-                .map_or_else(
-                    || format!("muse_video_{}", index + 1),
-                    |s| s.to_string_lossy().into_owned(),
-                );
-            filename = format!("{stem}_{suffix}.mp4");
-            suffix += 1;
+    // THỬ LẠI khi 0 video: museai_video (image-to-video) đôi khi "trả lại ảnh ref" thay vì làm
+    // video → 0 video. Sinh lại tối đa 2 lần, tiếp tục CÙNG phiên chat.
+    let max_attempts = 2;
+    let mut download_errors: Vec<String> = Vec::new();
+    let mut resolved_session: Option<String> = params.session_id.map(str::to_string);
+    let mut last_videos: Vec<VideoRef> = Vec::new();
+
+    for attempt in 1..=max_attempts {
+        let events = chat_stream(
+            conn,
+            params.device_id,
+            &prompt,
+            params.images,
+            resolved_session.as_deref(),
+            stream_timeout,
+        )
+        .await?;
+        resolved_session = resolve_session_id(
+            conn,
+            resolved_session.as_deref(),
+            &events,
+            &sessions_before,
+            request_timeout,
+        )
+        .await;
+
+        let videos = match wait_for_videos(
+            conn,
+            &baseline,
+            &WaitForVideosParams {
+                session_id: resolved_session.as_deref(),
+                timeout: params.timeout,
+                poll_interval,
+                settle,
+                min_videos: params.min_videos,
+                request_timeout,
+            },
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) if attempt < max_attempts => {
+                download_errors.push(format!("lan {attempt}: khong co video moi ({e}), thu lai"));
+                Vec::new()
+            }
+            Err(e) => return Err(e),
+        };
+
+        let (downloaded, errs) =
+            download_videos(&fs, &videos, params.output_dir, request_timeout, attempt).await;
+        download_errors.extend(errs);
+        if !downloaded.is_empty() {
+            return Ok(GenerationResult {
+                session_id: resolved_session,
+                videos,
+                downloaded,
+                download_errors,
+            });
         }
-        used_names.insert(filename.clone());
-        let destination = params.output_dir.join(&filename);
-        match download_video(&fs, r, &destination, request_timeout).await {
-            Ok(()) => downloaded.push(destination),
-            Err(e) => download_errors.push(format!("video[{}] {}: {e}", index + 1, r.identity())),
+        for r in &videos {
+            baseline.insert(r.identity());
         }
+        last_videos = videos;
     }
 
     Ok(GenerationResult {
         session_id: resolved_session,
-        videos,
-        downloaded,
+        videos: last_videos,
+        downloaded: Vec::new(),
         download_errors,
     })
 }
