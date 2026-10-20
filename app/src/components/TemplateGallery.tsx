@@ -9,6 +9,7 @@ import { useGraphStore, useGraphStoreApi } from "../store/graph";
 import { useTemplatesStore } from "../store/templates";
 import { describeTemplateError } from "../format/template";
 import type { TemplateMeta, TemplateScope } from "../ipc/types";
+import Lightbox from "./Lightbox";
 
 interface TemplateGalleryProps {
   onClose: () => void;
@@ -28,6 +29,8 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
   const graphApi = useGraphStoreApi();
 
   const [scope, setScope] = useState<TemplateScope>("public");
+  // Ảnh thumbnail đang phóng to (lightbox) — null = không mở.
+  const [zoomImg, setZoomImg] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -211,15 +214,17 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
                           key={meta.id}
                           className="flex flex-col overflow-hidden rounded border border-line bg-fill"
                         >
-                    <div className="flex aspect-video items-center justify-center bg-fill p-2 text-center">
+                    <div className="flex aspect-[9/16] items-center justify-center overflow-hidden bg-black text-center">
                       {meta.thumbnail ? (
                         <img
                           src={meta.thumbnail}
                           alt={meta.name}
-                          className="h-full w-full object-cover"
+                          title="Bấm để xem ảnh lớn"
+                          onClick={() => setZoomImg(meta.thumbnail)}
+                          className="h-full w-full cursor-zoom-in object-cover"
                         />
                       ) : (
-                        <span className="text-xs font-medium text-muted">{meta.name}</span>
+                        <span className="p-2 text-xs font-medium text-muted">{meta.name}</span>
                       )}
                     </div>
                     <div className="flex flex-1 flex-col gap-1 p-2">
@@ -264,6 +269,9 @@ export default function TemplateGallery({ onClose, onApplied }: TemplateGalleryP
           )}
         </div>
       </div>
+      {zoomImg ? (
+        <Lightbox src={zoomImg} kind="image" onClose={() => setZoomImg(null)} />
+      ) : null}
     </div>
   );
 }
