@@ -11,7 +11,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { cx } from "./primitives";
 
 const IN_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const ACCOUNT_NAME = "LVC Affiliate";
+const ACCOUNT_NAME = "LVC Shop";
 const ROUND =
   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-panel text-muted shadow-card transition-colors hover:bg-hover hover:text-fg";
 

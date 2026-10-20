@@ -160,13 +160,13 @@ export default function App() {
               nen thanh ben va thanh tac vu khong bao gio lech nhau. */}
           <img
             src="/icon.png"
-            alt="LVC Affiliate"
+            alt="LVC Shop"
             className="h-8 w-8 shrink-0 rounded-md object-cover"
           />
           {sidebarCollapsed ? null : (
             <div className="flex min-w-0 flex-col leading-[1.25]">
-              <span className="truncate text-[13px] font-bold text-sidebar-fg">LVC Affiliate</span>
-              <span className="truncate text-[10.5px] text-sidebar-muted">Affiliate video studio</span>
+              <span className="truncate text-[13px] font-bold text-sidebar-fg">LVC Shop</span>
+              <span className="truncate text-[10.5px] text-sidebar-muted">Studio video bán hàng</span>
             </div>
           )}
         </div>
