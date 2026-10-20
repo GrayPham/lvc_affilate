@@ -48,6 +48,8 @@ function makeRow(overrides: Partial<CredentialView> = {}): CredentialView {
     proxyMasked: "",
     status: "ok",
     enabled: true,
+    dailyLimit: null,
+    usedToday: 0,
     lastUsedAt: 0,
     lastVerifiedAt: 0,
     ...overrides,

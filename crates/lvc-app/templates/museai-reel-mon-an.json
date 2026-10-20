@@ -1,36 +1,38 @@
 {
-  "name": "MuseAI: Reel món ăn nhiều cảnh (cắt nhanh + ghép)",
+  "name": "MuseAI: Reel món ăn — nạp ảnh người mẫu + quần áo (hook dắt thú cưng)",
   "category": "Bán hàng/Sản phẩm",
-  "description": "Giống video gốc: MuseAI tạo ảnh nhân vật gốc rồi dựng 6 cảnh ngắn (hook → sơ chế → nấu → nước chấm → bày món → chốt), mỗi cảnh cắt ~3 giây bằng node Cắt rồi node Ghép nối tất cả thành một reel dọc 9:16. MuseAI mỗi clip ra ~10s nên node Cắt lo phần rút còn 3s. Tài khoản MuseAI để trống = tự chọn. Lưu ý: chạy 6 cảnh = 6 lần sinh video (lâu); chuyển cảnh hiện là nối thẳng, chưa có hiệu ứng lật.",
+  "description": "Nạp 2 ảnh (NGƯỜI MẪU + SẢN PHẨM QUẦN ÁO) → cả hai làm tham chiếu cho MỖI cảnh video để MuseAI giữ đồng nhất gương mặt + trang phục. 6 cảnh (hook dắt con heo → mang nguyên liệu → sơ chế → nấu → bày món → chốt) đều nối vào node 'Nối video' để ghép thành 1 reel dọc 9:16. NHỚ nạp 2 ảnh vào 2 node đầu trước khi chạy; bấm 'Tự sắp xếp' để xem sơ đồ gọn. Tài khoản MuseAI để trống = tự chọn.",
   "graph": {
     "version": 2,
     "nodes": [
       {
-        "id": "anh_prompt",
+        "id": "nv",
         "kind": {
-          "kind": "prompt",
-          "text": "Chân dung một cô gái trẻ châu Á xinh xắn, tóc đen dài, đứng trong căn bếp căn hộ hiện đại sáng sủa, ánh sáng tự nhiên mềm, ảnh chụp điện thoại chân thực, bố cục dọc 9:16, rõ mặt — dùng làm NHÂN VẬT GỐC giữ gương mặt nhất quán cho mọi cảnh."
+          "kind": "image_upload",
+          "paths": [],
+          "label": "ảnh người mẫu"
         },
         "x": 40,
-        "y": 40
+        "y": 60
       },
       {
-        "id": "tao_anh",
+        "id": "ao",
         "kind": {
-          "kind": "museai_image",
-          "account": ""
+          "kind": "image_upload",
+          "paths": [],
+          "label": "sản phẩm quần áo"
         },
-        "x": 360,
-        "y": 40
+        "x": 40,
+        "y": 320
       },
       {
         "id": "p1",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 1 — Cô gái trẻ bê giỏ nguyên liệu tươi bước vào căn bếp căn hộ, biểu cảm hào hứng nhìn thẳng camera gây tò mò (cảnh mở đầu hook). Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, ánh sáng trong nhà, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu, động tác nhanh gọn khoảng 3 giây, chỉ tiếng động môi trường, không chữ overlay."
+          "text": "Cảnh 1 — Người mẫu mặc đúng bộ đầm trong ảnh DẮT MỘT CON HEO đi trong hành lang căn hộ, biểu cảm tươi tắn hào hứng nhìn thẳng camera gây tò mò (HOOK mở đầu bất ngờ). Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
         },
         "x": 40,
-        "y": 200
+        "y": 600
       },
       {
         "id": "v1",
@@ -40,27 +42,17 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 360,
-        "y": 200
-      },
-      {
-        "id": "t1",
-        "kind": {
-          "kind": "trim",
-          "start": 0,
-          "end": 3
-        },
-        "x": 680,
-        "y": 200
+        "x": 430,
+        "y": 600
       },
       {
         "id": "p2",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 2 — Cận cảnh cô gái rửa và sơ chế nguyên liệu trên quầy bếp, thau inox sáng bóng, tay thao tác dứt khoát. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, ánh sáng trong nhà, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu, động tác nhanh gọn khoảng 3 giây, chỉ tiếng động môi trường, không chữ overlay."
+          "text": "Cảnh 2 — Người mẫu (vẫn bộ đầm đó) bước vào bếp bê giỏ nguyên liệu tươi, mỉm cười khoe nguyên liệu. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
         },
         "x": 40,
-        "y": 350
+        "y": 750
       },
       {
         "id": "v2",
@@ -70,27 +62,17 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 360,
-        "y": 350
-      },
-      {
-        "id": "t2",
-        "kind": {
-          "kind": "trim",
-          "start": 0,
-          "end": 3
-        },
-        "x": 680,
-        "y": 350
+        "x": 430,
+        "y": 750
       },
       {
         "id": "p3",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 3 — Cận cảnh thả thịt và nguyên liệu vào nồi nước đang sôi trên bếp, hơi nước bốc lên, nước sủi tăm. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, ánh sáng trong nhà, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu, động tác nhanh gọn khoảng 3 giây, chỉ tiếng động môi trường, không chữ overlay."
+          "text": "Cảnh 3 — Cận cảnh người mẫu rửa và sơ chế nguyên liệu trên quầy bếp, thau inox sáng, tay thao tác dứt khoát. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
         },
         "x": 40,
-        "y": 500
+        "y": 900
       },
       {
         "id": "v3",
@@ -100,27 +82,17 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 360,
-        "y": 500
-      },
-      {
-        "id": "t3",
-        "kind": {
-          "kind": "trim",
-          "start": 0,
-          "end": 3
-        },
-        "x": 680,
-        "y": 500
+        "x": 430,
+        "y": 900
       },
       {
         "id": "p4",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 4 — Cận cảnh rưới tương ớt đỏ vào chén nước mắm rồi khuấy đều, pha nước chấm sóng sánh. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, ánh sáng trong nhà, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu, động tác nhanh gọn khoảng 3 giây, chỉ tiếng động môi trường, không chữ overlay."
+          "text": "Cảnh 4 — Cận cảnh thả thịt và rau củ vào nồi nước đang sôi trên bếp, hơi nước bốc lên. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
         },
         "x": 40,
-        "y": 650
+        "y": 1050
       },
       {
         "id": "v4",
@@ -130,27 +102,17 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 360,
-        "y": 650
-      },
-      {
-        "id": "t4",
-        "kind": {
-          "kind": "trim",
-          "start": 0,
-          "end": 3
-        },
-        "x": 680,
-        "y": 650
+        "x": 430,
+        "y": 1050
       },
       {
         "id": "p5",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 5 — Cô gái múc món ăn nóng hổi ra đĩa và trang trí, góc máy từ trên xuống khoe món hấp dẫn. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, ánh sáng trong nhà, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu, động tác nhanh gọn khoảng 3 giây, chỉ tiếng động môi trường, không chữ overlay."
+          "text": "Cảnh 5 — Người mẫu múc món ăn nóng hổi ra đĩa và trang trí đẹp mắt, góc máy từ trên xuống. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
         },
         "x": 40,
-        "y": 800
+        "y": 1200
       },
       {
         "id": "v5",
@@ -160,27 +122,17 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 360,
-        "y": 800
-      },
-      {
-        "id": "t5",
-        "kind": {
-          "kind": "trim",
-          "start": 0,
-          "end": 3
-        },
-        "x": 680,
-        "y": 800
+        "x": 430,
+        "y": 1200
       },
       {
         "id": "p6",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 6 — Cô gái bê bát món ăn nóng hổi khoe thẳng vào camera, mỉm cười mời người xem, kết bằng ánh nhìn thân thiện (chốt). Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, ánh sáng trong nhà, GIỮ ĐÚNG gương mặt cô gái trong ảnh tham chiếu, động tác nhanh gọn khoảng 3 giây, chỉ tiếng động môi trường, không chữ overlay."
+          "text": "Cảnh 6 — Người mẫu bê đĩa món ăn nóng hổi khoe thẳng vào camera, mỉm cười mời người xem (chốt). Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
         },
         "x": 40,
-        "y": 950
+        "y": 1350
       },
       {
         "id": "v6",
@@ -190,26 +142,16 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 360,
-        "y": 950
-      },
-      {
-        "id": "t6",
-        "kind": {
-          "kind": "trim",
-          "start": 0,
-          "end": 3
-        },
-        "x": 680,
-        "y": 950
+        "x": 430,
+        "y": 1350
       },
       {
         "id": "ghep",
         "kind": {
           "kind": "concat"
         },
-        "x": 1000,
-        "y": 430
+        "x": 900,
+        "y": 1050
       },
       {
         "id": "save",
@@ -217,28 +159,28 @@
           "kind": "save",
           "out_dir": ""
         },
-        "x": 1320,
-        "y": 430
+        "x": 1300,
+        "y": 1050
       }
     ],
     "edges": [
       {
         "id": "e1",
-        "from": "anh_prompt",
-        "from_port": "out",
-        "to": "tao_anh",
-        "to_port": "prompt"
-      },
-      {
-        "id": "e2",
         "from": "p1",
         "from_port": "out",
         "to": "v1",
         "to_port": "prompt"
       },
       {
+        "id": "e2",
+        "from": "nv",
+        "from_port": "out",
+        "to": "v1",
+        "to_port": "refs"
+      },
+      {
         "id": "e3",
-        "from": "tao_anh",
+        "from": "ao",
         "from_port": "out",
         "to": "v1",
         "to_port": "refs"
@@ -247,26 +189,26 @@
         "id": "e4",
         "from": "v1",
         "from_port": "out",
-        "to": "t1",
-        "to_port": "in"
-      },
-      {
-        "id": "e5",
-        "from": "t1",
-        "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e6",
+        "id": "e5",
         "from": "p2",
         "from_port": "out",
         "to": "v2",
         "to_port": "prompt"
       },
       {
+        "id": "e6",
+        "from": "nv",
+        "from_port": "out",
+        "to": "v2",
+        "to_port": "refs"
+      },
+      {
         "id": "e7",
-        "from": "tao_anh",
+        "from": "ao",
         "from_port": "out",
         "to": "v2",
         "to_port": "refs"
@@ -275,26 +217,26 @@
         "id": "e8",
         "from": "v2",
         "from_port": "out",
-        "to": "t2",
-        "to_port": "in"
-      },
-      {
-        "id": "e9",
-        "from": "t2",
-        "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e10",
+        "id": "e9",
         "from": "p3",
         "from_port": "out",
         "to": "v3",
         "to_port": "prompt"
       },
       {
+        "id": "e10",
+        "from": "nv",
+        "from_port": "out",
+        "to": "v3",
+        "to_port": "refs"
+      },
+      {
         "id": "e11",
-        "from": "tao_anh",
+        "from": "ao",
         "from_port": "out",
         "to": "v3",
         "to_port": "refs"
@@ -303,26 +245,26 @@
         "id": "e12",
         "from": "v3",
         "from_port": "out",
-        "to": "t3",
-        "to_port": "in"
-      },
-      {
-        "id": "e13",
-        "from": "t3",
-        "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e14",
+        "id": "e13",
         "from": "p4",
         "from_port": "out",
         "to": "v4",
         "to_port": "prompt"
       },
       {
+        "id": "e14",
+        "from": "nv",
+        "from_port": "out",
+        "to": "v4",
+        "to_port": "refs"
+      },
+      {
         "id": "e15",
-        "from": "tao_anh",
+        "from": "ao",
         "from_port": "out",
         "to": "v4",
         "to_port": "refs"
@@ -331,26 +273,26 @@
         "id": "e16",
         "from": "v4",
         "from_port": "out",
-        "to": "t4",
-        "to_port": "in"
-      },
-      {
-        "id": "e17",
-        "from": "t4",
-        "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e18",
+        "id": "e17",
         "from": "p5",
         "from_port": "out",
         "to": "v5",
         "to_port": "prompt"
       },
       {
+        "id": "e18",
+        "from": "nv",
+        "from_port": "out",
+        "to": "v5",
+        "to_port": "refs"
+      },
+      {
         "id": "e19",
-        "from": "tao_anh",
+        "from": "ao",
         "from_port": "out",
         "to": "v5",
         "to_port": "refs"
@@ -359,26 +301,26 @@
         "id": "e20",
         "from": "v5",
         "from_port": "out",
-        "to": "t5",
-        "to_port": "in"
-      },
-      {
-        "id": "e21",
-        "from": "t5",
-        "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e22",
+        "id": "e21",
         "from": "p6",
         "from_port": "out",
         "to": "v6",
         "to_port": "prompt"
       },
       {
+        "id": "e22",
+        "from": "nv",
+        "from_port": "out",
+        "to": "v6",
+        "to_port": "refs"
+      },
+      {
         "id": "e23",
-        "from": "tao_anh",
+        "from": "ao",
         "from_port": "out",
         "to": "v6",
         "to_port": "refs"
@@ -387,18 +329,11 @@
         "id": "e24",
         "from": "v6",
         "from_port": "out",
-        "to": "t6",
-        "to_port": "in"
-      },
-      {
-        "id": "e25",
-        "from": "t6",
-        "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e26",
+        "id": "e25",
         "from": "ghep",
         "from_port": "out",
         "to": "save",

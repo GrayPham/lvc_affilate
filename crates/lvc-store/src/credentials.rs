@@ -26,7 +26,7 @@ pub struct CredentialRow {
     pub status: String,
     pub enabled: bool,
     pub daily_limit: Option<i64>,
-    /// Số lần dùng (lease_secret) trong `used_day`; sang ngày mới reset. Xem `touch_used`.
+    /// Số lần dùng (`lease_secret`) trong `used_day`; sang ngày mới reset. Xem `touch_used`.
     pub used_today: i64,
     /// Ngày (giờ Tokyo, `lvc_core::tokyo_day`) ứng với `used_today`; rỗng = chưa dùng lần nào.
     pub used_day: String,

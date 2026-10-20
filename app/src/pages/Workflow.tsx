@@ -12,8 +12,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
-  Background,
-  BackgroundVariant,
   Controls,
   MiniMap,
   ReactFlow,
@@ -400,12 +398,11 @@ function WorkflowCanvas() {
         panActivationKeyCode={["Space", "Control", "Meta"]}
         selectionKeyCode={null}
         colorMode={theme === "dark" ? "dark" : "light"}
-        defaultEdgeOptions={{ type: "flow", style: { stroke: "var(--line2)", strokeWidth: 1.5 } }}
+        defaultEdgeOptions={{ type: "flow", style: { stroke: "var(--edge-line)", strokeWidth: 2.2 } }}
         fitView
       >
-        {/* Dùng nền MẶC ĐỊNH của React Flow theo `colorMode` (sáng = gần trắng, tối = than) để khớp
-            hệt flow editor app quản lý — KHÔNG ép bgColor/color (ép `var(--stage)` làm nền ngả nâu). */}
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} />
+        {/* Chấm bi nền vẽ bằng CSS (.react-flow__pane trong index.css) — component <Background>
+            không vẽ đúng trong bản này, nên bỏ để tránh đè nền. */}
         <Controls />
         <MiniMap
           pannable

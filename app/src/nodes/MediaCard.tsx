@@ -94,14 +94,14 @@ export default function MediaCard({ label, kind, selected, errors, runState, wid
   return (
     <div
       className={
-        "relative overflow-hidden rounded-2xl border bg-panel shadow-lg transition-colors " +
+        "relative overflow-hidden rounded-2xl border bg-panel shadow-[0_6px_20px_-6px_rgba(0,0,0,0.35)] transition-colors " +
         (wide ? "w-72" : "w-56") +
         " " +
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >
-      {/* Dải màu theo loại node — xem `toneForKind`. */}
-      <span className={"absolute inset-x-0 top-0 z-10 h-[3px] " + toneEdgeClass(tone)} />
+      {/* Thanh màu theo loại node bên TRÁI (dày) — xem `toneForKind`. */}
+      <span className={"absolute inset-y-0 left-0 z-10 w-[5px] " + toneEdgeClass(tone)} />
       {/* Than the = vung xem truoc (KÉO node bằng chính vùng này — media để KHÔNG `nodrag`) */}
       <div className="relative">{children}</div>
 

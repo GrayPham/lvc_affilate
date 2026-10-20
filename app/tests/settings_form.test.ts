@@ -27,6 +27,7 @@ function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     onError: "skip",
     restBetween: 30,
     missingAccount: "skip",
+    apiKeyAutoRotate: false,
     ...overrides,
   };
 }

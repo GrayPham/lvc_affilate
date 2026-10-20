@@ -19,13 +19,16 @@ export type RFEdge = RFEdgeBase;
 /** `Graph.version` hien tai — khop `GRAPH_VERSION` (crates/lvc-core/src/graph/mod.rs, P4a = 2). */
 export const GRAPH_VERSION = 2;
 
-/** Kind P4 cu da bi XOA khoi backend o P4a — node loai nay bi bo khi migrate (kem canh noi vao). */
+/** Kind P4 cu da bi XOA khoi backend o P4a — node loai nay bi bo khi migrate (kem canh noi vao).
+ * LUU Y: `concat` KHONG nam trong day — no la node THAT (crate `node-concat`, da dang ky registry,
+ * `ConcatNode.tsx`). Truoc day `concat` bi liet ke nham o day nen MOI lan nap do thi, node "Noi
+ * video" + moi canh noi vao no bi cat mat (save hoa ho dau vao) — da sua (regression:
+ * `tests/store_graph_migrate.test.ts`). Chi them kind vao day khi backend THUC SU go kind do. */
 const REMOVED_KINDS: ReadonlySet<string> = new Set([
   "image_from_url",
   "image_gen",
   "remove_logo",
   "ensure_h264",
-  "concat",
 ]);
 
 function isRecord(v: unknown): v is Record<string, unknown> {

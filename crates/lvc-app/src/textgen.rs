@@ -4,7 +4,7 @@
 //!
 //! ## Tự xoay vòng key (setting `api_key_auto_rotate`)
 //! Khi BẬT: nếu key được chọn đã chạm `daily_limit` trong ngày hoặc `status = "quota"`, resolver
-//! tự chọn key KHÁC cùng nhà cung cấp còn hạn mức — đây là ĐIỂM DUY NHẤT chọn api_key (mọi host
+//! tự chọn key KHÁC cùng nhà cung cấp còn hạn mức — đây là ĐIỂM DUY NHẤT chọn `api_key` (mọi host
 //! media + text đều qua đây) nên chỉ cần cài ở một chỗ. Khi TẮT: giữ hành vi cũ (đúng label / key
 //! bật đầu tiên), không quan tâm hạn mức.
 //!
@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use lvc_engine::{ResolvedSecret, TextSecretResolver};
 use lvc_vault::{CredentialView, Vault};
 
-/// Key còn hạn mức dùng được hôm nay: đang bật, là api_key, chưa bị quota, và chưa chạm ngưỡng
+/// Key còn hạn mức dùng được hôm nay: đang bật, là `api_key`, chưa bị quota, và chưa chạm ngưỡng
 /// `daily_limit` (None/0 = không giới hạn). THUẦN.
 fn has_quota(c: &CredentialView) -> bool {
     c.enabled

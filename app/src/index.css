@@ -58,7 +58,11 @@
   color-scheme: light;
 
   /* --- Token RIÊNG seedance (giữ nguyên vai trò, chỉnh cho hợp nền kem) --- */
-  --stage: #f1ece1;          /* nền canvas, lùi sau nhất */
+  --stage: #e6ddcb;          /* nền canvas (xám-kem hơn panel trắng để thẻ node nổi rõ) */
+  --canvas-bg: #e9ecf1;      /* nền pane React Flow (xám-xanh trung tính để thẻ nổi, KHÔNG ngả nâu) */
+  --dot: #9aa2b2;            /* chấm bi nền canvas — xám rõ để thấy rõ, giúp định vị thẻ */
+  --node-edge: #c2c9d4;      /* viền thẻ node — xám xanh rõ (tách thẻ khỏi nền, không kem như line) */
+  --edge-line: #7f8a9c;      /* đường nối giữa node — xám đậm RÕ để thấy cái nào nối cái nào */
   --rail: #f7f2e8;           /* nền cột phụ/panel-2 vùng graph */
   --fill: rgb(60 40 10 / 0.04);
   --fill2: var(--hover);
@@ -109,6 +113,10 @@
   color-scheme: dark;
 
   --stage: #161519;
+  --canvas-bg: #141418;      /* nền pane React Flow (tối) */
+  --dot: #4a4a56;            /* chấm bi nền canvas (tối) */
+  --node-edge: #4a4a56;      /* viền thẻ node (tối) */
+  --edge-line: #8a93a6;      /* đường nối giữa node (tối) */
   --rail: #1a191d;
   --fill: rgb(255 255 255 / 0.04);
   --fill2: var(--hover);
@@ -183,6 +191,8 @@
   --color-fill2: var(--fill2);
   --color-line2: var(--line2);
   --color-stage: var(--stage);
+  --color-canvas-bg: var(--canvas-bg);
+  --color-dot: var(--dot);
   --color-rail: var(--rail);
   --color-accent-ink: var(--primary-fg);
   --color-accent-text: var(--accent);
@@ -369,4 +379,12 @@ select {
 .react-flow__attribution {
   background: transparent;
   color: var(--ink3);
+}
+
+/* Nền canvas + CHẤM BI vẽ bằng CSS trực tiếp trên pane — chắc chắn hiện (component <Background>
+   không vẽ đúng trong bản này). Pane không bị transform nên chấm tĩnh khi kéo, vẫn thấy rõ thẻ. */
+.react-flow__pane {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(circle, var(--dot) 1.5px, transparent 1.6px);
+  background-size: 16px 16px;
 }

@@ -26,7 +26,9 @@ export function nodeBorderClass(opts: {
   if (opts.selected) {
     return "border-sky-400/80 ring-1 ring-sky-400/40";
   }
-  return "border-line";
+  // Mặc định: viền màu --node-edge (xám xanh RÕ) để thẻ tách hẳn khỏi nền canvas — phản hồi người
+  // dùng "card khó nhìn so với nền".
+  return "border-[color:var(--node-edge)]";
 }
 
 
@@ -78,20 +80,20 @@ export function toneEdgeClass(tone: NodeTone): string {
   }
 }
 
-/** Lớp cho CHIP nhãn ở đầu thẻ (nền mờ + chữ cùng tông). */
+/** Lớp cho CHIP nhãn ở đầu thẻ (nền mờ + chữ cùng tông). Đậm hơn (/18) để dễ đọc trên nền sáng. */
 export function toneChipClass(tone: NodeTone): string {
   switch (tone) {
     case "video":
-      return "bg-tag-video/12 text-tag-video";
+      return "bg-tag-video/18 text-tag-video";
     case "image":
-      return "bg-tag-image/12 text-tag-image";
+      return "bg-tag-image/18 text-tag-image";
     case "script":
-      return "bg-tag-script/12 text-tag-script";
+      return "bg-tag-script/18 text-tag-script";
     case "audio":
-      return "bg-rest/12 text-rest";
+      return "bg-rest/18 text-rest";
     case "io":
-      return "bg-fill text-muted";
+      return "bg-fill2 text-fg";
     default:
-      return "bg-fill text-muted";
+      return "bg-fill2 text-fg";
   }
 }

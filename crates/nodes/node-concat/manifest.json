@@ -2,7 +2,7 @@
   "kind": "concat",
   "version": 1,
   "category": "video",
-  "labelVi": "Ghép phân cảnh",
+  "labelVi": "Nối video (ghép cảnh)",
   "inputs": [
     {
       "name": "in",

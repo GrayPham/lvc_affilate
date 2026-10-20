@@ -105,6 +105,13 @@ export default function RunBar() {
         const parsed = z.array(GraphErrorSchema).safeParse(e.details);
         if (parsed.success) {
           setValidation(parsed.data);
+          // Hien RO ly do ngay tren thanh — truoc day chi bat vien do am tham nen nguoi dung bam
+          // "Chạy" thay nhu khong co gi xay ra. Gop toi da 3 loi dau cho de doc.
+          const lines = parsed.data.map(formatGraphError);
+          const head = lines.slice(0, 3).join("  •  ");
+          setMessage(
+            `Workflow chưa hợp lệ (${lines.length} lỗi) — chưa chạy được: ${head}${lines.length > 3 ? " …" : ""}`,
+          );
           return false;
         }
       }

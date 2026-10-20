@@ -24,6 +24,7 @@ use lvc_museai::{
     VideoJobDone, VideoJobsReport,
 };
 use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 /// Nguồn `profile_dir` cho MỘT `credential_id` (`museai/login` trong `lvc-vault`) — dùng khuôn
@@ -191,6 +192,9 @@ pub(crate) struct EngineMuseaiJobs {
     downloads_dir: PathBuf,
     logs_dir: PathBuf,
     resolver: Arc<dyn MuseaiAccountResolver>,
+    /// Token CUA RUN (fix: nut "Huy") — `MuseAI` sinh video co the lau nhieu phut/canh nen phai
+    /// cat ngang duoc; giong `EngineVeoJobs`/`EngineGoogleVideo`/`EngineSeedanceVideo`.
+    cancel: CancellationToken,
 }
 
 impl EngineMuseaiJobs {
@@ -198,11 +202,13 @@ impl EngineMuseaiJobs {
         downloads_dir: PathBuf,
         logs_dir: PathBuf,
         resolver: Arc<dyn MuseaiAccountResolver>,
+        cancel: CancellationToken,
     ) -> Self {
         Self {
             downloads_dir,
             logs_dir,
             resolver,
+            cancel,
         }
     }
 
@@ -228,6 +234,9 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
         let Some(first) = jobs.first() else {
             return VideoJobsReport::default();
         };
+        if self.cancel.is_cancelled() {
+            return Self::fail_all(&jobs, "da huy");
+        }
         let profile_dir = match self.resolver.profile_dir(&first.credential_id).await {
             Ok(dir) => dir,
             Err(e) => return Self::fail_all(&jobs, &e),
@@ -250,6 +259,14 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
 
         let mut report = VideoJobsReport::default();
         for job in jobs {
+            // Nut "Huy": bo cac canh con lai NGAY, va cat ngang canh dang sinh (WebSocket RPC,
+            // an toan khi drop) thay vi doi het timeout 600s.
+            if self.cancel.is_cancelled() {
+                report
+                    .failed
+                    .push(format!("canh {}: da huy", job.scene_index));
+                continue;
+            }
             let params = GenerateVideoParams {
                 prompt: &job.prompt,
                 device_id: node_id,
@@ -261,7 +278,17 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
                 duration_secs: job.duration_secs,
                 images: &job.images,
             };
-            match generate_video(&conn, &params).await {
+            let outcome = tokio::select! {
+                biased;
+                () = self.cancel.cancelled() => {
+                    report
+                        .failed
+                        .push(format!("canh {}: da huy", job.scene_index));
+                    continue;
+                }
+                r = generate_video(&conn, &params) => r,
+            };
+            match outcome {
                 Ok(result) if !result.downloaded.is_empty() => {
                     let target =
                         video_out_path(&self.downloads_dir, run_id, node_id, job.scene_index);
@@ -302,6 +329,8 @@ pub(crate) struct EngineMuseaiImageJobs {
     downloads_dir: PathBuf,
     logs_dir: PathBuf,
     resolver: Arc<dyn MuseaiAccountResolver>,
+    /// Token CUA RUN (fix nut "Huy") — xem `EngineMuseaiJobs`.
+    cancel: CancellationToken,
 }
 
 impl EngineMuseaiImageJobs {
@@ -309,11 +338,13 @@ impl EngineMuseaiImageJobs {
         downloads_dir: PathBuf,
         logs_dir: PathBuf,
         resolver: Arc<dyn MuseaiAccountResolver>,
+        cancel: CancellationToken,
     ) -> Self {
         Self {
             downloads_dir,
             logs_dir,
             resolver,
+            cancel,
         }
     }
 
@@ -339,6 +370,9 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
         let Some(first) = jobs.first() else {
             return ImageJobsReport::default();
         };
+        if self.cancel.is_cancelled() {
+            return Self::fail_all(&jobs, "da huy");
+        }
         let profile_dir = match self.resolver.profile_dir(&first.credential_id).await {
             Ok(dir) => dir,
             Err(e) => return Self::fail_all(&jobs, &e),
@@ -361,6 +395,13 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
 
         let mut report = ImageJobsReport::default();
         for job in jobs {
+            // Nut "Huy": bo canh con lai + cat ngang canh dang sinh (xem `generate_videos`).
+            if self.cancel.is_cancelled() {
+                report
+                    .failed
+                    .push(format!("canh {}: da huy", job.scene_index));
+                continue;
+            }
             let params = GenerateImageParams {
                 prompt: &job.prompt,
                 device_id: node_id,
@@ -369,7 +410,17 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
                 timeout: Duration::from_secs(300),
                 min_images: 1,
             };
-            match generate_image(&conn, &params).await {
+            let outcome = tokio::select! {
+                biased;
+                () = self.cancel.cancelled() => {
+                    report
+                        .failed
+                        .push(format!("canh {}: da huy", job.scene_index));
+                    continue;
+                }
+                r = generate_image(&conn, &params) => r,
+            };
+            match outcome {
                 Ok(result) if !result.downloaded.is_empty() => {
                     let ext = result.downloaded[0]
                         .extension()

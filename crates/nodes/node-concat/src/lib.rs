@@ -20,7 +20,7 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
     kind: KIND.to_string(),
     version: 1,
     category: Category::Video,
-    label_vi: "Ghép phân cảnh".to_string(),
+    label_vi: "Nối video (ghép cảnh)".to_string(),
     inputs: vec![
         PortSpec::new("in", PortType::Video)
             .many()

@@ -25,12 +25,12 @@ export default function NodeShell({ label, kind, selected, errors, runState, chi
   return (
     <div
       className={
-        "relative w-56 overflow-hidden rounded-2xl border bg-panel p-2.5 text-fg shadow-lg transition-colors " +
+        "relative w-56 overflow-hidden rounded-2xl border bg-panel py-2.5 pr-2.5 pl-3.5 text-fg shadow-[0_6px_20px_-6px_rgba(0,0,0,0.35)] transition-colors " +
         nodeBorderClass({ hasErrors, selected, runState })
       }
     >
-      {/* Dải màu theo loại node — nhìn canvas là biết node làm gì mà không phải đọc nhãn. */}
-      <span className={"absolute inset-x-0 top-0 h-[3px] " + toneEdgeClass(tone)} />
+      {/* Thanh màu theo loại node bên TRÁI (dày, giống thẻ automation) — nhìn là biết node làm gì. */}
+      <span className={"absolute inset-y-0 left-0 w-[5px] " + toneEdgeClass(tone)} />
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className={"rounded-md px-2 py-0.5 text-[11px] font-medium " + toneChipClass(tone)}>
           {label}

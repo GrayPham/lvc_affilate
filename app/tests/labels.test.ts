@@ -13,7 +13,7 @@ const RUST_LABEL_VI: Record<string, string> = {
   image_upload: "Tải ảnh lên",
   load_video: "Tải video lên",
   dola_video: "Tạo video Dola",
-  concat: "Ghép phân cảnh",
+  concat: "Nối video (ghép cảnh)",
   save: "Lưu",
   trim: "Cắt video",
   frame_capture: "Chụp khung hình",

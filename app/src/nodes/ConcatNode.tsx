@@ -55,14 +55,15 @@ export default function ConcatNode({ id, selected }: NodeProps<ConcatRFNode>) {
               <MuteButton />
             </>
           ) : (
-            <span className="flex flex-col items-center gap-1 text-muted">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <span className="flex flex-col items-center gap-1.5 text-fg">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="9" height="7" rx="1.5" />
                 <rect x="2" y="13" width="9" height="7" rx="1.5" />
                 <path d="M13 12h6M19 12l-2.5-2.5M19 12l-2.5 2.5" />
                 <rect x="20" y="8.5" width="2" height="7" rx="1" />
               </svg>
-              <span className="text-[11px]">Ghép phân cảnh</span>
+              <span className="text-[12px] font-semibold">NỐI VIDEO</span>
+              <span className="text-[10px] text-muted">kéo các cảnh vào cổng trái →</span>
             </span>
           )}
         </div>

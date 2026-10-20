@@ -329,11 +329,19 @@ export function createGraphStore(
       },
 
       onEdgesChange: (changes) => {
-        const structural = changes.some((c) => c.type === "remove");
+        const cur = get().edges;
+        // React Flow 12 đôi khi TỰ phát lệnh 'remove' cho một cạnh nó chưa neo được vào handle
+        // ngay sau khi nạp đồ thị (vd `ghep->save` tới cổng `video` của node Lưu) — nếu áp dụng mù
+        // thì cạnh hợp lệ BIẾN MẤT khỏi canvas, workflow báo "thiếu đầu vào" dù template đúng.
+        // Người dùng xoá cạnh THẬT luôn phải CHỌN cạnh trước rồi Delete/Backspace, nên chỉ chấp
+        // nhận 'remove' cho cạnh đang được chọn; bỏ qua mọi 'remove' tự phát khác.
+        const selectedIds = new Set(cur.filter((e) => e.selected).map((e) => e.id));
+        const safe = changes.filter((c) => c.type !== "remove" || selectedIds.has(c.id));
+        const structural = safe.some((c) => c.type === "remove");
         if (structural) {
           pushHistory();
         }
-        set({ edges: applyEdgeChanges(changes, get().edges), nodeErrors: {}, globalErrors: [] });
+        set({ edges: applyEdgeChanges(safe, cur), nodeErrors: {}, globalErrors: [] });
       },
 
       onConnect: (connection) => {

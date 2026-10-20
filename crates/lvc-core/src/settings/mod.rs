@@ -95,8 +95,8 @@ pub struct AppSettings {
     pub missing_account: MissingAccount,
 
     // --- Nhóm "API key" ---
-    /// Khoá `api_key_auto_rotate` — bật thì khi một api_key hết hạn mức/bị quota, tự chọn key khác
-    /// cùng nhà cung cấp còn hạn mức (xem `lvc-app::textgen` resolver). Mặc định tắt.
+    /// Khoá `api_key_auto_rotate` — bật thì khi một `api_key` hết hạn mức/bị quota, tự chọn key
+    /// khác cùng nhà cung cấp còn hạn mức (xem `lvc-app` textgen resolver). Mặc định tắt.
     pub api_key_auto_rotate: bool,
 }
 

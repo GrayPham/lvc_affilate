@@ -233,7 +233,7 @@ pub struct Ctx<D: BrowserDriver + 'static> {
     /// Token huỷ của bộ chạy hàng chờ; `None` = không chạy.
     pub queue_cancel: Arc<std::sync::Mutex<Option<CancellationToken>>>,
     /// Cờ "Tự xoay vòng key" (`settings.api_key_auto_rotate`) — CHIA SẺ với `VaultTextResolver`
-    /// (điểm chọn api_key). `settings::settings_set_impl` cập nhật cờ này mỗi lần lưu để resolver
+    /// (điểm chọn `api_key`). `settings::settings_set_impl` cập nhật cờ này mỗi lần lưu để resolver
     /// thấy ngay mà không phải đọc lại DB. `Arc<AtomicBool>` vì resolver sống trong Engine, lâu hơn
     /// một lệnh IPC.
     pub api_key_auto_rotate: Arc<std::sync::atomic::AtomicBool>,

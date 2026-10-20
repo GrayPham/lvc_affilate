@@ -295,11 +295,15 @@ impl Vault {
         Ok(())
     }
 
-    /// Đặt ngưỡng hạn mức/ngày cho api_key (`None`/`Some(0)` = không giới hạn).
+    /// Đặt ngưỡng hạn mức/ngày cho `api_key` (`None`/`Some(0)` = không giới hạn).
     ///
     /// # Errors
     /// [`VaultRepoError`] khi ghi lỗi.
-    pub async fn set_daily_limit(&self, id: &str, limit: Option<i64>) -> Result<(), VaultRepoError> {
+    pub async fn set_daily_limit(
+        &self,
+        id: &str,
+        limit: Option<i64>,
+    ) -> Result<(), VaultRepoError> {
         // Chuẩn hoá 0 -> None (không giới hạn) để UI/engine chỉ cần kiểm `Some(>0)`.
         let limit = limit.filter(|&n| n > 0);
         self.repo.set_daily_limit(id, limit).await?;

@@ -133,7 +133,7 @@ pub async fn credential_set_node_types(
     credential_set_node_types_impl(&state, &id, &node_types).await
 }
 
-/// Đặt ngưỡng "hạn mức/ngày" cho một api_key (`None`/`0` = không giới hạn). Màn API key.
+/// Đặt ngưỡng "hạn mức/ngày" cho một `api_key` (`None`/`0` = không giới hạn). Màn API key.
 ///
 /// # Errors
 /// `IpcError` `STORE` khi ghi lỗi.

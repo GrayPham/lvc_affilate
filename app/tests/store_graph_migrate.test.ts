@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("loadPersistedCanvas (P4a migrate)", () => {
-  it("canvas v1 (kind video + concat) -> Graph v2 dola_video, bo concat + canh cua no", () => {
+  it("canvas v1: doi video->dola_video, GIU concat (node that), chi bo kind THAT SU da go", () => {
     const v1 = {
       version: 1,
       nodes: [
@@ -50,11 +50,15 @@ describe("loadPersistedCanvas (P4a migrate)", () => {
           x: 300,
           y: 0,
         },
+        // `concat` LA node that (crate node-concat) -> phai duoc GIU, khong bi migrate cat.
         { id: "n3", kind: { kind: "concat" }, x: 600, y: 0 },
+        // `remove_logo` la kind P4 da go THAT SU -> phai bi bo, kem canh noi vao no.
+        { id: "n4", kind: { kind: "remove_logo" }, x: 900, y: 0 },
       ],
       edges: [
         { id: "e1", from: "n1", from_port: "out", to: "n2", to_port: "prompt" },
         { id: "e2", from: "n2", from_port: "out", to: "n3", to_port: "in" },
+        { id: "e3", from: "n3", from_port: "out", to: "n4", to_port: "in" },
       ],
     };
     vi.stubGlobal("localStorage", memoryStorage({ "lvc.workflow.canvas.v1": JSON.stringify(v1) }));
@@ -63,15 +67,18 @@ describe("loadPersistedCanvas (P4a migrate)", () => {
     expect(loaded).not.toBeNull();
     const g = loaded!.graph;
     expect(g.version).toBe(2);
-    expect(g.nodes.map((n) => n.kind.kind)).toEqual(["prompt", "dola_video"]);
-    expect(g.edges.map((e) => e.id)).toEqual(["e1"]);
+    // video->dola_video, concat GIU, remove_logo BO.
+    expect(g.nodes.map((n) => n.kind.kind)).toEqual(["prompt", "dola_video", "concat"]);
+    // e1 (prompt->video) + e2 (video->concat) giu; e3 (->remove_logo) bi bo theo node da go.
+    expect(g.edges.map((e) => e.id)).toEqual(["e1", "e2"]);
     // Dinh dang cu khong co danh tinh -> coi nhu chua dat ten, chua luu.
     expect(loaded!.workflowName).toBe("");
     expect(loaded!.workflowSaved).toBe(false);
 
     const store = createGraphStore({ workflowId: "test", workflowName: "test" });
     store.getState().loadGraph(g);
-    expect(store.getState().nodes.map((n) => n.type)).toEqual(["prompt", "dola_video"]);
+    expect(store.getState().nodes.map((n) => n.type)).toEqual(["prompt", "dola_video", "concat"]);
+    expect(store.getState().edges.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
   it("dinh dang moi: giu nguyen danh tinh workflow dang mo", () => {

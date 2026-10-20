@@ -13,12 +13,24 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use lvc_browser::chromium::ChromiumDriver;
 use lvc_core::Limits;
 use lvc_core::graph::Graph;
-use lvc_engine::{Engine, EngineConfig, noop_hooks_factory};
+use lvc_engine::{Engine, EngineConfig, MuseaiAccountResolver, noop_hooks_factory};
 use lvc_store::{AccountRepo, Db};
 use tracing_subscriber::EnvFilter;
+
+/// Resolver trỏ THẲNG tới một profile Chromium đã đăng nhập MuseAI (bỏ qua credential_id) — dùng để
+/// chạy thử workflow MuseAI qua CLI. Đường dẫn lấy từ env `LVC_MUSEAI_PROFILE`.
+struct FixedMuseaiProfile(PathBuf);
+
+#[async_trait]
+impl MuseaiAccountResolver for FixedMuseaiProfile {
+    async fn profile_dir(&self, _credential_id: &str) -> Result<PathBuf, String> {
+        Ok(self.0.clone())
+    }
+}
 
 fn arg(i: usize, default: &str) -> String {
     std::env::args()
@@ -123,6 +135,13 @@ async fn main() {
     .expect("Engine::new");
     let engine = Arc::new(engine);
     engine.set_registry(Arc::new(lvc_app_lib::registry::build_registry()));
+
+    // MuseAI: nối resolver profile cố định (env LVC_MUSEAI_PROFILE) để node museai_image/museai_video
+    // mở đúng profile đã đăng nhập. Thiếu env = không chạy được node MuseAI.
+    if let Ok(prof) = std::env::var("LVC_MUSEAI_PROFILE") {
+        tracing::info!(profile = %prof, "MuseAI profile cố định");
+        engine.set_museai_account_resolver(Arc::new(FixedMuseaiProfile(PathBuf::from(prof))));
+    }
 
     tracing::info!(template = %template, account = %account, "chạy template qua run_graph");
     let handle = engine
