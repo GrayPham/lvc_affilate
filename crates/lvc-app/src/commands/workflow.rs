@@ -408,8 +408,21 @@ pub async fn run_retry_failed(
     run_retry_failed_impl(&state, &run_id, &graph).await
 }
 
-/// Run-robustness B: map `node_id -> duong dan output` (quet `downloads_dir` theo ten tat dinh)
-/// de khoi phuc preview video/anh — `node_id` lay tu `node_states` cua run.
+/// Lấy đường dẫn media (ảnh/video) ĐẦU TIÊN trong một `Outputs` — "đại diện" preview của node.
+fn first_media_path(outputs: &lvc_node_api::Outputs) -> Option<String> {
+    outputs.values().flatten().find_map(|v| match v {
+        lvc_node_api::Value::Image(a) | lvc_node_api::Value::Video(a) => {
+            Some(a.path.to_string_lossy().into_owned())
+        }
+        lvc_node_api::Value::Text(_) | lvc_node_api::Value::Audio(_) => None,
+    })
+}
+
+/// Run-robustness B: map `node_id -> duong dan output` de khoi phuc preview anh/video khi mo lai
+/// app. UU TIEN duong dan THAT da luu trong `node_states.outputs` (JSON `Outputs`) — ben voi MOI
+/// quy uoc ten file (`MuseAI` luu ten server rieng `media-generation-...`, KHONG theo
+/// `{run}_{node}_{scene}`, nen quet dia theo ten se bo sot). Fallback quet dia cho node chua co
+/// outputs luu (run cu truoc migration 0013).
 ///
 /// # Errors
 /// `IpcError` ma `STORE` khi doc `node_states` that bai.
@@ -417,9 +430,30 @@ pub async fn run_node_outputs_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
     run_id: &str,
 ) -> Result<std::collections::HashMap<String, String>, IpcError> {
-    let rows = NodeStateRepo::new(&ctx.db).list_for_run(run_id).await?;
-    let node_ids: Vec<String> = rows.into_iter().map(|r| r.node_id).collect();
-    Ok(ctx.engine.node_outputs(run_id, &node_ids))
+    use std::collections::HashMap;
+    let ns = NodeStateRepo::new(&ctx.db);
+    let mut map: HashMap<String, String> = HashMap::new();
+    for (node_id, json) in ns.outputs_for_run(run_id).await? {
+        if let Ok(outputs) = serde_json::from_str::<lvc_node_api::Outputs>(&json) {
+            if let Some(path) = first_media_path(&outputs) {
+                map.insert(node_id, path);
+            }
+        }
+    }
+    // Fallback: node da xong nhung khong co outputs luu -> quet dia theo ten tat dinh.
+    let missing: Vec<String> = ns
+        .list_for_run(run_id)
+        .await?
+        .into_iter()
+        .map(|r| r.node_id)
+        .filter(|n| !map.contains_key(n))
+        .collect();
+    if !missing.is_empty() {
+        for (n, p) in ctx.engine.node_outputs(run_id, &missing) {
+            map.entry(n).or_insert(p);
+        }
+    }
+    Ok(map)
 }
 
 #[allow(
@@ -685,18 +719,12 @@ mod tests {
         assert_eq!(node_ids, vec!["pr", "sv", "vid"]);
         assert!(states.iter().all(|s| s.state == "done"), "{states:?}");
 
-        // FakeDriver KHONG ghi file that vao downloads_dir (tra thang `src`; Save moi copy ra
-        // out_dir) — nen o day TAO tay mot file dung ten tat dinh `{run_id}_vid_0.mp4` trong
-        // downloads_dir (= base/downloads) de chung minh lenh plumbing quet dung + khop node_id.
-        // (Logic quet thuc da co test rieng `node_outputs_khop_tien_to_node_id` trong lvc-engine.)
-        let downloads = dir.path().join("downloads");
-        std::fs::create_dir_all(&downloads).unwrap();
-        std::fs::write(downloads.join(format!("{}_vid_0.mp4", info.run_id)), b"x").unwrap();
-
+        // Preview khoi phuc UU TIEN duong dan THAT trong node_states.outputs (ben voi moi ten file,
+        // ke ca ten server MuseAI). Node video da done -> co duong dan output de restore preview.
         let outs = run_node_outputs_impl(&ctx, &info.run_id).await.unwrap();
         assert!(
-            outs.get("vid").is_some_and(|p| p.contains("_vid_")),
-            "{outs:?}"
+            outs.get("vid").is_some_and(|p| !p.is_empty()),
+            "vid phai co duong dan output de khoi phuc preview: {outs:?}"
         );
     }
 
