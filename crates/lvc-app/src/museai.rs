@@ -9,6 +9,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use lvc_engine::MuseaiAccountResolver;
@@ -21,12 +22,18 @@ use lvc_vault::Vault;
 /// tài khoản khi không quan tâm dùng tài khoản nào (review người dùng 2026-10-13).
 pub struct VaultMuseaiAccountResolver {
     vault: Arc<Vault>,
+    /// Con trỏ XOAY VÒNG khi `account` rỗng — mỗi lần resolve lấy account kế tiếp để chia tải nhiều
+    /// tài khoản (giảm 502/rate-limit, song song thật vì khác `profile_dir`).
+    next: AtomicUsize,
 }
 
 impl VaultMuseaiAccountResolver {
     #[must_use]
     pub fn new(vault: Arc<Vault>) -> Self {
-        Self { vault }
+        Self {
+            vault,
+            next: AtomicUsize::new(0),
+        }
     }
 }
 
@@ -49,11 +56,17 @@ impl MuseaiAccountResolver for VaultMuseaiAccountResolver {
                 .is_some_and(|s| !s.is_empty())
         };
         let cred = if wanted.is_empty() {
-            list.iter()
-                .find(|c| logged_in(c) && has_profile(c))
-                .ok_or_else(|| {
-                    "khong co tai khoan MuseAI nao san sang (tab Tai khoan AI)".to_string()
-                })?
+            // XOAY VÒNG qua các tài khoản sẵn sàng (đủ `enabled` + có `profile_dir`). Nhiều cảnh/
+            // nhiều account → chia đều thay vì dồn hết vào account đầu tiên.
+            let candidates: Vec<&lvc_vault::CredentialView> = list
+                .iter()
+                .filter(|c| logged_in(c) && has_profile(c))
+                .collect();
+            if candidates.is_empty() {
+                return Err("khong co tai khoan MuseAI nao san sang (tab Tai khoan AI)".to_string());
+            }
+            let idx = self.next.fetch_add(1, Ordering::Relaxed) % candidates.len();
+            candidates[idx]
         } else {
             list.iter()
                 .find(|c| logged_in(c) && c.label == wanted)
@@ -139,6 +152,31 @@ mod tests {
         let r = VaultMuseaiAccountResolver::new(v);
         let dir = r.profile_dir("").await.unwrap();
         assert_eq!(dir, PathBuf::from("C:/accounts/.logins/museai/tk-1"));
+    }
+
+    /// `account` rỗng + NHIỀU tài khoản → XOAY VÒNG (round-robin): mỗi lần gọi lấy account kế tiếp,
+    /// hết vòng quay lại. Để nhiều account chia tải (giảm 502/rate-limit + song song thật).
+    #[tokio::test]
+    async fn account_rong_xoay_vong_nhieu_tai_khoan() {
+        let v = vault().await;
+        v.add(&add("tk-1", "C:/p/tk-1")).await.unwrap();
+        v.add(&add("tk-2", "C:/p/tk-2")).await.unwrap();
+        v.add(&add("tk-3", "C:/p/tk-3")).await.unwrap();
+        let r = VaultMuseaiAccountResolver::new(v);
+        // `list` ORDER BY label -> tk-1, tk-2, tk-3; xoay vòng qua 4 lần.
+        let mut got = Vec::new();
+        for _ in 0..4 {
+            got.push(r.profile_dir("").await.unwrap());
+        }
+        assert_eq!(
+            got,
+            vec![
+                PathBuf::from("C:/p/tk-1"),
+                PathBuf::from("C:/p/tk-2"),
+                PathBuf::from("C:/p/tk-3"),
+                PathBuf::from("C:/p/tk-1"),
+            ]
+        );
     }
 
     #[tokio::test]

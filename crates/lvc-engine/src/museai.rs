@@ -347,7 +347,9 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
                 device_id: node_id,
                 output_dir: &self.downloads_dir,
                 session_id: Some(&session_id),
-                timeout: Duration::from_secs(600),
+                // Giờ cao điểm MuseAI sinh chậm → nới trần 15 phút/video (trước 10p) để video chậm
+                // vẫn kịp thay vì timeout oan.
+                timeout: Duration::from_secs(900),
                 min_videos: 1,
                 aspect: job.aspect.as_deref(),
                 duration_secs: job.duration_secs,
@@ -494,7 +496,9 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
                 device_id: node_id,
                 output_dir: &self.downloads_dir,
                 session_id: Some(&session_id),
-                timeout: Duration::from_secs(300),
+                // Giờ cao điểm: ảnh MuseAI đang mất ~5 phút (310s suýt timeout) → nới trần 10 phút
+                // (trước 5p) để ảnh chậm vẫn kịp.
+                timeout: Duration::from_secs(600),
                 min_images: 1,
                 images: &job.images,
             };
