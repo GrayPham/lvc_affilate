@@ -540,6 +540,8 @@ pub struct GenerateImageParams<'a> {
     pub session_id: Option<&'a str>,
     pub timeout: Duration,
     pub min_images: usize,
+    /// Ảnh tham chiếu đính kèm prompt (base64 trong `items`) — đối xứng [`GenerateVideoParams`].
+    pub images: &'a [std::path::PathBuf],
 }
 
 /// `kind:"image"` hay `"video"` do CHÍNH muse.ai tự quyết theo Ý PROMPT (đã xác nhận thật
@@ -549,8 +551,8 @@ pub struct GenerateImageParams<'a> {
 /// ra ảnh tĩnh thay vì video, bất kể prompt gốc của người dùng viết ngôn ngữ/văn phong nào.
 fn build_image_prompt(user_prompt: &str) -> String {
     format!(
-        "{user_prompt}. (a single still photo, product photography style, no motion, no video, \
-         just one static image)"
+        "{user_prompt}. (a single still photo of a real person, candid lifestyle style, \
+         no motion, no video, just one static image)"
     )
 }
 
@@ -589,8 +591,8 @@ pub async fn generate_image(
         conn,
         params.device_id,
         &prompt,
-        // Tao ANH chua nhan anh tham chieu — chi node tao VIDEO dung (xem `GenerateVideoParams`).
-        &[],
+        // Ảnh tham chiếu để KHOÁ nhân vật (pipeline ảnh-trước) — đối xứng `generate_video`.
+        params.images,
         params.session_id,
         stream_timeout,
     )
@@ -707,8 +709,19 @@ mod tests {
     fn build_image_prompt_giu_nguyen_y_nguoi_dung_them_huong_dan_ro_rang() {
         let prompt = build_image_prompt("một con mèo cam");
         assert!(prompt.starts_with("một con mèo cam"));
-        assert!(prompt.contains("still photo"));
-        assert!(prompt.contains("no video"));
+        // VAN phai bao hieu "anh tinh, khong phai video" de muse.ai tra kind:"image".
+        assert!(prompt.to_lowercase().contains("still"));
+        assert!(prompt.to_lowercase().contains("no video"));
+        // KHONG duoc ep "product photography" — day la cai day ra anh ma-no-canh/san pham,
+        // phan muc tieu khoa NGUOI (reel nhan vat). Xem spec image-first-reel 2026-10-20.
+        assert!(!prompt.to_lowercase().contains("product photography"));
+    }
+
+    #[test]
+    fn build_image_prompt_nguoi_giu_nguyen_prompt_goc() {
+        let prompt = build_image_prompt("cô gái mặc đầm yếm nâu");
+        assert!(prompt.starts_with("cô gái mặc đầm yếm nâu"));
+        assert!(!prompt.to_lowercase().contains("product photography"));
     }
 
     #[test]

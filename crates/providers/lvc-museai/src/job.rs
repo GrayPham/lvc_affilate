@@ -49,6 +49,9 @@ pub struct ImageJob {
     pub scene_index: u32,
     pub credential_id: String,
     pub prompt: String,
+    /// Ảnh tham chiếu gửi kèm prompt (nhân vật/trang phục/đạo cụ) — DÙNG CHUNG cho mọi cảnh của
+    /// node, giống [`VideoJob::images`]. Khoá nhân vật cho pipeline "ảnh trước → video sau".
+    pub images: Vec<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone)]
