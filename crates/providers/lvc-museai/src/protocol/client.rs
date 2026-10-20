@@ -341,7 +341,11 @@ async fn download_videos(
         match download_video(fs, r, &destination, request_timeout).await {
             Ok(()) => downloaded.push(destination),
             Err(e) => {
-                errors.push(format!("lan {attempt} video[{}] {}: {e}", index + 1, r.identity()));
+                errors.push(format!(
+                    "lan {attempt} video[{}] {}: {e}",
+                    index + 1,
+                    r.identity()
+                ));
             }
         }
     }
@@ -662,7 +666,11 @@ async fn download_new_images(
                 }
                 _ => downloaded.push(destination),
             },
-            Err(e) => errors.push(format!("lan {attempt} anh[{}] {}: {e}", index + 1, r.identity())),
+            Err(e) => errors.push(format!(
+                "lan {attempt} anh[{}] {}: {e}",
+                index + 1,
+                r.identity()
+            )),
         }
     }
     (downloaded, errors)
