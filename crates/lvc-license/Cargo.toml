@@ -1,0 +1,21 @@
+[package]
+name = "lvc-license"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Cong ban quyen LVC Shop (port 1:1 tu LVC Veo3): dang nhap tai khoan -> kich hoat license, verify
+# phan hoi server bang ECDSA P-256 (4 lop guard), ECDH/HKDF/Fernet cho payload, session cache offline.
+# LUAT: khong log bi mat (password/license/JWT/session plaintext/Fernet key). rustls-only (khong OpenSSL).
+[dependencies]
+p256.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+
+[lints]
+workspace = true

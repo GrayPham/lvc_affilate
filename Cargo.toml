@@ -8,6 +8,7 @@ members = [
     "crates/lvc-app",
     "crates/lvc-node-api",
     "crates/lvc-vault",
+    "crates/lvc-license",
     "crates/providers/lvc-dola",
     "crates/providers/lvc-genai",
     "crates/providers/lvc-veo3",
@@ -53,6 +54,13 @@ license = "proprietary"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Cong ban quyen LVC Shop (crates/lvc-license): verify ECDSA P-256 + ECDH/HKDF/Fernet tu viet.
+p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pem"] }
+hkdf = "0.12"
+hmac = "0.12"
+rand = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+winreg = "0.52"
 thiserror = "2"
 base64 = "0.22"
 sha2 = "0.10"
