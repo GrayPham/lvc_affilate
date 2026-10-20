@@ -713,7 +713,7 @@ pub async fn generate_image(
     // CHỈ thử lại khi CÓ ảnh ref (echo chỉ xảy ra lúc đó): nếu một lần sinh trả TOÀN ảnh echo
     // (0 ảnh thật), sinh lại — muse.ai agent đôi khi "trả lại ảnh đính kèm" ở lần đầu rồi sinh
     // thật ở lần sau. Tối đa 2 lần, tiếp tục CÙNG phiên chat để agent giữ ngữ cảnh.
-    let max_attempts = if ref_fps.is_empty() { 1 } else { 2 };
+    let max_attempts = if ref_fps.is_empty() { 1 } else { 3 };
     let mut download_errors: Vec<String> = Vec::new();
     let mut resolved_session: Option<String> = params.session_id.map(str::to_string);
     let mut last_images: Vec<ImageRef> = Vec::new();

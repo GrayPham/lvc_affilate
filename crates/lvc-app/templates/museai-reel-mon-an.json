@@ -672,13 +672,6 @@
         "to_port": "refs"
       },
       {
-        "id": "e5",
-        "from": "bgimg",
-        "from_port": "out",
-        "to": "img1",
-        "to_port": "refs"
-      },
-      {
         "id": "e6",
         "from": "heo",
         "from_port": "out",
