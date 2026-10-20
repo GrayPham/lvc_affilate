@@ -556,6 +556,25 @@ fn build_image_prompt(user_prompt: &str) -> String {
     )
 }
 
+/// sha256 của mỗi ảnh ref đã upload (bỏ qua file đọc lỗi) — để phát hiện ảnh "echo" (muse.ai đôi
+/// khi trả lại NGUYÊN ảnh ref thay vì sinh ảnh mới, xem [`is_echoed_ref`]).
+fn ref_fingerprints(images: &[std::path::PathBuf]) -> HashSet<[u8; 32]> {
+    use sha2::{Digest, Sha256};
+    images
+        .iter()
+        .filter_map(|p| std::fs::read(p).ok())
+        .map(|b| Sha256::digest(&b).into())
+        .collect()
+}
+
+/// True nếu `bytes` trùng khít (byte-for-byte) một ảnh ref đã upload — tức muse.ai trả lại nguyên
+/// ảnh ref thay vì sinh ảnh mới; ảnh như vậy phải bị BỎ khỏi kết quả.
+fn is_echoed_ref(bytes: &[u8], ref_fps: &HashSet<[u8; 32]>) -> bool {
+    use sha2::{Digest, Sha256};
+    let fp: [u8; 32] = Sha256::digest(bytes).into();
+    ref_fps.contains(&fp)
+}
+
 /// Luồng đầy đủ sinh ẢNH TĨNH (không phải video) — tự gắn hướng dẫn rõ ràng vào prompt (xem
 /// [`build_image_prompt`]) → chờ ảnh mới xuất hiện trong lịch sử → tải xuống `output_dir`.
 ///
@@ -621,6 +640,8 @@ pub async fn generate_image(
     .await?;
 
     let fs = MuseFilesystem::new(conn.clone());
+    // Vân tay các ảnh ref đã upload — để BỎ ảnh "echo" (muse.ai trả lại nguyên ảnh ref).
+    let ref_fps = ref_fingerprints(params.images);
     let mut downloaded = Vec::new();
     let mut download_errors = Vec::new();
     let mut used_names: HashSet<String> = HashSet::new();
@@ -643,7 +664,20 @@ pub async fn generate_image(
         used_names.insert(filename.clone());
         let destination = params.output_dir.join(&filename);
         match download_image(&fs, r, &destination, request_timeout).await {
-            Ok(()) => downloaded.push(destination),
+            Ok(()) => {
+                // Nếu ảnh tải về trùng khít một ảnh ref đã upload → muse.ai KHÔNG sinh ảnh mới mà
+                // trả lại ref; BỎ file này (không tính là kết quả) để không "làm động cái sheet".
+                match std::fs::read(&destination) {
+                    Ok(bytes) if !ref_fps.is_empty() && is_echoed_ref(&bytes, &ref_fps) => {
+                        let _ = std::fs::remove_file(&destination);
+                        download_errors.push(format!(
+                            "anh[{}]: muse.ai tra lai nguyen anh ref (echo), da bo",
+                            index + 1
+                        ));
+                    }
+                    _ => downloaded.push(destination),
+                }
+            }
             Err(e) => download_errors.push(format!("anh[{}] {}: {e}", index + 1, r.identity())),
         }
     }
@@ -722,6 +756,19 @@ mod tests {
         let prompt = build_image_prompt("cô gái mặc đầm yếm nâu");
         assert!(prompt.starts_with("cô gái mặc đầm yếm nâu"));
         assert!(!prompt.to_lowercase().contains("product photography"));
+    }
+
+    /// muse.ai đôi khi trả lại NGUYÊN ảnh ref đã upload thay vì sinh ảnh mới — phải nhận ra để bỏ.
+    #[test]
+    fn is_echoed_ref_bat_anh_trung_khit_ref() {
+        use sha2::{Digest, Sha256};
+        let mut fps: HashSet<[u8; 32]> = HashSet::new();
+        fps.insert(Sha256::digest(b"REF-BYTES").into());
+        assert!(is_echoed_ref(b"REF-BYTES", &fps), "ảnh trùng khít ref = echo");
+        assert!(
+            !is_echoed_ref(b"ANH-SINH-MOI", &fps),
+            "ảnh sinh mới (khác byte) KHÔNG phải echo"
+        );
     }
 
     #[test]
