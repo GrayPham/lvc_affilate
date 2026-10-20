@@ -39,6 +39,10 @@
       {
         "name": "in",
         "type": "video"
+      },
+      {
+        "name": "audio",
+        "type": "audio"
       }
     ],
     "outputs": [

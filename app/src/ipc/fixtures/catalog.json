@@ -88,6 +88,13 @@
         "many": true,
         "required": true,
         "collect": true
+      },
+      {
+        "name": "audio",
+        "type": "audio",
+        "many": false,
+        "required": false,
+        "collect": false
       }
     ],
     "outputs": [

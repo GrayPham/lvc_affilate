@@ -640,6 +640,15 @@
         },
         "x": 2300,
         "y": 700
+      },
+      {
+        "id": "huongdan",
+        "kind": {
+          "kind": "note",
+          "text": "📖 HƯỚNG DẪN — Reel món ăn MuseAI\n• Mỗi cảnh: Prompt → Tạo ảnh MuseAI → Tạo video MuseAI → Cắt video → (Nối video).\n• Tài khoản: để trống = tự XOAY VÒNG. Thêm 2–3 account MuseAI ở tab 'Tài khoản AI' để nhanh hơn + đỡ lỗi 502.\n• Chạy nhiều cảnh cùng lúc: Cài đặt → 'Số node chạy song song' (vd 3).\n• Cảnh lỗi: bấm node viền ĐỎ xem lý do; chạy xong bấm '↻ Chạy lại node lỗi' (chỉ chạy lại cảnh lỗi).\n• Tắt/mở lại app KHÔNG mất ảnh/video đã xong.\n• Node 'Nối video' có cổng 'audio' (tuỳ chọn): nối nhạc/giọng — tự khớp độ dài video (hụt thì LẶP, thừa thì CẮT)."
+        },
+        "x": 40,
+        "y": 2160
       }
     ],
     "edges": [

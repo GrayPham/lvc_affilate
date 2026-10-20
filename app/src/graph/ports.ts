@@ -30,7 +30,10 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     outputs: [{ name: "out", type: "video" }],
   },
   concat: {
-    inputs: [{ name: "in", type: "video" }],
+    inputs: [
+      { name: "in", type: "video" },
+      { name: "audio", type: "audio" },
+    ],
     outputs: [{ name: "out", type: "video" }],
   },
   save: {

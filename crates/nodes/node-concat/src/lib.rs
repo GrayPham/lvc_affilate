@@ -26,6 +26,9 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
             .many()
             .required()
             .collect(),
+        // Phần audio (tuỳ chọn): nhạc/giọng nối vào video cuối. Nguồn là Audio (vd từ node TTS,
+        // Tách audio). Tự khớp độ dài video: hụt thì LẶP, thừa thì CẮT (`-stream_loop -1 -shortest`).
+        PortSpec::new("audio", PortType::Audio),
     ],
     outputs: vec![PortSpec::new("out", PortType::Video)],
     require_any: vec![],
@@ -126,6 +129,24 @@ async fn concat(paths: &[PathBuf], out: &Path, list_file: &Path) -> Result<(), S
     run_ffmpeg(&ffmpeg_bin(), &enc_args).await
 }
 
+/// Ghép audio vào video đã nối, TỰ KHỚP độ dài video: `-stream_loop -1` lặp audio vô hạn + `-shortest`
+/// cắt ở độ dài video → hụt thì LẶP, thừa thì CẮT. Mux ra file tạm rồi đổi tên đè (ffmpeg không
+/// đọc-ghi cùng file). `audio` có thể là file âm thanh HOẶC video (ffmpeg lấy track audio của nó).
+async fn mux_audio(video: &Path, audio: &Path) -> Result<(), String> {
+    let tmp = video.with_extension("muxing.mp4");
+    let v = video.to_string_lossy().to_string();
+    let a = audio.to_string_lossy().to_string();
+    let t = tmp.to_string_lossy().to_string();
+    let args = [
+        "-y", "-i", &v, "-stream_loop", "-1", "-i", &a, "-map", "0:v:0", "-map", "1:a:0", "-c:v",
+        "copy", "-c:a", "aac", "-shortest", "-movflags", "+faststart", &t,
+    ];
+    run_ffmpeg(&ffmpeg_bin(), &args).await?;
+    tokio::fs::rename(&tmp, video)
+        .await
+        .map_err(|e| format!("doi ten file sau mux loi: {e}"))
+}
+
 #[async_trait]
 impl NodeExecutor for ConcatNode {
     fn manifest(&self) -> &NodeManifest {
@@ -176,6 +197,12 @@ impl NodeExecutor for ConcatNode {
         let res = concat(&paths, &out, &list_file).await;
         let _ = tokio::fs::remove_file(&list_file).await;
         res.map_err(|e| NodeError::new(format!("node {}: ghép video lỗi: {e}", ctx.node_id)))?;
+        // Phần audio (tuỳ chọn): có cổng `audio` nối vào thì ghép nhạc/giọng, tự khớp độ dài video.
+        if let Some(audio) = inputs.assets("audio").next() {
+            mux_audio(&out, &audio.path)
+                .await
+                .map_err(|e| NodeError::new(format!("node {}: ghép audio lỗi: {e}", ctx.node_id)))?;
+        }
         let asset = Asset::new(out)
             .with(meta::NODE, &ctx.node_id)
             .with(meta::INDEX, 1);
