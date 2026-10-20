@@ -86,6 +86,7 @@ pub fn run() {
             commands::workflow::run_list,
             commands::workflow::run_node_states,
             commands::workflow::run_node_outputs,
+            commands::workflow::run_retry_failed,
             commands::tasks::task_list,
             commands::tasks::task_cancel,
             commands::tasks::task_resume,

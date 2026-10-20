@@ -325,6 +325,89 @@ pub async fn run_node_states(
     run_node_states_impl(&state, &run_id).await
 }
 
+/// Phần C: chạy lại CHỈ node lỗi + node phía sau (tự ghép), tái dùng output node đã xong (KHÔNG
+/// tốn credit lại). Đọc `node_states` của run cũ → `failed`; `rerun = descendants(failed)`; seed
+/// output các node đã xong NGOÀI `rerun` (và còn trong graph) → `run_graph_seeded` (run MỚI).
+///
+/// # Errors
+/// `IpcError` mã `NO_FAILED_NODES` khi run cũ không có node lỗi; `STORE`/`GRAPH_INVALID` khác.
+pub async fn run_retry_failed_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    run_id: &str,
+    graph: &Graph,
+) -> Result<RunInfo, IpcError> {
+    use std::collections::{BTreeSet, HashMap, HashSet};
+
+    let ns = NodeStateRepo::new(&ctx.db);
+    let states = ns.list_for_run(run_id).await?;
+    let failed: BTreeSet<String> = states
+        .iter()
+        .filter(|s| s.state == "failed")
+        .map(|s| s.node_id.clone())
+        .collect();
+    if failed.is_empty() {
+        return Err(IpcError::new(
+            "NO_FAILED_NODES",
+            "không có node lỗi để chạy lại",
+        ));
+    }
+    let g = migrate(graph.clone());
+    let rerun = lvc_core::graph::descendants(&g, &failed);
+    let in_graph: HashSet<&str> = g.nodes.iter().map(|n| n.id.as_str()).collect();
+
+    // Seed output node da xong (ngoai rerun, con trong graph). Node seed hong JSON -> bo (se chay lai).
+    let mut seed: HashMap<String, lvc_node_api::Outputs> = HashMap::new();
+    for (node_id, json) in ns.outputs_for_run(run_id).await? {
+        if rerun.contains(&node_id) || !in_graph.contains(node_id.as_str()) {
+            continue;
+        }
+        if let Ok(outputs) = serde_json::from_str::<lvc_node_api::Outputs>(&json) {
+            seed.insert(node_id, outputs);
+        }
+    }
+    let skip: HashSet<String> = seed.keys().cloned().collect();
+
+    // Run moi cung workflow voi run cu (de re-attach/lich su nhat quan).
+    let workflow_id = RunRepo::new(&ctx.db)
+        .get(run_id)
+        .await?
+        .map(|r| r.workflow_id)
+        .unwrap_or_default();
+
+    let RunHandle {
+        run_id: new_run_id,
+        token,
+        join,
+        ..
+    } = ctx
+        .engine
+        .run_graph_seeded(&workflow_id, &g, noop_hooks_factory(), seed, skip)
+        .await?;
+    ctx.runs.insert(new_run_id.clone(), token);
+    let runs = Arc::clone(&ctx.runs);
+    let reaper_id = new_run_id.clone();
+    tokio::spawn(async move {
+        if let Err(e) = join.await {
+            warn!(run_id = %reaper_id, error = %e, "run retry ket thuc bat thuong (panic)");
+        }
+        runs.remove(&reaper_id);
+    });
+    Ok(RunInfo { run_id: new_run_id })
+}
+
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan tham so JSON da giai ma so huu (String/Graph) - bien gioi IPC"
+)]
+#[tauri::command]
+pub async fn run_retry_failed(
+    state: tauri::State<'_, AppState>,
+    run_id: String,
+    graph: Graph,
+) -> Result<RunInfo, IpcError> {
+    run_retry_failed_impl(&state, &run_id, &graph).await
+}
+
 /// Run-robustness B: map `node_id -> duong dan output` (quet `downloads_dir` theo ten tat dinh)
 /// de khoi phuc preview video/anh — `node_id` lay tu `node_states` cua run.
 ///
@@ -615,6 +698,92 @@ mod tests {
             outs.get("vid").is_some_and(|p| p.contains("_vid_")),
             "{outs:?}"
         );
+    }
+
+    /// Phần C: chạy lại node lỗi — chạy thật 1 lần (pr/vid/sv done + lưu Outputs), giả lập `vid`
+    /// lỗi, rồi `run_retry_failed` → run MỚI hoàn tất, pr được SEED (không chạy lại), vid+sv chạy
+    /// lại tái dùng output pr.
+    #[tokio::test]
+    async fn run_retry_failed_chay_lai_node_loi_ra_run_hoan_tat() {
+        async fn wait_done<D: BrowserDriver + 'static>(ctx: &Ctx<D>, run_id: &str) {
+            for _ in 0..300 {
+                let rows = run_list_impl(ctx, 20).await.unwrap();
+                if rows
+                    .iter()
+                    .any(|r| r.id == run_id && r.status != RunStatus::Running)
+                {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            panic!("run {run_id} khong xong");
+        }
+
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("src.mp4");
+        std::fs::write(&src, b"fake-mp4").unwrap();
+        // Chi lan chay DAU dung driver (3 canh video). Retry re-chay CHI node `sv` (Luu — khong
+        // dung driver), con `pr`/`vid` bi SKIP (seed lai) -> retry KHONG goi driver, khong ton
+        // credit lai cho video, va khong dinh phai cache phien giua 2 run.
+        let (dir, ctx, driver) = ctx_with(happy_steps(3, &src), &["acc1", "acc2", "acc3"]).await;
+        let g = three_scene_graph(&dir.path().join("out"));
+
+        let info = run_start_impl(&ctx, "wf1", &g).await.unwrap();
+        wait_done(&ctx, &info.run_id).await;
+        let calls_sau_run_dau = driver.calls.lock().unwrap().len();
+
+        // Gia lap `sv` (Luu) loi o lan chay truoc (pr/vid van done + co Outputs da luu).
+        let ns = lvc_store::NodeStateRepo::new(&ctx.db);
+        ns.upsert(
+            &info.run_id,
+            "sv",
+            "failed",
+            (1, 1, 0, 1),
+            Some("gia lap loi"),
+            9.0,
+        )
+        .await
+        .unwrap();
+
+        let retry = run_retry_failed_impl(&ctx, &info.run_id, &g).await.unwrap();
+        assert_ne!(retry.run_id, info.run_id, "retry la run moi");
+        wait_done(&ctx, &retry.run_id).await;
+
+        let row = run_list_impl(&ctx, 20)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == retry.run_id)
+            .expect("run retry phai co trong run_list");
+        assert_eq!(row.status, RunStatus::Completed, "{row:?}");
+
+        // `vid` (video, dat tien) bi SKIP khi retry -> driver KHONG duoc goi them (khong ton credit).
+        assert_eq!(
+            driver.calls.lock().unwrap().len(),
+            calls_sau_run_dau,
+            "retry KHONG duoc goi driver lai (vid phai skip)"
+        );
+
+        let states = ns.list_for_run(&retry.run_id).await.unwrap();
+        for n in ["pr", "vid", "sv"] {
+            assert!(
+                states.iter().any(|s| s.node_id == n && s.state == "done"),
+                "{n} phai done: {states:?}"
+            );
+        }
+    }
+
+    /// Phần C: không có node lỗi -> lệnh trả lỗi rõ ràng (phòng thủ; UI không hiện nút thì không tới).
+    #[tokio::test]
+    async fn run_retry_failed_khong_co_node_loi_bao_loi() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let rr = RunRepo::new(&ctx.db);
+        rr.create("r1", "wf1", RunStatus::Completed, 1.0)
+            .await
+            .unwrap();
+        let g = three_scene_graph(std::path::Path::new("out"));
+        let err = run_retry_failed_impl(&ctx, "r1", &g).await.unwrap_err();
+        assert_eq!(err.code, "NO_FAILED_NODES");
     }
 
     #[tokio::test]
