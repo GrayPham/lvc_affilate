@@ -397,6 +397,18 @@ export async function loginImportCookieFiles(
   return z.array(LoginImportItemSchema).parse(res);
 }
 
+/** Dan HANG LOAT: moi dong mot tai khoan `email|...|cookies` (tu tach cookie + nhan). Moi dong tiem
+ * vao profile rieng + luu credential. Mot dong loi KHONG dung ca lo. */
+export async function loginCookieTextBulk(
+  provider: string,
+  text: string,
+  proxy: string,
+  engine: string,
+): Promise<LoginImportItem[]> {
+  const res = await invoke<unknown>("login_cookie_text_bulk", { provider, text, proxy, engine });
+  return z.array(LoginImportItemSchema).parse(res);
+}
+
 /** (A) Dan MOT doan cookie (khong qua file) cho nen tang bat ky KHAC Dola — tiem vao profile roi
  * luu credential kind `session`. `engine`: "chromium" (CDP, mac dinh) hoac "firefox_portable"
  * (ghi cookies.sqlite, chi dung tay — xem BrowserEngine). */

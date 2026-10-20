@@ -49,10 +49,13 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         // Kiem THUAN truoc — sai proxy/cookie rong thi khong tao rac thu muc / khong mo trinh duyet.
         let proxy_spec = effective_proxy(proxy, &self.cfg.global_proxy)
             .map_err(|e| AccountError::InvalidProxy(e.to_string()))?;
-        let cookies = lvc_core::cookie::parse_netscape(cookie_text);
+        // Tự phát hiện định dạng: Netscape (tab) HOẶC header `name=value; ...` (domain suy theo
+        // provider). Người dùng dán kiểu nào cũng nhận.
+        let domain = lvc_core::cookie::default_cookie_domain(provider);
+        let cookies = lvc_core::cookie::parse_cookies(cookie_text, domain);
         if cookies.is_empty() {
             return Err(AccountError::CookieInvalid(
-                "khong doc duoc cookie nao tu noi dung da dan (kiem tra dinh dang Netscape)"
+                "khong doc duoc cookie nao tu noi dung da dan (Netscape hoac name=value; ...)"
                     .to_string(),
             ));
         }

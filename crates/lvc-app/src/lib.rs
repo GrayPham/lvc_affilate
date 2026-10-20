@@ -126,6 +126,7 @@ pub fn run() {
             commands::credentials::credential_set_daily_limit,
             commands::login::cookie::login_import_cookie_files,
             commands::login::cookie::login_cookie_text,
+            commands::login::cookie::login_cookie_text_bulk,
             commands::login::interactive::login_open_interactive,
             commands::templates::template_list,
             commands::templates::template_get,

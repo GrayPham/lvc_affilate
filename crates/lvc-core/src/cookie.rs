@@ -140,6 +140,99 @@ pub fn parse_netscape(text: &str) -> Vec<Cookie> {
     fill_ss_aliases(out)
 }
 
+/// Domain mặc định (có dấu `.` đầu để khớp cả subdomain) cho cookie dạng header KHÔNG kèm domain,
+/// suy theo nhà cung cấp. Rỗng = không biết (caller nên báo lỗi/yêu cầu Netscape).
+#[must_use]
+pub fn default_cookie_domain(provider: &str) -> &'static str {
+    match provider {
+        "museai" => ".muse.ai",
+        "dola" => ".dola.com",
+        "gemini" | "google" => ".google.com",
+        "facebook" => ".facebook.com",
+        "chatgpt" | "openai" => ".openai.com",
+        "apple" => ".apple.com",
+        _ => "",
+    }
+}
+
+/// Parse cookie dạng HEADER/trình duyệt: `name=value; name2=value2; ...` (một dòng). KHÔNG có domain
+/// nên gán `domain` truyền vào, `path="/"`, `secure=true`, cookie phiên (`expires=None`). Bỏ cặp
+/// rỗng/thiếu `=`. KHÔNG log giá trị (bí mật).
+#[must_use]
+pub fn parse_cookie_header(text: &str, domain: &str) -> Vec<Cookie> {
+    let out: Vec<Cookie> = text
+        .split(';')
+        .filter_map(|kv| {
+            let kv = kv.trim();
+            let (name, value) = kv.split_once('=')?;
+            let name = name.trim();
+            if name.is_empty() {
+                return None;
+            }
+            Some(Cookie {
+                name: name.to_string(),
+                value: value.trim().to_string(),
+                domain: domain.to_string(),
+                path: "/".to_string(),
+                secure: true,
+                http_only: false,
+                expires: None,
+            })
+        })
+        .collect();
+    fill_ss_aliases(out)
+}
+
+/// Parse cookie TỰ PHÁT HIỆN định dạng: thử Netscape (tab) trước; rỗng thì thử header
+/// (`name=value; ...`) với `default_domain`. Dùng cho ô "Dán cookie" (người dùng dán kiểu nào cũng
+/// nhận).
+#[must_use]
+pub fn parse_cookies(text: &str, default_domain: &str) -> Vec<Cookie> {
+    let ns = parse_netscape(text);
+    if !ns.is_empty() {
+        return ns;
+    }
+    parse_cookie_header(text, default_domain)
+}
+
+/// Tách DÁN HÀNG LOẠT: mỗi dòng một tài khoản theo `email|...|cookies` (các trường ngăn bởi `|`).
+/// Tự tìm trường cookie (trường chứa `=`, ưu tiên có cả `;`); nhãn = trường ĐẦU (email) nếu khác
+/// trường cookie, không thì `accN`. Dòng không có `|` → cả dòng là cookie. Trả `(nhãn, chuỗi
+/// cookie thô)` để caller tiêm qua luồng dán-một sẵn có. KHÔNG log.
+#[must_use]
+pub fn extract_bulk_cookie_lines(text: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for (i, raw) in text
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .split('\n')
+        .enumerate()
+    {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = line.split('|').map(str::trim).collect();
+        let cookie_field = fields
+            .iter()
+            .rev()
+            .find(|f| f.contains('=') && f.contains(';'))
+            .or_else(|| fields.iter().rev().find(|f| f.contains('=')))
+            .copied()
+            .unwrap_or(line);
+        if cookie_field.is_empty() || !cookie_field.contains('=') {
+            continue;
+        }
+        let label = fields
+            .first()
+            .copied()
+            .filter(|s| !s.is_empty() && *s != cookie_field)
+            .map_or_else(|| format!("acc{}", i + 1), str::to_string);
+        out.push((label, cookie_field.to_string()));
+    }
+    out
+}
+
 /// CK-BUG-006: `sessionid_ss` → thêm bản sao `sessionid` (httpOnly+secure) khi chưa có. Không ghi đè gốc.
 #[must_use]
 pub fn fill_ss_aliases(cookies: Vec<Cookie>) -> Vec<Cookie> {
@@ -198,6 +291,47 @@ pub fn sessionid_expires(cookies: &[Cookie]) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn header_format_parse_dung() {
+        let c = parse_cookie_header("wd=1366x900; dpr=2; hatch_sess=abc.def", ".muse.ai");
+        assert_eq!(c.len(), 3);
+        assert_eq!(c[0].name, "wd");
+        assert_eq!(c[0].value, "1366x900");
+        assert_eq!(c[2].name, "hatch_sess");
+        assert_eq!(c[2].value, "abc.def");
+        assert_eq!(c[2].domain, ".muse.ai");
+        assert!(c[2].secure);
+    }
+
+    #[test]
+    fn parse_cookies_tu_phat_hien_header_khi_khong_phai_netscape() {
+        // Dán kiểu header -> parse_netscape rỗng -> fallback header.
+        let c = parse_cookies("datr=xxx; ps_l=0; hatch_sess=s1", ".muse.ai");
+        assert_eq!(c.len(), 3);
+        assert_eq!(c[2].name, "hatch_sess");
+    }
+
+    #[test]
+    fn bulk_tach_dung_email_va_cookie() {
+        // Định dạng người dùng: email|2fa|pass|cookies  (cookie là trường có '=' và ';').
+        let txt = "kd1@merepost.com|NCF9SC|v9JX%j|wd=1366x900; dpr=2; hatch_sess=s1\n\
+                   acc2@x.com|AAA|pw|datr=yyy; hatch_sess=s2\n";
+        let rows = extract_bulk_cookie_lines(txt);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "kd1@merepost.com");
+        assert!(rows[0].1.contains("hatch_sess=s1"));
+        assert_eq!(rows[1].0, "acc2@x.com");
+        assert!(rows[1].1.contains("hatch_sess=s2"));
+    }
+
+    #[test]
+    fn bulk_dong_chi_co_cookie_khong_co_pipe() {
+        let rows = extract_bulk_cookie_lines("wd=1; hatch_sess=s9");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "acc1");
+        assert!(rows[0].1.contains("hatch_sess=s9"));
+    }
 
     const SAMPLE: &str = "# Netscape HTTP Cookie File\n\
         .dola.com\tTRUE\t/\tTRUE\t1800000000\tsessionid\tabc123\n\

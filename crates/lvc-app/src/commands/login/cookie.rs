@@ -222,6 +222,61 @@ pub async fn login_import_cookie_files(
     login_import_cookie_files_impl(&state, &provider, &paths, &proxy).await
 }
 
+/// DÁN HÀNG LOẠT: mỗi dòng một tài khoản `email|...|cookies` (tự tách cookie + nhãn, xem
+/// `lvc_core::cookie::extract_bulk_cookie_lines`). Mỗi dòng tiêm vào profile riêng + lưu credential
+/// `session`. Một dòng lỗi KHÔNG dừng cả lô (có `ok`/`error` riêng).
+///
+/// # Errors
+/// `IpcError` mã `NO_COOKIE_LINES` khi không tách được dòng cookie nào.
+pub async fn login_cookie_text_bulk_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    provider: &str,
+    text: &str,
+    proxy: &str,
+    engine: BrowserEngine,
+) -> Result<Vec<LoginImportItem>, IpcError> {
+    let lines = lvc_core::cookie::extract_bulk_cookie_lines(text);
+    if lines.is_empty() {
+        return Err(IpcError::new(
+            "NO_COOKIE_LINES",
+            "khong tach duoc tai khoan nao (moi dong: email|...|cookies, hoac chi cookie)",
+        ));
+    }
+    let mut out = Vec::with_capacity(lines.len());
+    for (label, cookie_str) in lines {
+        match login_cookie_text_impl(ctx, provider, &label, &cookie_str, proxy, engine).await {
+            Ok(_) => out.push(LoginImportItem {
+                label,
+                ok: true,
+                error: None,
+            }),
+            Err(e) => out.push(LoginImportItem {
+                label,
+                ok: false,
+                error: Some(e.message),
+            }),
+        }
+    }
+    Ok(out)
+}
+
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan tham so JSON da giai ma so huu - bien gioi IPC"
+)]
+#[tauri::command]
+pub async fn login_cookie_text_bulk(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+    text: String,
+    proxy: String,
+    engine: String,
+) -> Result<Vec<LoginImportItem>, IpcError> {
+    let engine = BrowserEngine::parse(&engine)
+        .map_err(|e| IpcError::new("INVALID_ENGINE", e.to_string()))?;
+    login_cookie_text_bulk_impl(&state, &provider, &text, &proxy, engine).await
+}
+
 #[cfg(test)]
 mod tests {
     use lvc_browser::FakeStep;

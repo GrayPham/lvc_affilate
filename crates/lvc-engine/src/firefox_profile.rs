@@ -56,10 +56,11 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         // Kiểm proxy THUẦN trước — sai thì không tạo rác thư mục / không ghi cookie.
         let proxy_spec = effective_proxy(proxy, &self.cfg.global_proxy)
             .map_err(|e| AccountError::InvalidProxy(e.to_string()))?;
-        let cookies = lvc_core::cookie::parse_netscape(cookie_text);
+        let domain = lvc_core::cookie::default_cookie_domain(provider);
+        let cookies = lvc_core::cookie::parse_cookies(cookie_text, domain);
         if cookies.is_empty() {
             return Err(AccountError::CookieInvalid(
-                "khong doc duoc cookie nao tu noi dung da dan (kiem tra dinh dang Netscape)"
+                "khong doc duoc cookie nao tu noi dung da dan (Netscape hoac name=value; ...)"
                     .to_string(),
             ));
         }

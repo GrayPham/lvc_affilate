@@ -24,12 +24,12 @@ import {
   credentialProviderLabel,
   describeCredentialError,
 } from "../format/credential";
-import { loginCookieText, loginImportCookieFiles, loginOpenInteractive, pickFiles } from "../ipc/commands";
+import { loginCookieText, loginCookieTextBulk, loginImportCookieFiles, loginOpenInteractive, pickFiles } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 import type { BrowserEngineId, CredentialProvider } from "../ipc/types";
 
 type Platform = CredentialProvider; // "dola" la mot gia tri cua CredentialProvider, xu ly rieng ben duoi.
-type Method = "paste" | "bulk" | "browser";
+type Method = "paste" | "bulkPaste" | "bulk" | "browser";
 
 /** Phuong thuc hop le theo nen tang — xem doc dau file ve ly do Dola khong co "browser". */
 function methodsFor(platform: Platform): readonly Method[] {
@@ -37,12 +37,13 @@ function methodsFor(platform: Platform): readonly Method[] {
     return ["paste", "bulk"];
   }
   return INTERACTIVE_LOGIN_PROVIDERS.includes(platform)
-    ? ["browser", "paste", "bulk"]
-    : ["paste", "bulk"];
+    ? ["browser", "paste", "bulkPaste", "bulk"]
+    : ["paste", "bulkPaste", "bulk"];
 }
 
 const METHOD_LABEL: Record<Method, string> = {
   paste: "Dán cookie",
+  bulkPaste: "Dán hàng loạt",
   bulk: "Nạp nhiều file",
   browser: "Mở trình duyệt đăng nhập",
 };
@@ -141,6 +142,31 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  async function submitBulkPaste(): Promise<void> {
+    setError(null);
+    setOkMsg(null);
+    setBulkResult(null);
+    if (secret.trim() === "") {
+      setError("Dán nội dung (mỗi dòng: email|...|cookies, hoặc chỉ cookie).");
+      return;
+    }
+    setBusy(true);
+    try {
+      const items = await loginCookieTextBulk(platform, secret, proxy.trim(), engine);
+      setBulkResult(items);
+      await useCredentialsStore.getState().load();
+      const ok = items.filter((i) => i.ok).length;
+      setOkMsg(`Đã thêm ${ok}/${items.length} tài khoản.`);
+      if (ok > 0) {
+        setSecret("");
+      }
+    } catch (e) {
+      setError(describeCredentialError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitBrowser(): Promise<void> {
     setBusy(true);
     setError(null);
@@ -159,6 +185,7 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
   const canSubmitPaste =
     !busy && label.trim() !== "" && secret.trim() !== "" && nameError === null && proxyError === null;
   const canSubmitBrowser = !busy && label.trim() !== "" && proxyError === null;
+  const canSubmitBulkPaste = !busy && secret.trim() !== "" && proxyError === null;
 
   return (
     <Dialog title="Thêm tài khoản" onClose={onClose} width="36rem">
@@ -252,30 +279,43 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="flex flex-col gap-3 rounded-lg border border-line bg-fill p-3">
-            <label className="flex flex-col gap-1 text-xs text-muted">
-              {platform === "dola" ? "Tên tài khoản" : "Nhãn"}
-              <input
-                className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-fg placeholder:text-ink3"
-                value={label}
-                disabled={busy}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={platform === "dola" ? "vd acc1" : "vd Gmail acc1"}
-              />
-              {nameError ? <span className="text-rose">{NAME_INVALID_MSG}</span> : null}
-            </label>
+            {method === "bulkPaste" ? null : (
+              <label className="flex flex-col gap-1 text-xs text-muted">
+                {platform === "dola" ? "Tên tài khoản" : "Nhãn"}
+                <input
+                  className="rounded-md border border-line bg-fill px-2.5 py-1.5 text-sm text-fg placeholder:text-ink3"
+                  value={label}
+                  disabled={busy}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder={platform === "dola" ? "vd acc1" : "vd Gmail acc1"}
+                />
+                {nameError ? <span className="text-rose">{NAME_INVALID_MSG}</span> : null}
+              </label>
+            )}
 
-            {method === "paste" ? (
+            {method === "paste" || method === "bulkPaste" ? (
               <>
                 <label className="flex flex-col gap-1 text-xs text-muted">
-                  Cookie / nội dung đăng nhập
+                  {method === "bulkPaste"
+                    ? "Dán hàng loạt — mỗi dòng một tài khoản"
+                    : "Cookie / nội dung đăng nhập"}
                   <textarea
                     className="h-28 resize-none rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-fg placeholder:text-ink3"
                     value={secret}
                     disabled={busy}
                     onChange={(e) => setSecret(e.target.value)}
-                    placeholder="Dán cookie/nội dung đăng nhập vào đây"
+                    placeholder={
+                      method === "bulkPaste"
+                        ? "email|...|cookies (mỗi dòng 1 tài khoản). Tự phát hiện cookie (name=value; ... hoặc Netscape)."
+                        : "Dán cookie/nội dung đăng nhập vào đây (name=value; ... hoặc Netscape)"
+                    }
                   />
                 </label>
+                {method === "bulkPaste" ? (
+                  <p className="text-[11px] text-ink3">
+                    Tên tài khoản tự lấy từ trường đầu (email) mỗi dòng. Tự tách cookie trong mỗi dòng.
+                  </p>
+                ) : null}
 
                 {platform !== "dola" ? (
                   <div className="flex flex-col gap-1 text-xs text-muted">
@@ -336,17 +376,45 @@ export default function AddAccountDialog({ onClose }: { onClose: () => void }) {
             <div className="flex justify-end">
               <button
                 type="button"
-                disabled={method === "paste" ? !canSubmitPaste : !canSubmitBrowser}
+                disabled={
+                  method === "paste"
+                    ? !canSubmitPaste
+                    : method === "bulkPaste"
+                      ? !canSubmitBulkPaste
+                      : !canSubmitBrowser
+                }
                 className={BTN_PRIMARY_SM}
-                onClick={() => void (method === "paste" ? submitPaste() : submitBrowser())}
+                onClick={() =>
+                  void (method === "paste"
+                    ? submitPaste()
+                    : method === "bulkPaste"
+                      ? submitBulkPaste()
+                      : submitBrowser())
+                }
               >
                 {busy
                   ? "Đang xử lý…"
                   : method === "paste"
                     ? "Thêm"
-                    : "Mở trình duyệt đăng nhập"}
+                    : method === "bulkPaste"
+                      ? "Thêm hàng loạt"
+                      : "Mở trình duyệt đăng nhập"}
               </button>
             </div>
+            {method === "bulkPaste" && bulkResult ? (
+              <div className="max-h-40 overflow-auto rounded border border-line bg-panel">
+                {bulkResult.map((b, i) => (
+                  <div
+                    key={`${b.label}-${i}`}
+                    className="flex items-start gap-2 border-b border-line px-2 py-1 text-xs last:border-b-0"
+                  >
+                    <span className={b.ok ? "text-ok" : "text-rose"}>{b.ok ? "✓" : "✗"}</span>
+                    <span className="font-medium text-fg">{b.label}</span>
+                    {b.error ? <span className="text-rose">— {b.error}</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
 
