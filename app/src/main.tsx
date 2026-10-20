@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import LicenseGate from "./components/LicenseGate";
 import "./index.css";
 import { startEngineBridge } from "./store/engine_bridge";
 
@@ -15,6 +16,8 @@ if (!rootEl) {
 
 createRoot(rootEl).render(
   <StrictMode>
-    <App />
+    <LicenseGate>
+      <App />
+    </LicenseGate>
   </StrictMode>,
 );

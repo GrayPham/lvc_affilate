@@ -694,3 +694,33 @@ export async function templateDelete(id: string): Promise<boolean> {
   const res = await invoke<unknown>("template_delete_private", { id });
   return z.boolean().parse(res);
 }
+
+// ── Cổng bản quyền LVC Shop (commands/license.rs) ──
+const LicenseStatusSchema = z.object({
+  activated: z.boolean(),
+  username: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+});
+export type LicenseStatus = z.infer<typeof LicenseStatusSchema>;
+
+/** Trạng thái bản quyền (auto-login offline từ session đã cache, còn hạn). */
+export async function licenseStatus(): Promise<LicenseStatus> {
+  const res = await invoke<unknown>("license_status", {});
+  return LicenseStatusSchema.parse(res);
+}
+
+/** Bước 1: đăng nhập tài khoản (lưu token trong bộ nhớ backend). */
+export async function licenseLogin(username: string, password: string): Promise<void> {
+  await invoke<unknown>("license_login", { username, password });
+}
+
+/** Bước 2: kích hoạt license (cần đã đăng nhập) → trả trạng thái mới. */
+export async function licenseActivate(licenseKey: string): Promise<LicenseStatus> {
+  const res = await invoke<unknown>("license_activate", { licenseKey });
+  return LicenseStatusSchema.parse(res);
+}
+
+/** Đăng xuất: xoá session cache + token. */
+export async function licenseLogout(): Promise<void> {
+  await invoke<unknown>("license_logout", {});
+}
