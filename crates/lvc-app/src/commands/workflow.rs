@@ -773,6 +773,70 @@ mod tests {
         }
     }
 
+    /// Phần C (final-review Critical 1): CHAINED retry — retry → vẫn lỗi → retry lại. Node đắt
+    /// (`vid`) đã xong phải được seed+skip ở CẢ HAI lần retry, driver KHÔNG được gọi lại (không tốn
+    /// credit lại) dù qua nhiều lần retry. Bắt lỗi "skip không ghi `set_outputs` cho run mới".
+    #[tokio::test]
+    async fn run_retry_failed_chained_khong_re_chay_node_dat() {
+        async fn wait_done<D: BrowserDriver + 'static>(ctx: &Ctx<D>, run_id: &str) {
+            for _ in 0..300 {
+                let rows = run_list_impl(ctx, 30).await.unwrap();
+                if rows
+                    .iter()
+                    .any(|r| r.id == run_id && r.status != RunStatus::Running)
+                {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            panic!("run {run_id} khong xong");
+        }
+
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("src.mp4");
+        std::fs::write(&src, b"fake-mp4").unwrap();
+        // CHI lan chay dau duoc phep dung driver (3 canh). Neu retry re-chay vid -> het step/sai.
+        let (dir, ctx, driver) = ctx_with(happy_steps(3, &src), &["acc1", "acc2", "acc3"]).await;
+        let g = three_scene_graph(&dir.path().join("out"));
+        let ns = lvc_store::NodeStateRepo::new(&ctx.db);
+
+        let r1 = run_start_impl(&ctx, "wf1", &g).await.unwrap();
+        wait_done(&ctx, &r1.run_id).await;
+        let calls = driver.calls.lock().unwrap().len();
+        assert!(calls > 0, "lan dau phai chay vid");
+
+        // Retry lan 1: gia lap sv loi.
+        ns.upsert(&r1.run_id, "sv", "failed", (1, 1, 0, 1), Some("x"), 9.0)
+            .await
+            .unwrap();
+        let r2 = run_retry_failed_impl(&ctx, &r1.run_id, &g).await.unwrap();
+        wait_done(&ctx, &r2.run_id).await;
+
+        // Retry lan 2: sv lai loi trong run2 -> retry tiep.
+        ns.upsert(&r2.run_id, "sv", "failed", (1, 1, 0, 1), Some("x"), 9.0)
+            .await
+            .unwrap();
+        let r3 = run_retry_failed_impl(&ctx, &r2.run_id, &g).await.unwrap();
+        wait_done(&ctx, &r3.run_id).await;
+
+        // vid (dat tien) KHONG bao gio chay lai qua 2 lan retry -> driver.calls khong doi.
+        assert_eq!(
+            driver.calls.lock().unwrap().len(),
+            calls,
+            "retry nhieu lan KHONG duoc re-chay node da xong (vid)"
+        );
+        assert_eq!(
+            run_list_impl(&ctx, 30)
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|r| r.id == r3.run_id)
+                .unwrap()
+                .status,
+            RunStatus::Completed
+        );
+    }
+
     /// Phần C: không có node lỗi -> lệnh trả lỗi rõ ràng (phòng thủ; UI không hiện nút thì không tới).
     #[tokio::test]
     async fn run_retry_failed_khong_co_node_loi_bao_loi() {

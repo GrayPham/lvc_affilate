@@ -779,6 +779,16 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     .await;
                 if let Some(seeded) = outputs.get(node_id) {
                     self.emit_preview_if_media(&run_id, node_id, seeded);
+                    // Final-review Critical 1: MANG SEED sang node_states.outputs cua run MOI — de
+                    // lan "chay lai node loi" KE TIEP (chained retry) van seed duoc node da xong,
+                    // KHONG re-chay (khong ton credit lai). Thieu buoc nay thi retry lan 2 tro di
+                    // se chay lai node dat tien.
+                    if let Ok(json) = serde_json::to_string(seeded) {
+                        if let Err(e) = self.node_states.set_outputs(&run_id, node_id, &json).await
+                        {
+                            warn!(run_id, node_id, error = %e, "khong mang duoc seed outputs sang run moi");
+                        }
+                    }
                 }
                 continue;
             }
