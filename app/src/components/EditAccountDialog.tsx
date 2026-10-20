@@ -27,6 +27,19 @@ function isFirefoxEngine(target: EditTarget): boolean {
   return target.source === "credential" && target.row.meta.engine === "firefox_portable";
 }
 
+/** Tag loai node da luu trong `meta.node_types` (mang chuoi). */
+function readNodeTypes(meta: Record<string, unknown>): string[] {
+  const nt = meta.node_types;
+  return Array.isArray(nt) ? nt.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** Lua chon tag loai node (khop `Vault::set_node_types`: video/image/script). */
+const NODE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "video", label: "Video" },
+  { value: "image", label: "Hình ảnh" },
+  { value: "script", label: "Tạo kịch bản" },
+];
+
 export default function EditAccountDialog({
   target,
   onClose,
@@ -36,6 +49,18 @@ export default function EditAccountDialog({
 }) {
   const setProxyDola = useAccountsStore((s) => s.setProxy);
   const updateCredential = useCredentialsStore((s) => s.update);
+  const setNodeTypesStore = useCredentialsStore((s) => s.setNodeTypes);
+  const reloginStore = useCredentialsStore((s) => s.relogin);
+
+  // Chi credential (khong phai Dola) moi co id/node_types/dang-nhap-lai.
+  const credId = target.source === "credential" ? target.row.id : null;
+  const credKind = target.source === "credential" ? target.row.kind : "";
+  // "Dang nhap lai" chi cho tai khoan dang COOKIE (session/login), khong cho api_key.
+  const canRelogin = credId !== null && (credKind === "session" || credKind === "login");
+  const [nodeTypes, setNodeTypes] = useState<string[]>(() =>
+    target.source === "credential" ? readNodeTypes(target.row.meta) : [],
+  );
+  const [cookieText, setCookieText] = useState("");
 
   const initialProxy = target.source === "dola" ? target.row.proxy : target.row.proxyMasked;
   const [mode, setMode] = useState(() => proxyToMode(initialProxy));
@@ -80,8 +105,49 @@ export default function EditAccountDialog({
     }
   }
 
+  function toggleNode(value: string): void {
+    setNodeTypes((cur) =>
+      cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value],
+    );
+  }
+
+  async function saveNodeTypes(): Promise<void> {
+    if (credId === null) return;
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      await setNodeTypesStore(credId, nodeTypes);
+      setOkMsg("Đã lưu node sử dụng.");
+    } catch (e) {
+      setError(describeCredentialError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doRelogin(): Promise<void> {
+    if (credId === null || cookieText.trim() === "") return;
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      await reloginStore(credId, cookieText);
+      setCookieText("");
+      setOkMsg("Đã đăng nhập lại (tiêm cookie mới vào profile). Bấm Kiểm tra để xác nhận.");
+    } catch (e) {
+      setError(describeCredentialError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <Dialog title={`Proxy & trình duyệt — ${name}`} onClose={onClose} width="30rem">
+    <Dialog
+      title={`${target.source === "credential" ? "Cài đặt tài khoản" : "Proxy & trình duyệt"} — ${name}`}
+      onClose={onClose}
+      width="30rem"
+    >
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between text-xs text-muted">
           <span>Nền tảng</span>
@@ -103,6 +169,46 @@ export default function EditAccountDialog({
           </div>
         ) : null}
 
+        {credId !== null ? (
+          <div className="flex flex-col gap-2 border-t border-line pt-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-fg">Dùng cho node</span>
+              <button
+                type="button"
+                disabled={busy}
+                className={BTN_NEUTRAL_SM}
+                onClick={() => void saveNodeTypes()}
+              >
+                Lưu node
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {NODE_OPTIONS.map((opt) => {
+                const on = nodeTypes.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => toggleNode(opt.value)}
+                    className={`rounded-full border px-3 py-1 text-xs ${
+                      on
+                        ? "border-accent bg-accent/15 text-accent"
+                        : "border-line text-ink3 hover:border-accent/40"
+                    }`}
+                  >
+                    {on ? "✓ " : ""}
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] leading-[1.4] text-muted">
+              Node AI chỉ lấy tài khoản có đúng loại node tương ứng.
+            </span>
+          </div>
+        ) : null}
+
         <ConnectionModeFields
           mode={mode}
           onModeChange={setMode}
@@ -118,6 +224,33 @@ export default function EditAccountDialog({
             lưu.
           </span>
         </div>
+
+        {canRelogin ? (
+          <div className="flex flex-col gap-2 border-t border-line pt-3">
+            <span className="text-xs font-medium text-fg">Đăng nhập lại</span>
+            <span className="text-[11px] leading-[1.4] text-muted">
+              Dán cookie MỚI (đã đăng nhập) để tiêm lại vào đúng tài khoản này khi phiên hết hạn.
+            </span>
+            <textarea
+              value={cookieText}
+              onChange={(e) => setCookieText(e.target.value)}
+              disabled={busy}
+              rows={3}
+              placeholder="name=value; name2=value2; …  (hoặc cookie Netscape)"
+              className="w-full resize-y rounded-md border border-line bg-bg2 px-2 py-1.5 font-mono text-[11px] text-fg placeholder:text-muted"
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={busy || cookieText.trim() === ""}
+                className={BTN_NEUTRAL_SM}
+                onClick={() => void doRelogin()}
+              >
+                {busy ? "Đang tiêm…" : "Đăng nhập lại"}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {error ? <p className="text-xs text-rose">{error}</p> : null}
         {okMsg ? <p className="text-xs text-ok">{okMsg}</p> : null}

@@ -58,6 +58,7 @@ export default function ProgressPanel() {
   const liveTasks = useRunStore((s) => s.tasks);
   const nodeStates = useRunStore((s) => s.nodes);
   const graphNodes = useGraphStore((s) => s.nodes);
+  const focusNode = useGraphStore((s) => s.focusNode);
   const [meta, setMeta] = useState<Record<string, TaskDto>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -121,15 +122,19 @@ export default function ProgressPanel() {
         const label = kind ? NODE_LABEL_VI[kind] : nid;
         const cls = NODE_ROW_CLASS[n.state] ?? NODE_ROW_CLASS.queued;
         return (
-          <div key={nid} className={`flex items-center gap-2 rounded border px-2 py-1 text-xs ${cls}`}>
-            <span className="flex-1 truncate" title={n.error ?? undefined}>
-              {label}
-            </span>
+          <button
+            type="button"
+            key={nid}
+            onClick={() => focusNode(nid)}
+            title={n.error ?? "Bấm để nhảy tới node + xem lỗi"}
+            className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-xs hover:brightness-110 ${cls}`}
+          >
+            <span className="flex-1 truncate">{label}</span>
             <span className="shrink-0 font-mono">
               {n.done}/{n.total}
               {n.failed > 0 ? ` (${n.failed} lỗi)` : ""}
             </span>
-          </div>
+          </button>
         );
       })}
       {ids.map((id) => {
@@ -142,16 +147,23 @@ export default function ProgressPanel() {
         const failureCode = live?.failureCode ?? info?.failureCode ?? null;
         const status = live ? (live.status === "done" ? "done" : live.status === "failed" ? "failed" : "running") : statusOf(info?.status, failureCode);
         const stageLabel = failureCode === "cancelled" ? "Đã huỷ" : stage;
+        const nodeId = info?.nodeId ?? null;
 
         return (
-          <div key={id} className={`flex items-center gap-2 rounded border px-2 py-1 text-xs ${ROW_CLASS[status]}`}>
+          <button
+            type="button"
+            key={id}
+            onClick={() => (nodeId ? focusNode(nodeId) : undefined)}
+            title={nodeId ? "Bấm để nhảy tới node + xem lỗi" : undefined}
+            className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-xs hover:brightness-110 ${ROW_CLASS[status]}`}
+          >
             <span className="w-8 shrink-0 font-mono">#{sceneIndex ?? "?"}</span>
             <span className="w-28 shrink-0 truncate" title={account ?? ""}>
               {account || "auto"}
             </span>
             <span className="flex-1 truncate">{stageLabel}</span>
             <span className="w-14 shrink-0 text-right font-mono">{formatElapsed(elapsedMs)}</span>
-          </div>
+          </button>
         );
       })}
     </div>

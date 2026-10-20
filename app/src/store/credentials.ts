@@ -18,6 +18,7 @@ import {
   credentialSetNodeTypes,
   credentialUpdate,
   credentialVerify,
+  loginCookieRelogin,
 } from "../ipc/commands";
 import { describeCredentialError } from "../format/credential";
 import type { CredentialView, VerifyOutcome } from "../ipc/types";
@@ -71,6 +72,8 @@ interface CredentialsState {
   add: (input: CredentialAddInput) => Promise<CredentialView>;
   update: (id: string, patch: CredentialUpdateInput) => Promise<void>;
   verify: (id: string) => Promise<VerifyOutcome>;
+  /** "Dang nhap lai": tiem cookie moi vao credential cookie da ton tai (giu profile/node_types). */
+  relogin: (id: string, cookieText: string) => Promise<void>;
   /** Dat tag loai node (`video`/`image`/`script`) — node AI chi lay tai khoan/key dung tag. */
   setNodeTypes: (id: string, nodeTypes: string[]) => Promise<void>;
   setDailyLimit: (id: string, limit: number | null) => Promise<void>;
@@ -124,6 +127,16 @@ export const useCredentialsStore = create<CredentialsState>((set, get) => ({
       const outcome = await credentialVerify(id);
       await get().load();
       return outcome;
+    } finally {
+      set((s) => ({ busy: decBusy(s.busy, id) }));
+    }
+  },
+
+  relogin: async (id, cookieText) => {
+    set((s) => ({ busy: incBusy(s.busy, id) }));
+    try {
+      await loginCookieRelogin(id, cookieText);
+      await get().load();
     } finally {
       set((s) => ({ busy: decBusy(s.busy, id) }));
     }

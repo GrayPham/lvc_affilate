@@ -75,6 +75,30 @@ async fn provision_meta<D: BrowserDriver + 'static>(
     }
 }
 
+/// Tag "Dùng cho node" MẶC ĐỊNH theo nhà cung cấp — để cột "Dùng cho node" không TRỐNG ngay khi
+/// vừa thêm tài khoản cookie (người dùng vẫn sửa lại được qua `credential_set_node_types`). Giá trị
+/// khớp tag hợp lệ của [`lvc_vault::Vault::set_node_types`] (`"video"`/`"image"`/`"script"`).
+fn default_node_types(provider: &str) -> Vec<&'static str> {
+    match provider {
+        "museai" => vec!["video", "image"],
+        "dola" => vec!["video"],
+        _ => Vec::new(),
+    }
+}
+
+/// Chèn `node_types` mặc định vào `meta` (object) nếu CHƯA có khoá đó — không ghi đè lựa chọn người
+/// dùng. Trả lại `meta` đã bổ sung.
+fn with_default_node_types(mut meta: serde_json::Value, provider: &str) -> serde_json::Value {
+    let defaults = default_node_types(provider);
+    if !defaults.is_empty() {
+        if let Some(obj) = meta.as_object_mut() {
+            obj.entry("node_types".to_string())
+                .or_insert_with(|| serde_json::json!(defaults));
+        }
+    }
+    meta
+}
+
 /// Thân `login_cookie_text` — (A) dán MỘT đoạn cookie (không qua file) cho nền tảng bất kỳ KHÁC
 /// Dola (Dola có pipeline riêng — `account_import_cookies`): tiêm vào profile thật rồi lưu
 /// credential kind `session`. Dùng bởi `AddAccountDialog` (phương thức "Dán cookie").
@@ -96,10 +120,58 @@ pub async fn login_cookie_text_impl<D: BrowserDriver + 'static>(
         kind: "session".to_string(),
         label: label.to_string(),
         secret: cookie_text.to_string(),
-        meta,
+        meta: with_default_node_types(meta, provider),
         proxy: proxy.to_string(),
     };
     Ok(ctx.vault.add(&req).await?)
+}
+
+/// Thân `login_cookie_relogin` — "Đăng nhập lại" cho MỘT credential cookie đã tồn tại: tiêm cookie
+/// MỚI vào ĐÚNG profile cũ (giữ `provider`/`label`/`proxy`/`engine`), rồi ghi đè secret + `meta`
+/// (`profile_dir` mới) nhưng GIỮ `node_types` người dùng đã đặt. Trả view đã cập nhật.
+///
+/// # Errors
+/// - `NOT_FOUND`: không có credential `id`.
+/// - `COOKIE_INVALID`: `cookie_text` không đọc được cookie nào.
+/// - `CRED_*`/`VAULT_*`: lỗi ghi lại secret/meta.
+pub async fn login_cookie_relogin_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    id: &str,
+    cookie_text: &str,
+) -> Result<CredentialView, IpcError> {
+    let view =
+        ctx.vault.get_view(id).await?.ok_or_else(|| {
+            IpcError::new("NOT_FOUND", "khong tim thay tai khoan de dang nhap lai")
+        })?;
+    // Proxy THÔ (chưa che) + engine lấy từ meta — provision cần proxy thật, không phải bản che.
+    let (_provider, _dir, proxy, engine_str) = ctx.vault.profile_dir_and_proxy(id).await?;
+    let engine =
+        lvc_core::BrowserEngine::parse(&engine_str).unwrap_or(lvc_core::BrowserEngine::Chromium);
+    let meta = provision_meta(
+        ctx,
+        &view.provider,
+        &view.label,
+        cookie_text,
+        &proxy,
+        engine,
+    )
+    .await?;
+    // Giữ node_types người dùng đã đặt (nếu có); không thì rơi về mặc định theo provider.
+    let meta = match view.meta.get("node_types") {
+        Some(nt) => {
+            let mut m = meta;
+            if let Some(obj) = m.as_object_mut() {
+                obj.insert("node_types".to_string(), nt.clone());
+            }
+            m
+        }
+        None => with_default_node_types(meta, &view.provider),
+    };
+    ctx.vault.update_secret_meta(id, cookie_text, &meta).await?;
+    ctx.vault
+        .get_view(id)
+        .await?
+        .ok_or_else(|| IpcError::new("NOT_FOUND", "tai khoan bien mat sau khi dang nhap lai"))
 }
 
 #[allow(
@@ -118,6 +190,19 @@ pub async fn login_cookie_text(
     let engine = BrowserEngine::parse(&engine)
         .map_err(|e| IpcError::new("INVALID_ENGINE", e.to_string()))?;
     login_cookie_text_impl(&state, &provider, &label, &cookie_text, &proxy, engine).await
+}
+
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan tham so JSON da giai ma so huu - bien gioi IPC"
+)]
+#[tauri::command]
+pub async fn login_cookie_relogin(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    cookie_text: String,
+) -> Result<CredentialView, IpcError> {
+    login_cookie_relogin_impl(&state, &id, &cookie_text).await
 }
 
 /// Kết quả nạp MỘT file trong lô.
@@ -193,7 +278,7 @@ pub async fn login_import_cookie_files_impl<D: BrowserDriver + 'static>(
             kind: "session".to_string(),
             label: label.clone(),
             secret: content,
-            meta,
+            meta: with_default_node_types(meta, provider),
             proxy: proxy.to_string(),
         };
         match ctx.vault.add(&req).await {
@@ -384,6 +469,76 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(view.meta.get("profile_dir"), None);
+    }
+
+    #[tokio::test]
+    async fn museai_cookie_add_tu_gan_node_types_video_image() {
+        // Feature "Dùng cho node": thêm cookie MuseAI phải tự gán node_types mặc định để cột không
+        // trống. (COOKIE_TEXT là netscape .google.com — không ảnh hưởng node_types theo provider.)
+        let (_dir, ctx, _driver) = ctx_with(vec![FakeStep::Launch(Ok(()))], &[]).await;
+        let view = login_cookie_text_impl(
+            &ctx,
+            "museai",
+            "acc1",
+            COOKIE_TEXT,
+            "",
+            BrowserEngine::Chromium,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            view.meta["node_types"],
+            serde_json::json!(["video", "image"]),
+            "MuseAI cookie phai tu gan node_types video+image"
+        );
+    }
+
+    #[tokio::test]
+    async fn relogin_tiem_cookie_moi_cap_nhat_secret_va_giu_node_types() {
+        // Feature "Đăng nhập lại": tiêm cookie mới vào ĐÚNG credential cũ (giữ node_types). 2 lần
+        // provision (add + relogin) nên cần 2 FakeStep::Launch.
+        let (_dir, ctx, _driver) = ctx_with(
+            vec![FakeStep::Launch(Ok(())), FakeStep::Launch(Ok(()))],
+            &[],
+        )
+        .await;
+        let created = login_cookie_text_impl(
+            &ctx,
+            "museai",
+            "acc1",
+            COOKIE_TEXT,
+            "",
+            BrowserEngine::Chromium,
+        )
+        .await
+        .unwrap();
+        let id = created.id.clone();
+        // Cookie Netscape khác (hạn mới) để phân biệt với COOKIE_TEXT ban đầu.
+        let new_cookie = ".google.com\tTRUE\t/\tTRUE\t1900000000\tSID\txyz999\n";
+        let after = login_cookie_relogin_impl(&ctx, &id, new_cookie)
+            .await
+            .unwrap();
+        assert_eq!(after.id, id, "cung credential, khong tao moi");
+        assert_eq!(
+            after.meta["node_types"],
+            serde_json::json!(["video", "image"]),
+            "node_types phai duoc giu qua dang nhap lai"
+        );
+        assert!(
+            after.meta.get("profile_dir").is_some(),
+            "dang nhap lai phai tiem lai profile"
+        );
+        // Chỉ còn ĐÚNG 1 credential (relogin cập nhật tại chỗ).
+        assert_eq!(ctx.vault.list(Some("museai")).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn relogin_id_khong_ton_tai_bao_not_found() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let err = login_cookie_relogin_impl(&ctx, "khong-co", COOKIE_TEXT)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "NOT_FOUND");
     }
 
     #[tokio::test]

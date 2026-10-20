@@ -271,6 +271,38 @@ impl Vault {
         Ok(())
     }
 
+    /// View (đã che) của MỘT credential theo `id`, `None` nếu không có. Dùng cho luồng "Đăng nhập
+    /// lại" (đọc `provider`/`label`/`meta` hiện tại trước khi tiêm cookie mới).
+    ///
+    /// # Errors
+    /// [`VaultRepoError`] khi truy vấn hoặc giải mã lỗi.
+    pub async fn get_view(&self, id: &str) -> Result<Option<CredentialView>, VaultRepoError> {
+        match self.repo.get(id).await? {
+            Some(row) => Ok(Some(self.view(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Đổi bí mật MỚI **và** ghi đè `meta` (mã hoá lại secret). Khác [`Self::update_secret`] (giữ
+    /// `meta` cũ) — dùng cho "Đăng nhập lại" khi tiêm cookie mới có thể tạo/đổi `meta.profile_dir`.
+    ///
+    /// # Errors
+    /// [`VaultRepoError`] khi secret rỗng / không tìm thấy / lỗi mã hoá.
+    pub async fn update_secret_meta(
+        &self,
+        id: &str,
+        secret: &str,
+        meta: &serde_json::Value,
+    ) -> Result<(), VaultRepoError> {
+        if secret.trim().is_empty() {
+            return Err(VaultRepoError::EmptySecret);
+        }
+        self.repo.get(id).await?.ok_or(VaultRepoError::NotFound)?;
+        let enc = self.secret_box.encrypt(secret.as_bytes())?;
+        self.repo.update_secret(id, &enc, &meta.to_string()).await?;
+        Ok(())
+    }
+
     /// # Errors
     /// [`VaultRepoError`] khi ghi lỗi.
     pub async fn set_enabled(&self, id: &str, on: bool) -> Result<(), VaultRepoError> {

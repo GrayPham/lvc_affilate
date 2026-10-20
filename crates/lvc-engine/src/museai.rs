@@ -155,19 +155,86 @@ async fn fetch_bootstrap_inner(
     result
 }
 
-async fn fetch_bootstrap_with_session(
+/// PROBE đăng nhập muse.ai cho nút "Kiểm tra" tài khoản cookie: mở profile → vào muse.ai → có
+/// `gatewayUrl` trong trang = ĐÃ đăng nhập. KHÔNG gọi `hatch/vm/wake` + `hatch/token` (nhẹ hơn
+/// [`fetch_bootstrap`], KHÔNG tốn credit, không đánh thức VM). Đóng trình duyệt ngay sau khi đọc.
+///
+/// - `Ok(true)`  = đã đăng nhập (parse bootstrap OK).
+/// - `Ok(false)` = chưa đăng nhập / phiên hết hạn (trang login — thiếu `gatewayUrl`/`authToken`).
+/// - `Err(..)`   = lỗi HẠ TẦNG (Chromium không mở được / profile bị khoá / quá `BOOTSTRAP_TIMEOUT`).
+///
+/// # Errors
+/// Chuỗi mô tả an toàn (không chứa bí mật) khi mở trình duyệt/điều hướng thất bại hoặc quá hạn.
+pub async fn probe_login(profile_dir: &Path, logs_dir: &Path) -> Result<bool, String> {
+    match tokio::time::timeout(BOOTSTRAP_TIMEOUT, probe_login_inner(profile_dir, logs_dir)).await {
+        Ok(r) => r,
+        Err(_) => Err(format!(
+            "qua {}s chua mo duoc muse.ai (profile dang bi cua so Chrome khac khoa?). Dong het cua \
+             so Chrome dang dung profile do roi thu lai.",
+            BOOTSTRAP_TIMEOUT.as_secs()
+        )),
+    }
+}
+
+async fn probe_login_inner(profile_dir: &Path, logs_dir: &Path) -> Result<bool, String> {
+    let driver = ChromiumDriver;
+    let opts = LaunchOpts {
+        profile_dir: profile_dir.to_path_buf(),
+        logs_dir: logs_dir.to_path_buf(),
+        headless: false, // phien THAT da dang nhap — khong muon UA "HeadlessChrome" (dau bot).
+        ..Default::default()
+    };
+    info!("museai: mo trinh duyet KIEM TRA dang nhap");
+    let session = driver.launch(&opts).await.map_err(|e| e.to_string())?;
+    let html = read_page_html(&driver, &session).await;
+    let _ = driver.close(session).await;
+    // Lỗi `?` ở đây là lỗi HẠ TẦNG (goto/eval). `parse_bootstrap_html` thất bại KHÔNG phải lỗi hạ
+    // tầng — chỉ nghĩa là chưa đăng nhập (`Ok(false)`).
+    let logged_in = parse_bootstrap_html(&html?).is_ok();
+    if logged_in {
+        info!("museai: KIEM TRA — da dang nhap");
+    } else {
+        info!("museai: KIEM TRA — chua dang nhap (trang login)");
+    }
+    Ok(logged_in)
+}
+
+impl<D: BrowserDriver + 'static> crate::generate::Engine<D> {
+    /// Kiểm tra một profile `MuseAI` đã đăng nhập chưa — vỏ mỏng quanh [`probe_login`] để lệnh Tauri
+    /// `credential_verify` không cần biết `logs_dir`. KHÔNG generic theo `D` thực sự (probe luôn mở
+    /// `ChromiumDriver` thật, giống [`fetch_bootstrap`]).
+    ///
+    /// # Errors
+    /// Xem [`probe_login`].
+    pub async fn probe_museai_login(&self, profile_dir: &Path) -> Result<bool, String> {
+        probe_login(profile_dir, &self.cfg.logs_dir).await
+    }
+}
+
+/// Mở `muse.ai` trên phiên đã có + đọc toàn bộ HTML trang. Tách riêng để DÙNG CHUNG giữa lấy phiên
+/// đầy đủ ([`fetch_bootstrap_with_session`]) và PROBE đăng nhập ([`probe_login`]). Lỗi ở đây là lỗi
+/// HẠ TẦNG (goto/eval) — khác với `parse_bootstrap_html` thất bại (trang login, chưa đăng nhập).
+async fn read_page_html(
     driver: &ChromiumDriver,
     session: &<ChromiumDriver as BrowserDriver>::Session,
-) -> Result<MuseBootstrap, String> {
+) -> Result<String, String> {
     driver
         .goto(session, "https://muse.ai/")
         .await
         .map_err(|e| e.to_string())?;
     let page = session.page();
-    let html: String = ops::eval_json(page, "document.documentElement.outerHTML")
+    ops::eval_json(page, "document.documentElement.outerHTML")
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())
+}
+
+async fn fetch_bootstrap_with_session(
+    driver: &ChromiumDriver,
+    session: &<ChromiumDriver as BrowserDriver>::Session,
+) -> Result<MuseBootstrap, String> {
+    let html = read_page_html(driver, session).await?;
     let bootstrap = parse_bootstrap_html(&html)?;
+    let page = session.page();
     let vm_id = bootstrap.vm_id();
 
     let wake_js = format!(

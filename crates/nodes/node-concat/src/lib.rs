@@ -138,8 +138,25 @@ async fn mux_audio(video: &Path, audio: &Path) -> Result<(), String> {
     let a = audio.to_string_lossy().to_string();
     let t = tmp.to_string_lossy().to_string();
     let args = [
-        "-y", "-i", &v, "-stream_loop", "-1", "-i", &a, "-map", "0:v:0", "-map", "1:a:0", "-c:v",
-        "copy", "-c:a", "aac", "-shortest", "-movflags", "+faststart", &t,
+        "-y",
+        "-i",
+        &v,
+        "-stream_loop",
+        "-1",
+        "-i",
+        &a,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        &t,
     ];
     run_ffmpeg(&ffmpeg_bin(), &args).await?;
     tokio::fs::rename(&tmp, video)
@@ -199,9 +216,9 @@ impl NodeExecutor for ConcatNode {
         res.map_err(|e| NodeError::new(format!("node {}: ghép video lỗi: {e}", ctx.node_id)))?;
         // Phần audio (tuỳ chọn): có cổng `audio` nối vào thì ghép nhạc/giọng, tự khớp độ dài video.
         if let Some(audio) = inputs.assets("audio").next() {
-            mux_audio(&out, &audio.path)
-                .await
-                .map_err(|e| NodeError::new(format!("node {}: ghép audio lỗi: {e}", ctx.node_id)))?;
+            mux_audio(&out, &audio.path).await.map_err(|e| {
+                NodeError::new(format!("node {}: ghép audio lỗi: {e}", ctx.node_id))
+            })?;
         }
         let asset = Asset::new(out)
             .with(meta::NODE, &ctx.node_id)

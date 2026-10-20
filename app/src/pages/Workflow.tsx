@@ -118,6 +118,8 @@ function WorkflowCanvas() {
   const onConnect = useGraphStore((s) => s.onConnect);
   const addNode = useGraphStore((s) => s.addNode);
   const setSelected = useGraphStore((s) => s.setSelected);
+  const focusNodeId = useGraphStore((s) => s.focusNodeId);
+  const focusTick = useGraphStore((s) => s.focusTick);
   const graphApi = useGraphStoreApi();
   const runApi = useRunStoreApi();
   const addMenuOpen = useWorkflowUi((s) => s.addMenuOpen);
@@ -126,6 +128,26 @@ function WorkflowCanvas() {
 
   const reactFlow = useReactFlow<RFNode, RFEdge>();
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Bấm một dòng trong panel Tiến độ -> `focusNode()` -> canvas NHẢY TỚI node đó (center + zoom nhẹ).
+  // Chỉ chạy theo `focusTick` (mỗi lần bấm tăng 1) để re-center cả khi bấm trùng node, KHÔNG center
+  // mỗi lần node thay đổi vị trí.
+  useEffect(() => {
+    if (!focusNodeId) {
+      return;
+    }
+    const node = reactFlow.getNode(focusNodeId);
+    if (!node) {
+      return;
+    }
+    const w = node.measured?.width ?? 320;
+    const h = node.measured?.height ?? 180;
+    void reactFlow.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+      zoom: 1,
+      duration: 400,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTick]);
   // Chuot phai tren canvas: mo menu "Them node" tai con tro. `screen` = vi tri hien popup (px trong
   // wrapper); `flow` = toa do do thi de dat node moi dung cho. `null` = menu mo kieu cu (nut "+").
   const [menuAt, setMenuAt] = useState<{ screen: { x: number; y: number }; flow: { x: number; y: number } } | null>(

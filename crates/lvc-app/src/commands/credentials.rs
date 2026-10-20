@@ -155,8 +155,29 @@ pub async fn credential_set_daily_limit(
     credential_set_daily_limit_impl(&state, &id, limit).await
 }
 
-/// Thân `credential_verify` — với `api_key` (openai/gemini) gọi list-models bằng key rồi ghi
-/// `status`; provider khác trả `unknown` (kiểm bằng trình duyệt để sau).
+/// Map kết quả probe đăng nhập `MuseAI` (`Ok(true)`=đã đăng nhập, `Ok(false)`=chưa, `Err`=hạ tầng)
+/// → [`VerifyOutcome`]. Thuần (test được không cần trình duyệt). `expired` khớp UI → "Cần đăng nhập
+/// lại" (`app/src/pages/AccountsPage.tsx`).
+fn museai_login_status(probe: Result<bool, String>) -> VerifyOutcome {
+    match probe {
+        Ok(true) => VerifyOutcome {
+            status: "ok".to_string(),
+            detail: "da dang nhap muse.ai".to_string(),
+        },
+        Ok(false) => VerifyOutcome {
+            status: "expired".to_string(),
+            detail: "chua dang nhap / phien het han — bam Dang nhap lai".to_string(),
+        },
+        Err(e) => VerifyOutcome {
+            status: "unknown".to_string(),
+            detail: e,
+        },
+    }
+}
+
+/// Thân `credential_verify` — `api_key` (openai/gemini) gọi list-models bằng key; `MuseAI` (cookie)
+/// mở profile thật probe `muse.ai` (có `gatewayUrl` = đã đăng nhập) qua
+/// [`lvc_engine::museai::probe_login`]; provider khác → `unknown`. Luôn ghi `status` sau khi kiểm.
 ///
 /// # Errors
 /// `IpcError` khi không tìm thấy hoặc lỗi ghi trạng thái.
@@ -164,6 +185,29 @@ pub async fn credential_verify_impl<D: BrowserDriver + 'static>(
     ctx: &Ctx<D>,
     id: &str,
 ) -> Result<VerifyOutcome, IpcError> {
+    let (provider, profile_dir, _proxy, engine) = ctx.vault.profile_dir_and_proxy(id).await?;
+    if provider == "museai" {
+        let outcome = if engine == "firefox_portable" {
+            VerifyOutcome {
+                status: "unknown".to_string(),
+                detail: "tai khoan Firefox — mo trinh duyet kiem tra bang tay (khong co CDP)"
+                    .to_string(),
+            }
+        } else if let Some(dir) = profile_dir {
+            let probe = ctx
+                .engine
+                .probe_museai_login(std::path::Path::new(&dir))
+                .await;
+            museai_login_status(probe)
+        } else {
+            VerifyOutcome {
+                status: "unknown".to_string(),
+                detail: "chua co profile — bam Dang nhap lai de dan cookie".to_string(),
+            }
+        };
+        ctx.vault.set_status(id, &outcome.status).await?;
+        return Ok(outcome);
+    }
     Ok(ctx.vault.verify(id).await?)
 }
 
@@ -238,6 +282,52 @@ mod tests {
 
     use super::*;
     use crate::commands::test_support::ctx_with;
+
+    #[test]
+    fn museai_login_status_map_dung() {
+        assert_eq!(museai_login_status(Ok(true)).status, "ok");
+        assert_eq!(museai_login_status(Ok(false)).status, "expired");
+        let e = museai_login_status(Err("chromium loi".to_string()));
+        assert_eq!(e.status, "unknown");
+        assert_eq!(e.detail, "chromium loi");
+    }
+
+    #[tokio::test]
+    async fn credential_verify_museai_firefox_tra_unknown_khong_mo_trinh_duyet() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let req = AddCredential {
+            provider: "museai".into(),
+            kind: "session".into(),
+            label: "ff".into(),
+            secret: "cookie-tho".into(),
+            meta: serde_json::json!({
+                "mode": "cookie", "engine": "firefox_portable", "profile_dir": "/tmp/x"
+            }),
+            proxy: String::new(),
+        };
+        let view = credential_add_impl(&ctx, req).await.unwrap();
+        let out = credential_verify_impl(&ctx, &view.id).await.unwrap();
+        assert_eq!(out.status, "unknown", "Firefox khong co CDP -> unknown");
+        let after = ctx.vault.list(Some("museai")).await.unwrap();
+        assert_eq!(after[0].status, "unknown", "status phai duoc ghi vao DB");
+    }
+
+    #[tokio::test]
+    async fn credential_verify_museai_chua_co_profile_tra_unknown() {
+        let (_dir, ctx, _driver) = ctx_with(vec![], &[]).await;
+        let req = AddCredential {
+            provider: "museai".into(),
+            kind: "session".into(),
+            label: "noprof".into(),
+            secret: "cookie-tho".into(),
+            meta: serde_json::json!({ "mode": "cookie" }),
+            proxy: String::new(),
+        };
+        let view = credential_add_impl(&ctx, req).await.unwrap();
+        let out = credential_verify_impl(&ctx, &view.id).await.unwrap();
+        assert_eq!(out.status, "unknown");
+        assert!(out.detail.contains("profile"), "{}", out.detail);
+    }
 
     #[tokio::test]
     async fn credential_open_viewer_impl_chua_co_profile_bao_profile_not_found() {

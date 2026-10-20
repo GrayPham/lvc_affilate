@@ -155,11 +155,34 @@ pub fn default_cookie_domain(provider: &str) -> &'static str {
     }
 }
 
+/// Hạn (giây) gán cho cookie dán kiểu header để nó BỀN VỮNG (ghi xuống đĩa), không phải cookie
+/// phiên. `document.cookie` KHÔNG lộ hạn thật nên khi dán ta mất thông tin này; nếu để cookie phiên
+/// (`expires=None`) thì Chrome XOÁ khi `provision_profile` đóng trình duyệt headless → cookie đăng
+/// nhập (vd `hatch_sess`) biến mất → lần mở sau bị bắt đăng nhập lại. 390 ngày (< trần 400 ngày của
+/// Chrome, Chrome tự kẹp xuống nếu cần nhưng vẫn ghi bền vững).
+pub const HEADER_COOKIE_PERSIST_SECS: i64 = 390 * 24 * 60 * 60;
+
+/// Epoch giây hiện tại (UTC) — tách ra để [`parse_cookie_header_at`] test được với mốc cố định.
+#[must_use]
+fn now_epoch_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+}
+
 /// Parse cookie dạng HEADER/trình duyệt: `name=value; name2=value2; ...` (một dòng). KHÔNG có domain
-/// nên gán `domain` truyền vào, `path="/"`, `secure=true`, cookie phiên (`expires=None`). Bỏ cặp
-/// rỗng/thiếu `=`. KHÔNG log giá trị (bí mật).
+/// nên gán `domain` truyền vào, `path="/"`, `secure=true`. Hạn = `now + HEADER_COOKIE_PERSIST_SECS`
+/// (BỀN VỮNG — xem hằng đó) chứ KHÔNG phải cookie phiên. Bỏ cặp rỗng/thiếu `=`. KHÔNG log giá trị.
 #[must_use]
 pub fn parse_cookie_header(text: &str, domain: &str) -> Vec<Cookie> {
+    parse_cookie_header_at(text, domain, now_epoch_secs())
+}
+
+/// Như [`parse_cookie_header`] nhưng nhận `now_epoch` (giây) tường minh để test được — hạn cookie =
+/// `now_epoch + HEADER_COOKIE_PERSIST_SECS`.
+#[must_use]
+pub fn parse_cookie_header_at(text: &str, domain: &str, now_epoch: i64) -> Vec<Cookie> {
+    let expires = Some(now_epoch.saturating_add(HEADER_COOKIE_PERSIST_SECS));
     let out: Vec<Cookie> = text
         .split(';')
         .filter_map(|kv| {
@@ -176,7 +199,7 @@ pub fn parse_cookie_header(text: &str, domain: &str) -> Vec<Cookie> {
                 path: "/".to_string(),
                 secure: true,
                 http_only: false,
-                expires: None,
+                expires,
             })
         })
         .collect();
@@ -302,6 +325,23 @@ mod tests {
         assert_eq!(c[2].value, "abc.def");
         assert_eq!(c[2].domain, ".muse.ai");
         assert!(c[2].secure);
+    }
+
+    #[test]
+    fn header_cookie_duoc_gan_han_ben_vung_khong_phai_cookie_phien() {
+        // BUG đăng nhập cookie: document.cookie KHÔNG lộ hạn nên cookie dán kiểu header trước đây
+        // để expires=None -> cookie PHIÊN -> Chrome xoá khi provision_profile ĐÓNG trình duyệt ->
+        // hatch_sess mất -> lần sau mở lại muse.ai bắt đăng nhập lại (OAuth). Phải gán hạn xa để
+        // ghi bền vững xuống đĩa.
+        let now = 1_000_000_000_i64;
+        let c = parse_cookie_header_at("hatch_sess=s1; wd=1366x900", ".muse.ai", now);
+        assert_eq!(c.len(), 2);
+        assert_eq!(
+            c[0].expires,
+            Some(now + HEADER_COOKIE_PERSIST_SECS),
+            "cookie header phai co han ben vung (song qua lan dong trinh duyet)"
+        );
+        assert_eq!(c[1].expires, Some(now + HEADER_COOKIE_PERSIST_SECS));
     }
 
     #[test]

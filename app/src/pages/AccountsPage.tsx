@@ -664,12 +664,21 @@ export default function AccountsPage() {
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          {[
-            ["Kiểm tra", () => void handleVerify(menuRow)],
-            ["Mở trình duyệt", () => void handleOpenViewer(menuRow)],
-            [menuRow.enabled ? "Tắt lịch chạy" : "Bật lịch chạy", () => void handleToggle(menuRow, !menuRow.enabled)],
-            ["Proxy & trình duyệt", () => setEditing(menuRow.target)],
-          ].map(([label, fn]) => (
+          {(
+            [
+              ["Kiểm tra", () => void handleVerify(menuRow)],
+              ["Mở trình duyệt", () => void handleOpenViewer(menuRow)],
+              [menuRow.enabled ? "Tắt lịch chạy" : "Bật lịch chạy", () => void handleToggle(menuRow, !menuRow.enabled)],
+              ...(menuRow.target.source === "credential" &&
+              (menuRow.target.row.kind === "session" || menuRow.target.row.kind === "login")
+                ? [["Đăng nhập lại", () => setEditing(menuRow.target)]]
+                : []),
+              [
+                menuRow.target.source === "credential" ? "Node & proxy" : "Proxy & trình duyệt",
+                () => setEditing(menuRow.target),
+              ],
+            ] as Array<[string, () => void]>
+          ).map(([label, fn]) => (
             <button
               key={label as string}
               type="button"

@@ -429,6 +429,16 @@ export async function loginCookieText(
   return CredentialViewSchema.parse(res);
 }
 
+/** "Dang nhap lai": tiem cookie MOI vao ĐUNG credential cu (giu provider/label/proxy/engine +
+ * node_types), ghi de secret + meta. Tra view da cap nhat. */
+export async function loginCookieRelogin(
+  id: string,
+  cookieText: string,
+): Promise<CredentialView> {
+  const res = await invoke<unknown>("login_cookie_relogin", { id, cookieText });
+  return CredentialViewSchema.parse(res);
+}
+
 /** (B) Ket qua mo dang nhap thu cong (login_open_interactive). */
 export const InteractiveLoginResultSchema = z.object({
   label: z.string(),

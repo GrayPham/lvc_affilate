@@ -156,6 +156,10 @@ export interface GraphStoreState {
   nodes: RFNode[];
   edges: RFEdge[];
   selectedNodeId: string | null;
+  /** Node mà canvas cần NHẢY TỚI (center) — đặt khi bấm một dòng trong panel Tiến độ. `focusTick`
+   * tăng mỗi lần yêu cầu để `WorkflowCanvas` center lại kể cả khi bấm trùng node. */
+  focusNodeId: string | null;
+  focusTick: number;
   history: HistoryEntry[];
   /** Bộ nhớ tạm cho copy/paste (node + cạnh NỘI BỘ giữa chúng); không lưu ra localStorage. */
   clipboard: { nodes: RFNode[]; edges: RFEdge[] } | null;
@@ -208,6 +212,8 @@ export interface GraphStoreState {
   /** Xoa mot node + MOI canh noi toi/tu no; bo chon neu dang chon node do. */
   deleteNode: (id: string) => void;
   setSelected: (id: string | null) => void;
+  /** Chọn node ĐỒNG THỜI yêu cầu canvas nhảy tới nó (center). Dùng khi bấm dòng panel Tiến độ. */
+  focusNode: (id: string) => void;
   /** Chọn tất cả node (Ctrl+A). */
   selectAll: () => void;
   /** Tự sắp xếp node theo tầng trái→phải (xem `graph/autoLayout.ts`). Vào lịch sử nên Ctrl+Z
@@ -292,6 +298,8 @@ export function createGraphStore(
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      focusNodeId: null,
+      focusTick: 0,
       history: [],
       clipboard: null,
       nodeErrors: {},
@@ -438,6 +446,8 @@ export function createGraphStore(
       },
 
       setSelected: (id) => set({ selectedNodeId: id }),
+      focusNode: (id) =>
+        set((s) => ({ selectedNodeId: id, focusNodeId: id, focusTick: s.focusTick + 1 })),
 
       autoArrange: () => {
         const { nodes, edges } = get();
