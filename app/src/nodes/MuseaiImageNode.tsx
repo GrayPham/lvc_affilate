@@ -44,7 +44,9 @@ export default function MuseaiImageNode({ id, selected }: NodeProps<MuseaiImageR
   return (
     <>
       <NodeFloatingToolbar nodeId={id} actions={actions} />
-      <Handle type="target" position={Position.Left} id="prompt" style={{ background: PORT_TYPE_COLOR.text }} />
+      <Handle type="target" position={Position.Left} id="prompt" style={{ top: "35%", background: PORT_TYPE_COLOR.text }} />
+      {/* Ảnh tham chiếu để khoá nhân vật/bối cảnh — cùng kiểu cổng `refs` của museai_video. */}
+      <Handle type="target" position={Position.Left} id="refs" style={{ top: "65%", background: PORT_TYPE_COLOR.image }} />
       <MediaCard label={NODE_LABEL_VI.museai_image} kind="museai_image" selected={selected} errors={errors} runState={runState} wide>
         <OutputPreview kind="image" path={outputPath} label="Ảnh" />
       </MediaCard>
