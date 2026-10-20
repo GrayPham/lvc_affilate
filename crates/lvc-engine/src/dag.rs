@@ -102,14 +102,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use lvc_browser::BrowserDriver;
 use lvc_browser::dola::{NoopHooks, PollHooks};
-use lvc_core::graph::{Graph, migrate};
+use lvc_core::graph::{Graph, Node, migrate};
 use lvc_core::{FailureCode, Scene, TaskStatus};
 use lvc_dola::{DolaVideoHost, JobsReport, SceneJob, VideoDone};
 use lvc_genai::TextGenHost;
 use lvc_google::{GoogleImageHost, GoogleVideoHost};
 use lvc_grok::GrokImageHost;
 use lvc_museai::{MuseaiImageHost, MuseaiVideoHost};
-use lvc_node_api::{NodeCtx, Outputs, Prepared, Registry, Services, Value, gather_inputs};
+use lvc_node_api::{Inputs, NodeCtx, Outputs, Prepared, Registry, Services, Value, gather_inputs};
 use lvc_scripts::ScriptSinkHost;
 use lvc_seedance::{SeedanceImageHost, SeedanceVideoHost};
 use lvc_store::{BatchRef, RunStatus};
@@ -277,6 +277,42 @@ impl<D: BrowserDriver + 'static> VeoSessionHost for RunVeoSessionHost<D> {
 
 fn new_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4())
+}
+
+/// Phần A: kết quả chạy MỘT node để vòng điều phối (đơn luồng) GỘP lại. Task thuần: trả về đây,
+/// KHÔNG tự chạm các bộ tích luỹ dùng chung → không cần khoá.
+struct NodeOutcome {
+    node_id: String,
+    /// `Some` = node chạy xong (kể cả fail một phần) và có `Outputs` để nuôi node sau; `None` = lỗi
+    /// cứng/không có đầu ra.
+    outputs: Option<Outputs>,
+    /// Thông điệp thất bại (một phần) để gộp vào `runs.error`.
+    failure: Option<String>,
+    /// `Some` = lỗi nghiêm trọng (`NodeError::fatal`) → dừng cả run.
+    fatal: Option<String>,
+}
+
+/// Phần A: node `node_id` vừa xong → giảm in-degree các node sau; node nào về 0 thì đẩy vào `ready`
+/// theo CHỈ SỐ topo nhỏ nhất (giữ thứ tự Kahn khi N=1).
+fn enqueue_ready_successors(
+    node_id: &str,
+    succ: &HashMap<String, Vec<String>>,
+    indeg: &mut HashMap<String, usize>,
+    ready: &mut std::collections::BinaryHeap<std::cmp::Reverse<(usize, String)>>,
+    order_index: &HashMap<String, usize>,
+) {
+    let Some(succs) = succ.get(node_id) else {
+        return;
+    };
+    for s in succs {
+        if let Some(d) = indeg.get_mut(s) {
+            *d = d.saturating_sub(1);
+            if *d == 0 {
+                let idx = order_index.get(s).copied().unwrap_or(usize::MAX);
+                ready.push(std::cmp::Reverse((idx, s.clone())));
+            }
+        }
+    }
 }
 
 /// Run-robustness B (THUAN, de test rieng): ten file `name` co chua TOKEN `{run_id}_{node_id}` voi
@@ -707,6 +743,154 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         self.finish_run(run_id, &token, error, failed).await;
     }
 
+    /// Phần A: chạy MỘT node (emit running → `exec.run` → emit done/failed + persist + `set_outputs`)
+    /// và trả [`NodeOutcome`] để vòng điều phối gộp. THUẦN với bộ tích luỹ dùng chung: chỉ emit
+    /// event + ghi DB của CHÍNH node này, không chạm `outputs`/`failures`/`hard_stop` (vòng lặp lo).
+    /// `inputs` đã được gom TRƯỚC khi gọi (vòng lặp giữ `graph`/`outputs`).
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "ngu canh chay mot node: run/workflow id, registry, node, services, limits, token, inputs"
+    )]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "mot node: kind-missing -> running -> exec -> done/failed + persist/preview/set_outputs"
+    )]
+    async fn run_one_node(
+        &self,
+        run_id: &str,
+        workflow_id: &str,
+        registry: &Registry,
+        node: &Node,
+        total: u32,
+        services: &Services,
+        limits: &Arc<lvc_core::Limits>,
+        token: &CancellationToken,
+        inputs: Inputs,
+    ) -> NodeOutcome {
+        let node_id = node.id.clone();
+        let Some(exec) = registry.get(&node.kind.kind) else {
+            let msg = format!("node {node_id}: kind {} chua cai", node.kind.kind);
+            self.emit_node_state_err(
+                run_id,
+                &node_id,
+                NODE_FAILED,
+                (total, total, 0, total),
+                Some(msg.clone()),
+            );
+            self.persist_node_state(
+                run_id,
+                &node_id,
+                NODE_FAILED,
+                (total, total, 0, total),
+                Some(&msg),
+            )
+            .await;
+            return NodeOutcome {
+                node_id,
+                outputs: None,
+                failure: Some(msg),
+                fatal: None,
+            };
+        };
+        self.emit_node_state(run_id, &node_id, NODE_RUNNING, (0, total, 0, 0));
+        self.persist_node_state(run_id, &node_id, NODE_RUNNING, (0, total, 0, 0), None)
+            .await;
+        let ctx = NodeCtx {
+            run_id: run_id.to_string(),
+            workflow_id: workflow_id.to_string(),
+            node_id: node_id.clone(),
+            cancel: token.clone(),
+            limits: Arc::clone(limits),
+            services: services.clone(),
+        };
+        info!(node = %node_id, kind = %node.kind.kind, total, "node: bat dau");
+        let started = std::time::Instant::now();
+        let outcome = exec.run(&ctx, &node.kind.params, inputs).await;
+        info!(
+            node = %node_id,
+            kind = %node.kind.kind,
+            giay = started.elapsed().as_secs(),
+            ok = outcome.is_ok(),
+            "node: ket thuc"
+        );
+        match outcome {
+            Ok(res) => {
+                let c = res.counts;
+                let failed = res.is_failed();
+                let state = if failed { NODE_FAILED } else { NODE_DONE };
+                let node_err = if failed { res.failure.clone() } else { None };
+                self.emit_node_state_err(
+                    run_id,
+                    &node_id,
+                    state,
+                    (c.done, c.total, c.ok, c.failed),
+                    node_err.clone(),
+                );
+                self.persist_node_state(
+                    run_id,
+                    &node_id,
+                    state,
+                    (c.done, c.total, c.ok, c.failed),
+                    node_err.as_deref(),
+                )
+                .await;
+                if !failed {
+                    self.emit_preview_if_media(run_id, &node_id, &res.outputs);
+                    match serde_json::to_string(&res.outputs) {
+                        Ok(json) => {
+                            if let Err(e) =
+                                self.node_states.set_outputs(run_id, &node_id, &json).await
+                            {
+                                warn!(run_id, node_id = %node_id, error = %e, "khong luu duoc node outputs");
+                            }
+                        }
+                        Err(e) => {
+                            warn!(run_id, node_id = %node_id, error = %e, "khong serialize duoc node outputs");
+                        }
+                    }
+                }
+                NodeOutcome {
+                    node_id,
+                    outputs: Some(res.outputs),
+                    failure: res.failure,
+                    fatal: None,
+                }
+            }
+            Err(e) => {
+                self.emit_node_state_err(
+                    run_id,
+                    &node_id,
+                    NODE_FAILED,
+                    (total, total, 0, total),
+                    Some(e.message.clone()),
+                );
+                self.persist_node_state(
+                    run_id,
+                    &node_id,
+                    NODE_FAILED,
+                    (total, total, 0, total),
+                    Some(&e.message),
+                )
+                .await;
+                if e.fatal {
+                    NodeOutcome {
+                        node_id,
+                        outputs: None,
+                        failure: None,
+                        fatal: Some(e.message),
+                    }
+                } else {
+                    NodeOutcome {
+                        node_id,
+                        outputs: None,
+                        failure: Some(e.message),
+                        fatal: None,
+                    }
+                }
+            }
+        }
+    }
+
     /// Chay tung node theo thu tu topo (`Prepared::order`) qua registry — engine KHONG biet kind
     /// nao. Tra `(thong diep loi cho runs.error, co that bai hay khong)`.
     ///
@@ -761,152 +945,152 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         let mut failures: Vec<String> = Vec::new();
         let mut hard_stop: Option<String> = None;
 
-        for node_id in &prepared.order {
-            // I2: huy giua chung -> dung NGAY truoc node ke tiep (ke ca node Luu ngay sau node video
-            // vua bi huy — CO Y: file cac canh da xong van con trong downloads_dir).
-            if hard_stop.is_some() || token.is_cancelled() {
-                break;
-            }
-            let Some(node) = graph.nodes.iter().find(|n| &n.id == node_id) else {
-                continue;
-            };
-            touched.insert(node_id.clone());
-            let total = total_of(node_id);
-            // Phần C: node đã xong lần trước (có trong `skip` + đã seed output) -> emit `done` ngay,
-            // KHÔNG gọi `exec` (không tốn credit), preview lại từ output seed.
-            if skip.contains(node_id) {
-                let c = (total, total, total, 0);
-                self.emit_node_state(&run_id, node_id, NODE_DONE, c);
-                self.persist_node_state(&run_id, node_id, NODE_DONE, c, None)
-                    .await;
-                if let Some(seeded) = outputs.get(node_id) {
-                    self.emit_preview_if_media(&run_id, node_id, seeded);
-                    // Final-review Critical 1: MANG SEED sang node_states.outputs cua run MOI — de
-                    // lan "chay lai node loi" KE TIEP (chained retry) van seed duoc node da xong,
-                    // KHONG re-chay (khong ton credit lai). Thieu buoc nay thi retry lan 2 tro di
-                    // se chay lai node dat tien.
-                    if let Ok(json) = serde_json::to_string(seeded) {
-                        if let Err(e) = self.node_states.set_outputs(&run_id, node_id, &json).await
-                        {
-                            warn!(run_id, node_id, error = %e, "khong mang duoc seed outputs sang run moi");
-                        }
+        // Phần A: scheduler SONG SONG — ready-set + semaphore(node_threads). N=1 ≡ tuần tự: chọn
+        // node sẵn sàng theo CHỈ SỐ topo nhỏ nhất (khớp Kahn của `prepared.order`). Task THUẦN
+        // (`run_one_node`) trả `NodeOutcome`; vòng lặp đơn luồng này SỞ HỮU
+        // outputs/failures/hard_stop/touched và gộp khi join → không cần khoá.
+        let order_index: HashMap<String, usize> = prepared
+            .order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.clone(), i))
+            .collect();
+        let in_order: HashSet<&str> = prepared.order.iter().map(String::as_str).collect();
+        let mut indeg: HashMap<String, usize> = prepared
+            .order
+            .iter()
+            .map(|id| (id.clone(), 0usize))
+            .collect();
+        let mut succ: HashMap<String, Vec<String>> = HashMap::new();
+        {
+            let mut seen: HashSet<(&str, &str)> = HashSet::new();
+            for e in &graph.edges {
+                if e.from != e.to
+                    && in_order.contains(e.from.as_str())
+                    && in_order.contains(e.to.as_str())
+                    && seen.insert((e.from.as_str(), e.to.as_str()))
+                {
+                    if let Some(d) = indeg.get_mut(&e.to) {
+                        *d += 1;
                     }
+                    succ.entry(e.from.clone()).or_default().push(e.to.clone());
                 }
-                continue;
             }
-            let Some(exec) = registry.get(&node.kind.kind) else {
-                // prepare() da chan kind la — chi phong thu.
-                let msg = format!("node {node_id}: kind {} chua cai", node.kind.kind);
-                self.emit_node_state_err(
-                    &run_id,
-                    node_id,
-                    NODE_FAILED,
-                    (total, total, 0, total),
-                    Some(msg.clone()),
-                );
-                self.persist_node_state(
-                    &run_id,
-                    node_id,
-                    NODE_FAILED,
-                    (total, total, 0, total),
-                    Some(&msg),
-                )
-                .await;
-                failures.push(msg);
-                continue;
-            };
-            self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
-            self.persist_node_state(&run_id, node_id, NODE_RUNNING, (0, total, 0, 0), None)
-                .await;
-            let ctx = NodeCtx {
-                run_id: run_id.clone(),
-                workflow_id: workflow_id.clone(),
-                node_id: node_id.clone(),
-                cancel: token.clone(),
-                limits: Arc::clone(&limits),
-                services: services.clone(),
-            };
-            let inputs = gather_inputs(&graph, node_id, &outputs);
-            // Log MOC vao/ra cua tung node. Truoc day ca mot lan chay khong sinh MOT dong log nao:
-            // node treo giua chung thi khong co gi de lan ra cho hong (da gap that voi node
-            // `museai_video` 2026-10-14). Chi ghi kind + id + so viec — KHONG ghi prompt/bi mat.
-            info!(node = %node_id, kind = %node.kind.kind, total, "node: bat dau");
-            let started = std::time::Instant::now();
-            let outcome = exec.run(&ctx, &node.kind.params, inputs).await;
-            info!(
-                node = %node_id,
-                kind = %node.kind.kind,
-                giay = started.elapsed().as_secs(),
-                ok = outcome.is_ok(),
-                "node: ket thuc"
-            );
-            match outcome {
-                Ok(res) => {
-                    let c = res.counts;
-                    let failed = res.is_failed();
-                    let state = if failed { NODE_FAILED } else { NODE_DONE };
-                    // Node fan-out (vd video) da co dong `tasks` rieng cho tung canh; van dinh kem
-                    // `res.failure` (vd "canh 1,3 that bai") lam nhat ky cap node khi that bai.
-                    let node_err = if failed { res.failure.clone() } else { None };
-                    self.emit_node_state_err(
-                        &run_id,
-                        node_id,
-                        state,
-                        (c.done, c.total, c.ok, c.failed),
-                        node_err.clone(),
-                    );
-                    self.persist_node_state(
-                        &run_id,
-                        node_id,
-                        state,
-                        (c.done, c.total, c.ok, c.failed),
-                        node_err.as_deref(),
-                    )
-                    .await;
-                    if let Some(f) = res.failure {
-                        failures.push(f);
-                    }
-                    if !failed {
-                        self.emit_preview_if_media(&run_id, node_id, &res.outputs);
-                        // Phần C: lưu Outputs (JSON) node đã xong để "chạy lại node lỗi" seed lại,
-                        // không chạy lại (không tốn credit). Ghi hỏng chỉ `warn`, không sập run.
-                        match serde_json::to_string(&res.outputs) {
-                            Ok(json) => {
+        }
+        let mut ready: std::collections::BinaryHeap<std::cmp::Reverse<(usize, String)>> =
+            std::collections::BinaryHeap::new();
+        for id in &prepared.order {
+            if indeg.get(id).copied().unwrap_or(0) == 0 {
+                let idx = order_index.get(id).copied().unwrap_or(usize::MAX);
+                ready.push(std::cmp::Reverse((idx, id.clone())));
+            }
+        }
+
+        let node_threads = self.node_threads();
+        let sem = Arc::new(tokio::sync::Semaphore::new(node_threads));
+        let mut joinset: tokio::task::JoinSet<NodeOutcome> = tokio::task::JoinSet::new();
+        let mut in_flight = 0usize;
+
+        loop {
+            // I2: huy/hard_stop -> NGỪNG phóng node mới (node chưa chạy -> `emit_pending_terminal`),
+            // nhưng VẪN join hết node đang chạy (JoinSet không bỏ giữa chừng).
+            let stopping = hard_stop.is_some() || token.is_cancelled();
+            if !stopping {
+                while in_flight < node_threads {
+                    let Some(std::cmp::Reverse((_, node_id))) = ready.pop() else {
+                        break;
+                    };
+                    let Some(node) = graph.nodes.iter().find(|n| n.id == node_id).cloned() else {
+                        enqueue_ready_successors(
+                            &node_id,
+                            &succ,
+                            &mut indeg,
+                            &mut ready,
+                            &order_index,
+                        );
+                        continue;
+                    };
+                    touched.insert(node_id.clone());
+                    let total = total_of(&node_id);
+                    // Phần C: node đã xong lần trước (skip + đã seed) -> emit `done` ngay, KHÔNG exec
+                    // (không tốn credit), mang seed sang run mới (chained retry).
+                    if skip.contains(&node_id) {
+                        let c = (total, total, total, 0);
+                        self.emit_node_state(&run_id, &node_id, NODE_DONE, c);
+                        self.persist_node_state(&run_id, &node_id, NODE_DONE, c, None)
+                            .await;
+                        if let Some(seeded) = outputs.get(&node_id) {
+                            self.emit_preview_if_media(&run_id, &node_id, seeded);
+                            if let Ok(json) = serde_json::to_string(seeded) {
                                 if let Err(e) =
-                                    self.node_states.set_outputs(&run_id, node_id, &json).await
+                                    self.node_states.set_outputs(&run_id, &node_id, &json).await
                                 {
-                                    warn!(run_id, node_id, error = %e, "khong luu duoc node outputs");
+                                    warn!(run_id, node_id, error = %e, "khong mang duoc seed outputs sang run moi");
                                 }
                             }
-                            Err(e) => {
-                                warn!(run_id, node_id, error = %e, "khong serialize duoc node outputs");
-                            }
+                        }
+                        enqueue_ready_successors(
+                            &node_id,
+                            &succ,
+                            &mut indeg,
+                            &mut ready,
+                            &order_index,
+                        );
+                        continue;
+                    }
+                    // Non-skip: gom inputs (đọc `outputs` mà vòng lặp sở hữu) rồi spawn task thuần.
+                    let inputs = gather_inputs(&graph, &node_id, &outputs);
+                    let engine = Arc::clone(&self);
+                    let reg = Arc::clone(&registry);
+                    let svcs = services.clone();
+                    let lim = Arc::clone(&limits);
+                    let tok = token.clone();
+                    let rid = run_id.clone();
+                    let wid = workflow_id.clone();
+                    let sem2 = Arc::clone(&sem);
+                    joinset.spawn(async move {
+                        // Giữ permit suốt lúc chạy node → tối đa `node_threads` node chạy cùng lúc.
+                        let _permit = sem2.acquire_owned().await.ok();
+                        engine
+                            .run_one_node(&rid, &wid, &reg, &node, total, &svcs, &lim, &tok, inputs)
+                            .await
+                    });
+                    in_flight += 1;
+                }
+            }
+            if in_flight == 0 {
+                break;
+            }
+            match joinset.join_next().await {
+                Some(Ok(outcome)) => {
+                    in_flight -= 1;
+                    if let Some(f) = outcome.failure {
+                        failures.push(f);
+                    }
+                    if let Some(fatal) = outcome.fatal {
+                        if hard_stop.is_none() {
+                            hard_stop = Some(fatal);
                         }
                     }
-                    outputs.insert(node_id.clone(), res.outputs);
-                }
-                Err(e) => {
-                    self.emit_node_state_err(
-                        &run_id,
-                        node_id,
-                        NODE_FAILED,
-                        (total, total, 0, total),
-                        Some(e.message.clone()),
+                    if let Some(outs) = outcome.outputs {
+                        outputs.insert(outcome.node_id.clone(), outs);
+                    }
+                    enqueue_ready_successors(
+                        &outcome.node_id,
+                        &succ,
+                        &mut indeg,
+                        &mut ready,
+                        &order_index,
                     );
-                    self.persist_node_state(
-                        &run_id,
-                        node_id,
-                        NODE_FAILED,
-                        (total, total, 0, total),
-                        Some(&e.message),
-                    )
-                    .await;
-                    if e.fatal {
-                        hard_stop = Some(e.message);
-                    } else {
-                        failures.push(e.message);
+                }
+                Some(Err(join_err)) => {
+                    // I3: than vong node panic -> coi run that bai (khong treo).
+                    in_flight -= 1;
+                    if hard_stop.is_none() {
+                        hard_stop = Some(format!("loi he thong: node panic ({join_err})"));
                     }
                 }
+                None => break,
             }
         }
 
@@ -1686,6 +1870,48 @@ mod tests {
         // xuyen toi node phia sau du vid bi skip.
         let saved = std::fs::read_dir(&out_dir).map_or(0, |rd| rd.flatten().count());
         assert!(saved >= 1, "sv phai luu it nhat 1 file tu output seed");
+    }
+
+    /// Phần A: scheduler với `node_threads=2` chạy 2 node ĐỘC LẬP (`image_upload`, KHÔNG đụng driver)
+    /// — cả hai sẵn sàng cùng lúc → đều hoàn tất, run completed. (Kiểm đúng-đắn ready-set/fold;
+    /// song song thực đo live. N=1 vẫn đúng thứ tự do các test cũ.)
+    #[tokio::test]
+    async fn scheduler_hai_node_doc_lap_node_threads_2_hoan_tat() {
+        let (dir, engine, _db, _driver) = build_engine(&[], 1, vec![]).await;
+        let img1 = dir.path().join("a.jpg");
+        let img2 = dir.path().join("b.jpg");
+        std::fs::write(&img1, b"a").unwrap();
+        std::fs::write(&img2, b"b").unwrap();
+        let graph = Graph {
+            version: 2,
+            nodes: vec![
+                node("im1", upload_kind(&[img1.display().to_string()])),
+                node("im2", upload_kind(&[img2.display().to_string()])),
+            ],
+            edges: vec![],
+        };
+        engine.set_node_threads(2);
+
+        let handle = engine
+            .run_graph("wf1", &graph, noop_hooks_factory())
+            .await
+            .unwrap();
+        let run_id = handle.run_id.clone();
+        handle.join.await.unwrap();
+
+        assert_eq!(
+            engine.run_repo.get(&run_id).await.unwrap().unwrap().status,
+            RunStatus::Completed
+        );
+        let states = engine.node_states.list_for_run(&run_id).await.unwrap();
+        for n in ["im1", "im2"] {
+            assert!(
+                states
+                    .iter()
+                    .any(|s| s.node_id == n && s.state == NODE_DONE),
+                "{n} phai done: {states:?}"
+            );
+        }
     }
 
     /// Thu muc downloads khong ton tai -> map rong, khong panic (app moi, chua chay gi).

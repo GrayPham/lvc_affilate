@@ -480,10 +480,6 @@ impl<D: BrowserDriver + 'static> Engine<D> {
 
     /// Phần A: số node chạy song song hiện tại (tối thiểu 1). `run_steps` đọc đầu mỗi run.
     #[must_use]
-    #[allow(
-        dead_code,
-        reason = "A-Task 4 (scheduler song song) se doc; gio chi co test goi"
-    )]
     pub(crate) fn node_threads(&self) -> usize {
         self.node_threads.load(Ordering::Relaxed).max(1)
     }
