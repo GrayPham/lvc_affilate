@@ -31,7 +31,11 @@ static MANIFEST: LazyLock<NodeManifest> = LazyLock::new(|| NodeManifest {
     version: 1,
     category: Category::Image,
     label_vi: "Tạo ảnh MuseAI".to_string(),
-    inputs: vec![PortSpec::new("prompt", PortType::Text).many().required()],
+    inputs: vec![
+        PortSpec::new("prompt", PortType::Text).many().required(),
+        // Ảnh tham chiếu dùng CHUNG cho mọi cảnh (khoá nhân vật) — giống `museai_video`.
+        PortSpec::new("refs", PortType::Image).many(),
+    ],
     outputs: vec![PortSpec::new("out", PortType::Image).many()],
     require_any: vec![],
     credential: Some(CredentialReq {
@@ -59,6 +63,11 @@ struct MuseaiImageNode;
 /// `MuseaiAccountResolver` để TỰ CHỌN tài khoản (xem `museai_video::build_jobs`). KHÔNG còn nhánh
 /// lỗi nào — trả thẳng `Vec` thay vì `Result` (clippy `unnecessary_wraps`).
 fn build_jobs(p: &ImageParams, inputs: &Inputs) -> Vec<ImageJob> {
+    // Ảnh trên cổng `refs` dùng CHUNG cho mọi cảnh (không map 1-1) — khớp `museai_video::build_jobs`.
+    let images: Vec<std::path::PathBuf> = inputs
+        .assets("refs")
+        .map(|a| std::path::PathBuf::from(&a.path))
+        .collect();
     inputs
         .texts("prompt")
         .enumerate()
@@ -66,6 +75,7 @@ fn build_jobs(p: &ImageParams, inputs: &Inputs) -> Vec<ImageJob> {
             scene_index: u32::try_from(i + 1).unwrap_or(u32::MAX),
             credential_id: p.account.clone(),
             prompt: t.text.clone(),
+            images: images.clone(),
         })
         .collect()
 }
@@ -208,5 +218,73 @@ mod tests {
         assert_eq!(jobs[1].scene_index, 2);
         assert_eq!(jobs[0].credential_id, "tk-1");
         assert_eq!(jobs[0].prompt, "canh 1");
+    }
+
+    /// Cổng `refs` (ảnh tham chiếu) — DÙNG CHUNG cho mọi job của node (khoá nhân vật ảnh-trước).
+    #[test]
+    fn build_jobs_gan_refs_cho_moi_job() {
+        use lvc_node_api::{Asset, EdgeInput, TextItem};
+        use std::path::PathBuf;
+        let p = ImageParams {
+            account: "tk-1".to_string(),
+        };
+        let mut inputs = Inputs::new();
+        inputs.push(
+            "prompt",
+            EdgeInput {
+                from_node: "pr".into(),
+                from_port: "out".into(),
+                values: Some(vec![
+                    Value::Text(TextItem {
+                        text: "canh 1".into(),
+                        ..TextItem::default()
+                    }),
+                    Value::Text(TextItem {
+                        text: "canh 2".into(),
+                        ..TextItem::default()
+                    }),
+                ]),
+            },
+        );
+        inputs.push(
+            "refs",
+            EdgeInput {
+                from_node: "up".into(),
+                from_port: "out".into(),
+                values: Some(vec![
+                    Value::Image(Asset::new("a.png")),
+                    Value::Image(Asset::new("b.png")),
+                ]),
+            },
+        );
+        let jobs = build_jobs(&p, &inputs);
+        assert_eq!(jobs.len(), 2);
+        let want = vec![PathBuf::from("a.png"), PathBuf::from("b.png")];
+        assert_eq!(jobs[0].images, want, "ảnh refs dùng chung cho mọi cảnh");
+        assert_eq!(jobs[1].images, want);
+    }
+
+    /// Không nối refs → `images` rỗng, VẪN ra job (fallback: chỉ prompt).
+    #[test]
+    fn build_jobs_khong_refs_thi_images_rong() {
+        use lvc_node_api::{EdgeInput, TextItem};
+        let p = ImageParams {
+            account: String::new(),
+        };
+        let mut inputs = Inputs::new();
+        inputs.push(
+            "prompt",
+            EdgeInput {
+                from_node: "pr".into(),
+                from_port: "out".into(),
+                values: Some(vec![Value::Text(TextItem {
+                    text: "canh 1".into(),
+                    ..TextItem::default()
+                })]),
+            },
+        );
+        let jobs = build_jobs(&p, &inputs);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].images.is_empty());
     }
 }
