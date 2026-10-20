@@ -16,7 +16,7 @@ use lvc_engine::generate::{STAGE_DONE, STAGE_LAUNCHING};
 use lvc_engine::resume::RequeueReport;
 use lvc_engine::{AccountStatus, ImportCookiesReport, LegacyImportReport};
 use lvc_engine::{ScriptRunError, ScriptRunReport, ScriptRunTask};
-use lvc_store::{RunRow, RunStatus, ScriptMeta, TaskRow, WorkflowMeta};
+use lvc_store::{NodeStateRow, RunRow, RunStatus, ScriptMeta, TaskRow, WorkflowMeta};
 use serde_json::{Value, json};
 
 use super::IpcError;
@@ -444,6 +444,34 @@ fn fixtures_khop_ban_da_commit() {
             finished_at: 1_700_000_100.0,
             error: String::new(),
         })
+        .unwrap(),
+    );
+    check_or_write(
+        "node_states.json",
+        &serde_json::to_value(vec![
+            NodeStateRow {
+                run_id: "run_1".to_string(),
+                node_id: "im_1".to_string(),
+                state: "done".to_string(),
+                done: 1,
+                total: 1,
+                ok: 1,
+                failed: 0,
+                error: String::new(),
+                updated_at: 1_700_000_050.0,
+            },
+            NodeStateRow {
+                run_id: "run_1".to_string(),
+                node_id: "vid_1".to_string(),
+                state: "failed".to_string(),
+                done: 1,
+                total: 1,
+                ok: 0,
+                failed: 1,
+                error: "echo ref".to_string(),
+                updated_at: 1_700_000_060.0,
+            },
+        ])
         .unwrap(),
     );
     check_or_write(

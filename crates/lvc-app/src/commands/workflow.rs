@@ -9,7 +9,7 @@ use lvc_core::Limits;
 use lvc_core::graph::{Graph, NodeManifest, migrate};
 use lvc_engine::{EngineError, RunHandle, noop_hooks_factory};
 use lvc_node_api::Registry;
-use lvc_store::{RunRepo, RunRow, WorkflowMeta, WorkflowRepo};
+use lvc_store::{NodeStateRepo, NodeStateRow, RunRepo, RunRow, WorkflowMeta, WorkflowRepo};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
@@ -301,6 +301,56 @@ pub async fn run_list(
     run_list_impl(&state, limit).await
 }
 
+/// Run-robustness B: trang thai MUC NODE cua mot run (bang `node_states`) — UI khoi phuc lai
+/// `nodes` (video da xong / node loi + ly do) khi mo lai app/tab.
+///
+/// # Errors
+/// `IpcError` ma `STORE` khi truy van that bai.
+pub async fn run_node_states_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    run_id: &str,
+) -> Result<Vec<NodeStateRow>, IpcError> {
+    Ok(NodeStateRepo::new(&ctx.db).list_for_run(run_id).await?)
+}
+
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan tham so JSON da giai ma so huu (String) - bien gioi IPC"
+)]
+#[tauri::command]
+pub async fn run_node_states(
+    state: tauri::State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<NodeStateRow>, IpcError> {
+    run_node_states_impl(&state, &run_id).await
+}
+
+/// Run-robustness B: map `node_id -> duong dan output` (quet `downloads_dir` theo ten tat dinh)
+/// de khoi phuc preview video/anh — `node_id` lay tu `node_states` cua run.
+///
+/// # Errors
+/// `IpcError` ma `STORE` khi doc `node_states` that bai.
+pub async fn run_node_outputs_impl<D: BrowserDriver + 'static>(
+    ctx: &Ctx<D>,
+    run_id: &str,
+) -> Result<std::collections::HashMap<String, String>, IpcError> {
+    let rows = NodeStateRepo::new(&ctx.db).list_for_run(run_id).await?;
+    let node_ids: Vec<String> = rows.into_iter().map(|r| r.node_id).collect();
+    Ok(ctx.engine.node_outputs(run_id, &node_ids))
+}
+
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan tham so JSON da giai ma so huu (String) - bien gioi IPC"
+)]
+#[tauri::command]
+pub async fn run_node_outputs(
+    state: tauri::State<'_, AppState>,
+    run_id: String,
+) -> Result<std::collections::HashMap<String, String>, IpcError> {
+    run_node_outputs_impl(&state, &run_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use lvc_browser::FakeStep;
@@ -520,6 +570,50 @@ mod tests {
         assert!(
             !ctx.runs.contains_key(&info.run_id),
             "reaper phai don run da hoan tat tu nhien khoi map"
+        );
+    }
+
+    /// Run-robustness B: sau khi run xong, `run_node_states` tra dong `node_states` (trang thai muc
+    /// node) + `run_node_outputs` quet dia tra map node->file cho node co output.
+    #[tokio::test]
+    async fn run_node_states_va_outputs_sau_khi_chay() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("src.mp4");
+        std::fs::write(&src, b"fake-mp4").unwrap();
+
+        let (dir, ctx, _driver) = ctx_with(happy_steps(3, &src), &["acc1", "acc2", "acc3"]).await;
+        let g = three_scene_graph(&dir.path().join("out"));
+        let info = run_start_impl(&ctx, "wf1", &g).await.unwrap();
+
+        for _ in 0..200 {
+            let rows = run_list_impl(&ctx, 10).await.unwrap();
+            if rows
+                .iter()
+                .any(|r| r.id == info.run_id && r.status != RunStatus::Running)
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let states = run_node_states_impl(&ctx, &info.run_id).await.unwrap();
+        let mut node_ids: Vec<String> = states.iter().map(|s| s.node_id.clone()).collect();
+        node_ids.sort();
+        assert_eq!(node_ids, vec!["pr", "sv", "vid"]);
+        assert!(states.iter().all(|s| s.state == "done"), "{states:?}");
+
+        // FakeDriver KHONG ghi file that vao downloads_dir (tra thang `src`; Save moi copy ra
+        // out_dir) — nen o day TAO tay mot file dung ten tat dinh `{run_id}_vid_0.mp4` trong
+        // downloads_dir (= base/downloads) de chung minh lenh plumbing quet dung + khop node_id.
+        // (Logic quet thuc da co test rieng `node_outputs_khop_tien_to_node_id` trong lvc-engine.)
+        let downloads = dir.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::write(downloads.join(format!("{}_vid_0.mp4", info.run_id)), b"x").unwrap();
+
+        let outs = run_node_outputs_impl(&ctx, &info.run_id).await.unwrap();
+        assert!(
+            outs.get("vid").is_some_and(|p| p.contains("_vid_")),
+            "{outs:?}"
         );
     }
 
