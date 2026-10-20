@@ -148,8 +148,10 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// cai dat "khong an" ngay — day la ruling cua brief task-5, khong phai thieu sot.
     pub fn apply_settings(&self, s: &AppSettings) {
         self.handle.set_threads(s.threads);
+        self.set_node_threads(s.node_threads);
         info!(
             threads = s.threads,
+            node_threads = s.node_threads,
             "apply_settings: da doi so luong luong dong thoi (co hieu luc ngay)"
         );
 
@@ -414,6 +416,18 @@ mod tests {
         };
         engine.apply_settings(&s1);
         assert_eq!(engine.limiter().effective(), 1);
+    }
+
+    /// Phần A: `apply_settings` đổi `node_threads` có hiệu lực ngay (đọc qua `Engine::node_threads`).
+    #[tokio::test]
+    async fn apply_settings_doi_node_threads() {
+        let (_dir, engine) = engine_with_accounts(&["a"]).await;
+        assert_eq!(engine.node_threads(), 1, "mac dinh 1");
+        engine.apply_settings(&AppSettings {
+            node_threads: 3,
+            ..AppSettings::default()
+        });
+        assert_eq!(engine.node_threads(), 3);
     }
 
     /// `threads` lon hon so tai khoan (2) van bi `effective()` kep boi `accounts` — `apply_settings`

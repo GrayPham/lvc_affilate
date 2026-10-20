@@ -31,6 +31,7 @@
 //! `download_reference_images` (`:628` — `Scene.reference_images` duoc coi la duong dan cuc bo).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -173,6 +174,9 @@ pub struct Engine<D: BrowserDriver + 'static> {
     /// chuyen trang thai node) — de khoi phuc khi mo lai app. `pub(crate)`: `dag.rs` ghi, lenh
     /// `run_node_states` (lvc-app) doc qua `Engine`.
     pub(crate) node_states: NodeStateRepo,
+    /// Phần A: số NODE đồ thị chạy song song (sống — `apply_settings` đổi ngay). 1 = tuần tự.
+    /// `run_steps` đọc đầu mỗi run. `AtomicUsize` (không cần đánh thức như watch vì đọc một lần/run).
+    node_threads: Arc<AtomicUsize>,
     // pub(crate): Task 7 (P3) `dag.rs`: token huy THEO RUN (khac `cancels` — theo `task_id`);
     // `Engine::run_graph` dang ky, `Engine::cancel_run` huy, xoa khi run ket thuc. Moi canh video
     // cua run dang ky token con cua token nay qua `cancels().register_child` (fix-round 1, C1) —
@@ -392,6 +396,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             cancels: CancelRegistry::new(),
             run_repo: RunRepo::new(&db),
             node_states: NodeStateRepo::new(&db),
+            node_threads: Arc::new(AtomicUsize::new(1)),
             run_tokens: DashMap::new(),
             db,
             registry: OnceLock::new(),
@@ -467,6 +472,18 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         resolver: Arc<dyn crate::museai::MuseaiAccountResolver>,
     ) -> bool {
         self.museai_resolver.set(resolver).is_ok()
+    }
+
+    /// Phần A: số node chạy song song hiện tại (tối thiểu 1). `run_steps` đọc đầu mỗi run.
+    #[must_use]
+    #[allow(dead_code, reason = "A-Task 4 (scheduler song song) se doc; gio chi co test goi")]
+    pub(crate) fn node_threads(&self) -> usize {
+        self.node_threads.load(Ordering::Relaxed).max(1)
+    }
+
+    /// Phần A: đặt số node song song (gọi bởi `apply_settings`, module `settings`).
+    pub(crate) fn set_node_threads(&self, n: usize) {
+        self.node_threads.store(n.max(1), Ordering::Relaxed);
     }
 
     /// `pub(crate)`: `dag.rs` đọc trực tiếp khi chèn dịch vụ vào `Services` trong `start_run`,
