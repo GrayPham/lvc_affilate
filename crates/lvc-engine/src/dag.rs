@@ -614,6 +614,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 self.cfg.logs_dir.clone(),
                 self.museai_resolver(),
                 cancel.clone(),
+                self.museai_bootstrap_locks.clone(),
             ),
         ));
         services.insert::<Arc<dyn MuseaiImageHost>>(Arc::new(
@@ -622,6 +623,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 self.cfg.logs_dir.clone(),
                 self.museai_resolver(),
                 cancel.clone(),
+                self.museai_bootstrap_locks.clone(),
             ),
         ));
         (services, Arc::new(self.limits.clone()))

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use lvc_browser::chromium::ChromiumDriver;
 use lvc_browser::{BrowserDriver, LaunchOpts, ops};
 use lvc_museai::protocol::auth::{MuseBootstrap, parse_bootstrap_html};
@@ -24,8 +25,27 @@ use lvc_museai::{
     VideoJobDone, VideoJobsReport,
 };
 use serde::Deserialize;
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+
+/// Phần A: khoá bootstrap per-`profile_dir` (một account = một profile Chromium). Khi chạy nhiều
+/// node `MuseAI` song song (cùng account), `fetch_bootstrap` (mở Chromium tại `profile_dir`) PHẢI
+/// nối tiếp — 2 Chromium cùng `profile_dir` sẽ kẹt lock. Engine giữ map này, chia cho cả 2 host
+/// (image+video) để lease chung. Chỉ giữ khoá quanh `fetch_bootstrap`, thả trước WebSocket để
+/// generation (~phút) chạy chồng.
+pub(crate) type BootstrapLocks = Arc<DashMap<String, Arc<Mutex<()>>>>;
+
+/// Lấy (hoặc tạo) mutex cho một `profile_dir`. Cùng `profile_dir` → CÙNG mutex (nối tiếp bootstrap).
+pub(crate) fn bootstrap_lock(
+    locks: &DashMap<String, Arc<Mutex<()>>>,
+    profile_dir: &str,
+) -> Arc<Mutex<()>> {
+    locks
+        .entry(profile_dir.to_string())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
 
 /// Nguồn `profile_dir` cho MỘT `credential_id` (`museai/login` trong `lvc-vault`) — dùng khuôn
 /// `crate::veo3::VeoAccountResolver`, tách riêng (không tái dùng trait đó) vì tên gắn với Veo3,
@@ -195,6 +215,8 @@ pub(crate) struct EngineMuseaiJobs {
     /// Token CUA RUN (fix: nut "Huy") — `MuseAI` sinh video co the lau nhieu phut/canh nen phai
     /// cat ngang duoc; giong `EngineVeoJobs`/`EngineGoogleVideo`/`EngineSeedanceVideo`.
     cancel: CancellationToken,
+    /// Phần A: lease bootstrap per-`profile_dir` (xem [`BootstrapLocks`]).
+    bootstrap_locks: BootstrapLocks,
 }
 
 impl EngineMuseaiJobs {
@@ -203,12 +225,14 @@ impl EngineMuseaiJobs {
         logs_dir: PathBuf,
         resolver: Arc<dyn MuseaiAccountResolver>,
         cancel: CancellationToken,
+        bootstrap_locks: BootstrapLocks,
     ) -> Self {
         Self {
             downloads_dir,
             logs_dir,
             resolver,
             cancel,
+            bootstrap_locks,
         }
     }
 
@@ -241,13 +265,20 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
             Ok(dir) => dir,
             Err(e) => return Self::fail_all(&jobs, &e),
         };
-        let bootstrap = match fetch_bootstrap(&profile_dir, &self.logs_dir).await {
-            Ok(b) => b,
-            Err(e) => {
-                return Self::fail_all(
-                    &jobs,
-                    &format!("khong lay duoc phien dang nhap muse.ai: {e}"),
-                );
+        // Phần A: nối tiếp bootstrap theo profile_dir (2 node cùng account không mở 2 Chromium cùng
+        // profile). Giữ khoá CHỈ quanh fetch_bootstrap; thả trước khi kết nối WebSocket (generation
+        // ~phút chạy chồng được).
+        let bootstrap = {
+            let lock = bootstrap_lock(&self.bootstrap_locks, &profile_dir.to_string_lossy());
+            let _guard = lock.lock().await;
+            match fetch_bootstrap(&profile_dir, &self.logs_dir).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Self::fail_all(
+                        &jobs,
+                        &format!("khong lay duoc phien dang nhap muse.ai: {e}"),
+                    );
+                }
             }
         };
         let ws_url = bootstrap.websocket_url();
@@ -331,6 +362,8 @@ pub(crate) struct EngineMuseaiImageJobs {
     resolver: Arc<dyn MuseaiAccountResolver>,
     /// Token CUA RUN (fix nut "Huy") — xem `EngineMuseaiJobs`.
     cancel: CancellationToken,
+    /// Phần A: lease bootstrap per-`profile_dir` (xem [`BootstrapLocks`]).
+    bootstrap_locks: BootstrapLocks,
 }
 
 impl EngineMuseaiImageJobs {
@@ -339,12 +372,14 @@ impl EngineMuseaiImageJobs {
         logs_dir: PathBuf,
         resolver: Arc<dyn MuseaiAccountResolver>,
         cancel: CancellationToken,
+        bootstrap_locks: BootstrapLocks,
     ) -> Self {
         Self {
             downloads_dir,
             logs_dir,
             resolver,
             cancel,
+            bootstrap_locks,
         }
     }
 
@@ -377,13 +412,20 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
             Ok(dir) => dir,
             Err(e) => return Self::fail_all(&jobs, &e),
         };
-        let bootstrap = match fetch_bootstrap(&profile_dir, &self.logs_dir).await {
-            Ok(b) => b,
-            Err(e) => {
-                return Self::fail_all(
-                    &jobs,
-                    &format!("khong lay duoc phien dang nhap muse.ai: {e}"),
-                );
+        // Phần A: nối tiếp bootstrap theo profile_dir (2 node cùng account không mở 2 Chromium cùng
+        // profile). Giữ khoá CHỈ quanh fetch_bootstrap; thả trước khi kết nối WebSocket (generation
+        // ~phút chạy chồng được).
+        let bootstrap = {
+            let lock = bootstrap_lock(&self.bootstrap_locks, &profile_dir.to_string_lossy());
+            let _guard = lock.lock().await;
+            match fetch_bootstrap(&profile_dir, &self.logs_dir).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Self::fail_all(
+                        &jobs,
+                        &format!("khong lay duoc phien dang nhap muse.ai: {e}"),
+                    );
+                }
             }
         };
         let ws_url = bootstrap.websocket_url();
@@ -455,5 +497,28 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
         }
         conn.close().await;
         report
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bootstrap_lock;
+    use dashmap::DashMap;
+
+    /// Phần A: cùng `profile_dir` trả CÙNG mutex (nối tiếp bootstrap); khác → mutex khác.
+    #[test]
+    fn bootstrap_lock_cung_key_cung_arc() {
+        let locks = DashMap::new();
+        let a = bootstrap_lock(&locks, "C:/p/acc1");
+        let b = bootstrap_lock(&locks, "C:/p/acc1");
+        let c = bootstrap_lock(&locks, "C:/p/acc2");
+        assert!(
+            std::sync::Arc::ptr_eq(&a, &b),
+            "cung profile_dir -> cung mutex"
+        );
+        assert!(
+            !std::sync::Arc::ptr_eq(&a, &c),
+            "khac profile_dir -> khac mutex"
+        );
     }
 }

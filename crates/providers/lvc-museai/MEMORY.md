@@ -68,3 +68,10 @@
   `EngineMuseaiImageJobs` (sẽ cần mở N kết nối riêng cho N job thay vì 1 kết nối dùng chung — đổi
   kiến trúc file `museai.rs`, nên để dành cho lúc có yêu cầu sửa thật, không tự ý sửa khi chưa được
   giao).
+
+## Bootstrap song song (run-robustness A, 2026-10-20)
+`fetch_bootstrap` mở Chromium THẬT tại `profile_dir`. Khi scheduler chạy nhiều node MuseAI song
+song CÙNG account → 2 Chromium cùng `profile_dir` sẽ kẹt profile lock. Giải: host engine
+(`lvc-engine/src/museai.rs`) giữ lease per-`profile_dir` (`BootstrapLocks`), nối tiếp CHỈ phần
+`fetch_bootstrap`, thả trước WebSocket để generation (~phút) chạy chồng. Lease do Engine giữ, chia
+cho cả 2 host image+video (cùng run).
