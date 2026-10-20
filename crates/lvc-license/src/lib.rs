@@ -9,4 +9,5 @@
 
 pub mod crypto;
 pub mod device;
+pub mod session;
 pub mod verify;

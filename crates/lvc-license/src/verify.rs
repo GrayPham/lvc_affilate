@@ -103,7 +103,7 @@ pub fn verify_signature(pubkey_pem: &str, data: &Value, signature_b64: &str) -> 
 
 /// Thông tin license đã tin được (nằm TRONG phần đã ký). Trường thiếu → mặc định (khớp Python
 /// `str(None)=""`); trường lạ bị bỏ qua.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LicenseInfo {
     #[serde(default)]
     pub key: String,
@@ -145,7 +145,8 @@ pub enum GuardError {
 }
 
 /// Đọc mốc ISO về epoch giây UTC (hỗ trợ `Z`, có/không offset, naive = UTC). Khớp `_parse_iso` Veo3.
-fn parse_iso_to_unix(s: &str) -> Option<i64> {
+#[must_use]
+pub(crate) fn parse_iso_to_unix(s: &str) -> Option<i64> {
     let s = s.trim();
     if s.is_empty() {
         return None;
