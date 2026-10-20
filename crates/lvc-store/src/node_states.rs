@@ -98,6 +98,45 @@ impl NodeStateRepo {
         Ok(())
     }
 
+    /// Phần C: ghi JSON `Outputs` vào cột `outputs` của dòng `(run_id, node_id)` — chỉ gọi khi node
+    /// XONG (done), để chạy lại node lỗi còn seed được output node đã xong. Dòng không tồn tại →
+    /// UPDATE 0 dòng, không lỗi. KHÔNG vào `NodeStateRow` (không ra IPC) — đọc qua
+    /// [`NodeStateRepo::outputs_for_run`].
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi ghi thất bại.
+    pub async fn set_outputs(
+        &self,
+        run_id: &str,
+        node_id: &str,
+        outputs_json: &str,
+    ) -> Result<(), StoreError> {
+        sqlx::query("UPDATE node_states SET outputs = ?3 WHERE run_id = ?1 AND node_id = ?2")
+            .bind(run_id)
+            .bind(node_id)
+            .bind(outputs_json)
+            .execute(self.db.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Phần C: `(node_id, outputs_json)` cho các node của run CÓ outputs (bỏ dòng rỗng) — lệnh
+    /// `run_retry_failed` seed output node đã xong từ đây.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn thất bại.
+    pub async fn outputs_for_run(&self, run_id: &str) -> Result<Vec<(String, String)>, StoreError> {
+        let rows = sqlx::query(
+            "SELECT node_id, outputs FROM node_states WHERE run_id = ?1 AND outputs <> ''",
+        )
+        .bind(run_id)
+        .fetch_all(self.db.pool())
+        .await?;
+        rows.iter()
+            .map(|r| Ok((r.try_get("node_id")?, r.try_get("outputs")?)))
+            .collect()
+    }
+
     /// Mọi node của một run (thứ tự `node_id` cho ổn định test).
     ///
     /// # Errors
@@ -176,6 +215,33 @@ mod tests {
         let rows = repo.list_for_run("r1").await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].node_id, "a");
+    }
+
+    /// Phần C: `set_outputs` ghi JSON Outputs vào dòng done; `outputs_for_run` trả các dòng có
+    /// outputs (bỏ dòng rỗng). Dùng để chạy lại node lỗi (seed output node đã xong).
+    #[tokio::test]
+    async fn set_outputs_roi_outputs_for_run_tra_dung() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = NodeStateRepo::new(&db);
+        repo.upsert("r1", "n1", "done", (1, 1, 1, 0), None, 1.0)
+            .await
+            .unwrap();
+        repo.upsert("r1", "n2", "running", (0, 1, 0, 0), None, 1.0)
+            .await
+            .unwrap();
+        repo.set_outputs("r1", "n1", r#"{"out":[]}"#).await.unwrap();
+
+        let got = repo.outputs_for_run("r1").await.unwrap();
+        assert_eq!(got, vec![("n1".to_string(), r#"{"out":[]}"#.to_string())]);
+    }
+
+    /// `set_outputs` dòng không tồn tại -> UPDATE 0 dòng, không lỗi.
+    #[tokio::test]
+    async fn set_outputs_dong_khong_ton_tai_khong_loi() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = NodeStateRepo::new(&db);
+        repo.set_outputs("r1", "ghost", "{}").await.unwrap();
+        assert!(repo.outputs_for_run("r1").await.unwrap().is_empty());
     }
 
     /// Wire string camelCase (khớp `NodeRunState` của frontend): có `nodeId`/`runId`, không `node_id`.
