@@ -409,6 +409,7 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
                 session_id: None,
                 timeout: Duration::from_secs(300),
                 min_images: 1,
+                images: &job.images,
             };
             let outcome = tokio::select! {
                 biased;
