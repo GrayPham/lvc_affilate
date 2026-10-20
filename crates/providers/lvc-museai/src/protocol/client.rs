@@ -764,7 +764,10 @@ mod tests {
         use sha2::{Digest, Sha256};
         let mut fps: HashSet<[u8; 32]> = HashSet::new();
         fps.insert(Sha256::digest(b"REF-BYTES").into());
-        assert!(is_echoed_ref(b"REF-BYTES", &fps), "ảnh trùng khít ref = echo");
+        assert!(
+            is_echoed_ref(b"REF-BYTES", &fps),
+            "ảnh trùng khít ref = echo"
+        );
         assert!(
             !is_echoed_ref(b"ANH-SINH-MOI", &fps),
             "ảnh sinh mới (khác byte) KHÔNG phải echo"

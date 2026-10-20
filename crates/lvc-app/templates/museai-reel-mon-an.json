@@ -1,7 +1,7 @@
 {
   "name": "MuseAI: Reel món ăn — khoá nhân vật (ảnh trước → video)",
   "category": "Bán hàng/Sản phẩm",
-  "description": "Bám sát video mẫu: HOOK dắt heo → CẬN ZOOM các bước nấu (không người) → cô gái nấu/chốt. Mỗi cảnh tạo ẢNH khoá trước rồi dựng VIDEO 3s. Cảnh món ăn KHÔNG nối ref (để không lôi người vào); cảnh có người nối ref nhân vật+trang phục. Nạp sẵn ảnh từ image/.",
+  "description": "Bám video mẫu: HOOK dắt heo → CẬN ZOOM các bước nấu (không người) → cô gái nấu/chốt. Mỗi cảnh tạo ẢNH khoá trước rồi dựng VIDEO 3s. Cảnh món ăn KHÔNG nối ref + prompt video CẤM thêm người/mặt; cảnh người nối ref nhân vật+trang phục. Nạp sẵn ảnh từ image/.",
   "graph": {
     "version": 2,
     "nodes": [
@@ -216,13 +216,22 @@
         "y": 1255
       },
       {
-        "id": "pvid",
+        "id": "pvid_person",
         "kind": {
           "kind": "prompt",
-          "text": "Làm động ảnh đính kèm một cách tự nhiên và mượt mà: GIỮ NGUYÊN chủ thể và bố cục trong ảnh, chuyển động nhẹ trong ~3 giây (bàn tay, hơi nước, ánh mắt, chuyển camera nhẹ), quay dọc 9:16 kiểu UGC bằng điện thoại, chỉ có tiếng động môi trường."
+          "text": "Làm động ảnh đính kèm tự nhiên, mượt: GIỮ NGUYÊN CHÍNH người và trang phục trong ảnh (không đổi mặt/đồ), chuyển động nhẹ ~3 giây (cử chỉ, ánh mắt, bước đi, nụ cười), quay dọc 9:16 kiểu UGC, chỉ tiếng động môi trường."
         },
         "x": 1120,
         "y": 1530
+      },
+      {
+        "id": "pvid_food",
+        "kind": {
+          "kind": "prompt",
+          "text": "Làm động ảnh đính kèm: GIỮ NGUYÊN khung CẬN MÓN ĂN top-down trong ảnh, CHỈ món ăn + hơi nước + tối đa MỘT BÀN TAY chuyển động nhẹ ~3 giây. TUYỆT ĐỐI KHÔNG thêm gương mặt hay người mới, KHÔNG thu nhỏ/kéo xa khung, giữ là ảnh cận món ăn. Quay dọc 9:16 kiểu UGC, chỉ tiếng động môi trường."
+        },
+        "x": 1120,
+        "y": 1690
       },
       {
         "id": "ghep",
@@ -280,7 +289,7 @@
       },
       {
         "id": "e6",
-        "from": "pvid",
+        "from": "pvid_person",
         "from_port": "out",
         "to": "v1",
         "to_port": "prompt"
@@ -308,7 +317,7 @@
       },
       {
         "id": "e10",
-        "from": "pvid",
+        "from": "pvid_food",
         "from_port": "out",
         "to": "v2",
         "to_port": "prompt"
@@ -336,7 +345,7 @@
       },
       {
         "id": "e14",
-        "from": "pvid",
+        "from": "pvid_food",
         "from_port": "out",
         "to": "v3",
         "to_port": "prompt"
@@ -378,7 +387,7 @@
       },
       {
         "id": "e20",
-        "from": "pvid",
+        "from": "pvid_person",
         "from_port": "out",
         "to": "v4",
         "to_port": "prompt"
@@ -406,7 +415,7 @@
       },
       {
         "id": "e24",
-        "from": "pvid",
+        "from": "pvid_food",
         "from_port": "out",
         "to": "v5",
         "to_port": "prompt"
@@ -448,7 +457,7 @@
       },
       {
         "id": "e30",
-        "from": "pvid",
+        "from": "pvid_person",
         "from_port": "out",
         "to": "v6",
         "to_port": "prompt"
