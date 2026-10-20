@@ -33,6 +33,10 @@ export default function GeneralSettings() {
   const durations = allowedDurations(draft.defaultMode, draft.defaultModel);
   const threadsBad =
     !Number.isInteger(draft.threads) || draft.threads < THREADS_MIN || draft.threads > THREADS_MAX;
+  const nodeThreadsBad =
+    !Number.isInteger(draft.nodeThreads) ||
+    draft.nodeThreads < THREADS_MIN ||
+    draft.nodeThreads > THREADS_MAX;
 
   /** Đổi chế độ/model có thể làm thời lượng hiện tại không còn hợp lệ — kéo về lựa chọn đầu tiên
    * còn hợp lệ thay vì để người dùng tự phát hiện qua thông báo lỗi. */
@@ -55,7 +59,6 @@ export default function GeneralSettings() {
           label="Số luồng"
           hint={`Bao nhiêu video được tạo cùng lúc. Từ ${THREADS_MIN} đến ${THREADS_MAX}.`}
           htmlFor="threads"
-          last
         >
           <input
             id="threads"
@@ -73,6 +76,31 @@ export default function GeneralSettings() {
           ) : (
             <RowNote>
               Job đang chạy không bị cắt — giới hạn mới có hiệu lực từ job kế tiếp.
+            </RowNote>
+          )}
+        </SettingRow>
+        <SettingRow
+          label="Số node chạy song song"
+          hint={`Bao nhiêu node đồ thị chạy cùng lúc (1 = tuần tự). Từ ${THREADS_MIN} đến ${THREADS_MAX}.`}
+          htmlFor="nodeThreads"
+          last
+        >
+          <input
+            id="nodeThreads"
+            type="number"
+            min={THREADS_MIN}
+            max={THREADS_MAX}
+            className={`w-28 ${INPUT_CLASS} text-right font-mono`}
+            value={draft.nodeThreads}
+            onChange={(e) => setDraft({ nodeThreads: Number(e.target.value) })}
+          />
+          {nodeThreadsBad ? (
+            <span className="text-xs text-rose">
+              Phải là số nguyên từ {THREADS_MIN} đến {THREADS_MAX}.
+            </span>
+          ) : (
+            <RowNote>
+              MuseAI 1 tài khoản: mở phiên nối tiếp, nhưng tạo video chồng nhau nên vẫn nhanh hơn.
             </RowNote>
           )}
         </SettingRow>

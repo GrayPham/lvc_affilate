@@ -498,6 +498,8 @@ export type TaskResumeInfo = z.infer<typeof TaskResumeInfoSchema>;
 
 export const AppSettingsSchema = z.object({
   threads: z.number(),
+  // Phần A: số NODE đồ thị chạy song song (1 = tuần tự). Khác `threads` (gate từng job video).
+  nodeThreads: z.number(),
   silentMode: z.boolean(),
   modeFallback: z.boolean(),
   accountsDir: z.string(),

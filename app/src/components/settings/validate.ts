@@ -22,6 +22,13 @@ export function validateSettings(draft: AppSettings): string[] {
   ) {
     errors.push(`Số luồng phải là số nguyên từ ${THREADS_MIN} đến ${THREADS_MAX}.`);
   }
+  if (
+    !Number.isInteger(draft.nodeThreads) ||
+    draft.nodeThreads < THREADS_MIN ||
+    draft.nodeThreads > THREADS_MAX
+  ) {
+    errors.push(`Số node chạy song song phải là số nguyên từ ${THREADS_MIN} đến ${THREADS_MAX}.`);
+  }
   const allowed = allowedDurations(draft.defaultMode, draft.defaultModel);
   if (!allowed.includes(draft.defaultDuration)) {
     errors.push(

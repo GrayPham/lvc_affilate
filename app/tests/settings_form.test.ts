@@ -12,6 +12,7 @@ import type { AppSettings } from "../src/ipc/types";
 function defaultSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     threads: 1,
+    nodeThreads: 1,
     silentMode: false,
     modeFallback: true,
     accountsDir: "",

@@ -1,5 +1,6 @@
 {
   "threads": 1,
+  "nodeThreads": 1,
   "silentMode": false,
   "modeFallback": true,
   "accountsDir": "",

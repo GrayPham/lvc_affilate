@@ -21,9 +21,12 @@ export const THREADS_MIN = 1;
 export function toAppSettings(draft: AppSettings): AppSettings {
   const roundedThreads = Number.isFinite(draft.threads) ? Math.round(draft.threads) : THREADS_MIN;
   const threads = Math.min(THREADS_MAX, Math.max(THREADS_MIN, roundedThreads));
+  const roundedNode = Number.isFinite(draft.nodeThreads) ? Math.round(draft.nodeThreads) : THREADS_MIN;
+  const nodeThreads = Math.min(THREADS_MAX, Math.max(THREADS_MIN, roundedNode));
   return {
     ...draft,
     threads,
+    nodeThreads,
     accountsDir: draft.accountsDir.trim(),
     outputDir: draft.outputDir.trim(),
   };
