@@ -16,8 +16,12 @@ base64.workspace = true
 thiserror.workspace = true
 # Parse timestamp ISO cho lop 4 guard (clock skew). chrono dung o Task 2, khong phai Task 6.
 chrono.workspace = true
-
-[dev-dependencies]
+# crypto.rs: ECDH (p256) -> HKDF -> Fernet tu viet (AES-128-CBC + HMAC-SHA256). rustls-only.
+hkdf.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+aes.workspace = true
+cbc.workspace = true
 rand.workspace = true
 
 [lints]

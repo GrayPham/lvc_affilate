@@ -7,4 +7,5 @@
 //!
 //! LUẬT: KHÔNG log bí mật (password, license key, JWT, session plaintext, Fernet key).
 
+pub mod crypto;
 pub mod verify;
