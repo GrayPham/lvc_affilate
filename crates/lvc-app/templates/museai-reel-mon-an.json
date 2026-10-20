@@ -1,7 +1,7 @@
 {
   "name": "MuseAI: Reel món ăn 30s — khoá nhân vật + tiết tấu nhanh",
   "category": "Bán hàng/Sản phẩm",
-  "description": "Reel ~30s bám mẫu: hook heo → sơ chế/luộc → lật chảo → giã tỏi ớt → pha & nếm nước chấm → gắp chấm → bê khoe → thưởng thức. KHOÁ NHÂN VẬT + BỐI CẢNH (thêm node 'Ảnh bối cảnh' + prompt cấm đổi địa điểm/nhà hàng). Cắt tiết tấu 3s→1s. Nạp sẵn ảnh image/.",
+  "description": "Reel ~30s bám mẫu: hook heo → sơ chế/luộc → lật chảo → giã tỏi ớt → pha & nếm nước chấm → gắp chấm → bê khoe → thưởng thức. TỰ TẠO ảnh bối cảnh bếp (node riêng) + khoá nhân vật/bối cảnh, cấm đổi địa điểm. Cắt tiết tấu 3s→1s. Nạp sẵn ảnh image/, khách không cần upload bối cảnh.",
   "graph": {
     "version": 2,
     "nodes": [
@@ -42,20 +42,28 @@
         "y": 460
       },
       {
-        "id": "bc",
+        "id": "bgp",
         "kind": {
-          "kind": "image_upload",
-          "paths": [],
-          "label": "Ảnh bối cảnh (bếp/căn hộ) - tùy chọn"
+          "kind": "prompt",
+          "text": "Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16: nội thất MỘT CĂN BẾP/CĂN HỘ GIA ĐÌNH hiện đại sáng màu — sàn gỗ, tủ bếp trắng, mặt bàn bếp gỗ sẫm, bếp gas/từ, cửa sổ có nắng, vài chậu cây nhỏ; KHÔNG có người. Góc rộng đời thường kiểu UGC. (a single still photo, no people, no video)"
         },
-        "x": 40,
-        "y": 660
+        "x": 360,
+        "y": 640
+      },
+      {
+        "id": "bgimg",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 700,
+        "y": 640
       },
       {
         "id": "p1",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 1 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — đứng ở hành lang căn hộ, MỘT TAY DẮT MỘT CON HEO hồng con đi bên cạnh theo ảnh, tay kia chống hông, nhìn thẳng camera cười tươi hào hứng (mở đầu gây tò mò), trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại sáng màu (sàn gỗ, tủ bếp trắng, có cửa sổ) theo ảnh bối cảnh — GIỮ NGUYÊN bối cảnh, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh/con heo."
+          "text": "Cảnh 1 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — đứng ở hành lang căn hộ, MỘT TAY DẮT MỘT CON HEO hồng con đi bên cạnh theo ảnh, tay kia chống hông, nhìn thẳng camera cười tươi hào hứng (mở đầu gây tò mò), trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại (theo ảnh bối cảnh bếp đính kèm: sàn gỗ, tủ bếp sáng, cửa sổ) — GIỮ NGUYÊN bối cảnh đó, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh/con heo."
         },
         "x": 360,
         "y": 60
@@ -66,7 +74,7 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
+        "x": 1040,
         "y": 60
       },
       {
@@ -77,7 +85,7 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
+        "x": 1360,
         "y": 60
       },
       {
@@ -87,17 +95,17 @@
           "start": 0.0,
           "end": 3.0
         },
-        "x": 1380,
+        "x": 1680,
         "y": 60
       },
       {
         "id": "p2",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 2 (3s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): những miếng sườn heo non tươi đỏ hồng còn dính xương xếp trong tô inox sáng bóng, vài cọng hành lá bên cạnh, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 2 (3s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): những miếng sườn heo non tươi đỏ hồng còn dính xương xếp trong tô inox sáng bóng, vài cọng hành lá bên cạnh, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 210
+        "y": 190
       },
       {
         "id": "img2",
@@ -105,8 +113,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 210
+        "x": 1040,
+        "y": 190
       },
       {
         "id": "v2",
@@ -116,8 +124,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 210
+        "x": 1360,
+        "y": 190
       },
       {
         "id": "t2",
@@ -126,17 +134,17 @@
           "start": 0.0,
           "end": 3.0
         },
-        "x": 1380,
-        "y": 210
+        "x": 1680,
+        "y": 190
       },
       {
         "id": "p3",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 3 (2s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): một bàn tay đang chà rửa sườn với muối hạt và gừng đập dập trong thau nước, nước đục và bọt trắng, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 3 (2s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): một bàn tay đang chà rửa sườn với muối hạt và gừng đập dập trong thau nước, nước đục và bọt trắng, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 360
+        "y": 320
       },
       {
         "id": "img3",
@@ -144,8 +152,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 360
+        "x": 1040,
+        "y": 320
       },
       {
         "id": "v3",
@@ -155,8 +163,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 360
+        "x": 1360,
+        "y": 320
       },
       {
         "id": "t3",
@@ -165,17 +173,17 @@
           "start": 0.0,
           "end": 2.0
         },
-        "x": 1380,
-        "y": 360
+        "x": 1680,
+        "y": 320
       },
       {
         "id": "p4",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 4 (2s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): nồi nước luộc sườn ĐANG SÔI BÙNG trên bếp, một cái vá inox hớt lớp bọt nâu nổi lên, hơi nước nghi ngút, nhìn từ trên xuống, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 4 (2s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): nồi nước luộc sườn ĐANG SÔI BÙNG trên bếp, một cái vá inox hớt lớp bọt nâu nổi lên, hơi nước nghi ngút, nhìn từ trên xuống, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 510
+        "y": 450
       },
       {
         "id": "img4",
@@ -183,8 +191,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 510
+        "x": 1040,
+        "y": 450
       },
       {
         "id": "v4",
@@ -194,8 +202,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 510
+        "x": 1360,
+        "y": 450
       },
       {
         "id": "t4",
@@ -204,17 +212,17 @@
           "start": 0.0,
           "end": 2.0
         },
-        "x": 1380,
-        "y": 510
+        "x": 1680,
+        "y": 450
       },
       {
         "id": "p5",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 5 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — đứng bên bếp, nghiêng người TRÚT rổ sườn đã luộc vào chiếc chảo gang nóng đang bốc khói, trung cảnh, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại sáng màu (sàn gỗ, tủ bếp trắng, có cửa sổ) theo ảnh bối cảnh — GIỮ NGUYÊN bối cảnh, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh."
+          "text": "Cảnh 5 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — đứng bên bếp, nghiêng người TRÚT rổ sườn đã luộc vào chiếc chảo gang nóng đang bốc khói, trung cảnh, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại (theo ảnh bối cảnh bếp đính kèm: sàn gỗ, tủ bếp sáng, cửa sổ) — GIỮ NGUYÊN bối cảnh đó, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh."
         },
         "x": 360,
-        "y": 660
+        "y": 580
       },
       {
         "id": "img5",
@@ -222,8 +230,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 660
+        "x": 1040,
+        "y": 580
       },
       {
         "id": "v5",
@@ -233,8 +241,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 660
+        "x": 1360,
+        "y": 580
       },
       {
         "id": "t5",
@@ -243,17 +251,17 @@
           "start": 0.0,
           "end": 3.0
         },
-        "x": 1380,
-        "y": 660
+        "x": 1680,
+        "y": 580
       },
       {
         "id": "p6",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 6 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): LẬT CHẢO ĐIÊU LUYỆN — những miếng sườn được xóc tung lên trong chảo gang trên lửa lớn, NGỌN LỬA BÙNG viền chảo, khói và dầu bắn, cận động, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 6 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): LẬT CHẢO ĐIÊU LUYỆN — những miếng sườn được xóc tung lên trong chảo gang trên lửa lớn, NGỌN LỬA BÙNG viền chảo, khói và dầu bắn, cận động, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 810
+        "y": 710
       },
       {
         "id": "img6",
@@ -261,8 +269,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 810
+        "x": 1040,
+        "y": 710
       },
       {
         "id": "v6",
@@ -272,8 +280,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 810
+        "x": 1360,
+        "y": 710
       },
       {
         "id": "t6",
@@ -282,17 +290,17 @@
           "start": 0.0,
           "end": 1.0
         },
-        "x": 1380,
-        "y": 810
+        "x": 1680,
+        "y": 710
       },
       {
         "id": "p7",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 7 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): GIÃ tỏi ớt trong một cối đá — cái chày đang giã nát tỏi và ớt đỏ cùng chút đường, vụn văng nhẹ, cận, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 7 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): GIÃ tỏi ớt trong một cối đá — cái chày đang giã nát tỏi và ớt đỏ cùng chút đường, vụn văng nhẹ, cận, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 960
+        "y": 840
       },
       {
         "id": "img7",
@@ -300,8 +308,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 960
+        "x": 1040,
+        "y": 840
       },
       {
         "id": "v7",
@@ -311,8 +319,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 960
+        "x": 1360,
+        "y": 840
       },
       {
         "id": "t7",
@@ -321,17 +329,17 @@
           "start": 0.0,
           "end": 1.0
         },
-        "x": 1380,
-        "y": 960
+        "x": 1680,
+        "y": 840
       },
       {
         "id": "p8",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 8 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): rót nước mắm vàng óng vào một chén sứ trắng rồi thêm một muỗng đường trắng, cận, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 8 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): rót nước mắm vàng óng vào một chén sứ trắng rồi thêm một muỗng đường trắng, cận, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 1110
+        "y": 970
       },
       {
         "id": "img8",
@@ -339,8 +347,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 1110
+        "x": 1040,
+        "y": 970
       },
       {
         "id": "v8",
@@ -350,8 +358,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 1110
+        "x": 1360,
+        "y": 970
       },
       {
         "id": "t8",
@@ -360,17 +368,17 @@
           "start": 0.0,
           "end": 1.0
         },
-        "x": 1380,
-        "y": 1110
+        "x": 1680,
+        "y": 970
       },
       {
         "id": "p9",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 9 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): một bàn tay vắt nửa trái tắc (quất) vào chén nước chấm, nước cốt và hạt rơi xuống, cận, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 9 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): một bàn tay vắt nửa trái tắc (quất) vào chén nước chấm, nước cốt và hạt rơi xuống, cận, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 1260
+        "y": 1100
       },
       {
         "id": "img9",
@@ -378,8 +386,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 1260
+        "x": 1040,
+        "y": 1100
       },
       {
         "id": "v9",
@@ -389,8 +397,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 1260
+        "x": 1360,
+        "y": 1100
       },
       {
         "id": "t9",
@@ -399,17 +407,17 @@
           "start": 0.0,
           "end": 1.0
         },
-        "x": 1380,
-        "y": 1260
+        "x": 1680,
+        "y": 1100
       },
       {
         "id": "p10",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 10 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): khuấy đều chén nước chấm — tỏi ớt giã nổi lều bều, nước sóng sánh màu hổ phách, một cái muỗng đang khuấy, cận, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 10 (1s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): khuấy đều chén nước chấm — tỏi ớt giã nổi lều bều, nước sóng sánh màu hổ phách, một cái muỗng đang khuấy, cận, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 1410
+        "y": 1230
       },
       {
         "id": "img10",
@@ -417,8 +425,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 1410
+        "x": 1040,
+        "y": 1230
       },
       {
         "id": "v10",
@@ -428,8 +436,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 1410
+        "x": 1360,
+        "y": 1230
       },
       {
         "id": "t10",
@@ -438,17 +446,17 @@
           "start": 0.0,
           "end": 1.0
         },
-        "x": 1380,
-        "y": 1410
+        "x": 1680,
+        "y": 1230
       },
       {
         "id": "p11",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 11 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — đưa một muỗng nước chấm lên NẾM THỬ, mắt lim dim gật gù hài lòng, cận gương mặt, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại sáng màu (sàn gỗ, tủ bếp trắng, có cửa sổ) theo ảnh bối cảnh — GIỮ NGUYÊN bối cảnh, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh."
+          "text": "Cảnh 11 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — đưa một muỗng nước chấm lên NẾM THỬ, mắt lim dim gật gù hài lòng, cận gương mặt, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại (theo ảnh bối cảnh bếp đính kèm: sàn gỗ, tủ bếp sáng, cửa sổ) — GIỮ NGUYÊN bối cảnh đó, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh."
         },
         "x": 360,
-        "y": 1560
+        "y": 1360
       },
       {
         "id": "img11",
@@ -456,8 +464,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 1560
+        "x": 1040,
+        "y": 1360
       },
       {
         "id": "v11",
@@ -467,8 +475,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 1560
+        "x": 1360,
+        "y": 1360
       },
       {
         "id": "t11",
@@ -477,17 +485,17 @@
           "start": 0.0,
           "end": 3.0
         },
-        "x": 1380,
-        "y": 1560
+        "x": 1680,
+        "y": 1360
       },
       {
         "id": "p12",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 12 (2s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): một miếng sườn rim bóng được đũa gắp CHẤM vào chén nước chấm sóng sánh, nhỏ giọt, cận, đặt trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp gia đình đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
+          "text": "Cảnh 12 (2s) — Ảnh CẬN (top-down hoặc góc gần), CHỈ MÓN ĂN + bàn tay (KHÔNG có mặt/người): một miếng sườn rim bóng được đũa gắp CHẤM vào chén nước chấm sóng sánh, nhỏ giọt, cận, trên quầy bếp/bàn gỗ sẫm trong CÙNG căn bếp đó. Ảnh thật dọc 9:16, ánh sáng mềm kiểu UGC."
         },
         "x": 360,
-        "y": 1710
+        "y": 1490
       },
       {
         "id": "img12",
@@ -495,8 +503,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 1710
+        "x": 1040,
+        "y": 1490
       },
       {
         "id": "v12",
@@ -506,8 +514,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 1710
+        "x": 1360,
+        "y": 1490
       },
       {
         "id": "t12",
@@ -516,17 +524,17 @@
           "start": 0.0,
           "end": 2.0
         },
-        "x": 1380,
-        "y": 1710
+        "x": 1680,
+        "y": 1490
       },
       {
         "id": "p13",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 13 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — hai tay BÊ một tô sườn rim nóng hổi bốc khói, khoe thẳng vào camera, mỉm cười mời người xem; cô gái đang NGỒI/ĐỨNG tại bàn bếp trong căn hộ, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại sáng màu (sàn gỗ, tủ bếp trắng, có cửa sổ) theo ảnh bối cảnh — GIỮ NGUYÊN bối cảnh, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh/con heo."
+          "text": "Cảnh 13 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — NGỒI tại bàn bếp trong căn hộ, hai tay BÊ một tô sườn rim nóng hổi bốc khói, khoe thẳng vào camera, mỉm cười mời người xem, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại (theo ảnh bối cảnh bếp đính kèm: sàn gỗ, tủ bếp sáng, cửa sổ) — GIỮ NGUYÊN bối cảnh đó, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh."
         },
         "x": 360,
-        "y": 1860
+        "y": 1620
       },
       {
         "id": "img13",
@@ -534,8 +542,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 1860
+        "x": 1040,
+        "y": 1620
       },
       {
         "id": "v13",
@@ -545,8 +553,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 1860
+        "x": 1360,
+        "y": 1620
       },
       {
         "id": "t13",
@@ -555,17 +563,17 @@
           "start": 0.0,
           "end": 3.0
         },
-        "x": 1380,
-        "y": 1860
+        "x": 1680,
+        "y": 1620
       },
       {
         "id": "p14",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 14 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — NGỒI tại bàn bếp trong căn hộ, CẮN một miếng sườn rim, biểu cảm thưởng thức ngon lành mãn nguyện, cận gương mặt, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại sáng màu (sàn gỗ, tủ bếp trắng, có cửa sổ) theo ảnh bối cảnh — GIỮ NGUYÊN bối cảnh, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh/con heo."
+          "text": "Cảnh 14 (3s) — Tạo MỘT ẢNH MỚI, ảnh thật dọc 9:16 kiểu UGC chụp điện thoại, ánh sáng mềm: cô gái — GIỮ ĐÚNG cô gái trong ảnh tham chiếu — gương mặt, tóc nâu dài gợn sóng — mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng — NGỒI tại bàn bếp trong căn hộ, CẮN một miếng sườn rim, biểu cảm thưởng thức ngon lành mãn nguyện, cận gương mặt, trong CÙNG MỘT căn hộ/căn bếp gia đình hiện đại (theo ảnh bối cảnh bếp đính kèm: sàn gỗ, tủ bếp sáng, cửa sổ) — GIỮ NGUYÊN bối cảnh đó, KHÔNG đổi địa điểm, KHÔNG phải nhà hàng/quán ăn. KHÔNG dùng lại ảnh đính kèm, chỉ tham khảo gương mặt/trang phục/bối cảnh."
         },
         "x": 360,
-        "y": 2010
+        "y": 1750
       },
       {
         "id": "img14",
@@ -573,8 +581,8 @@
           "kind": "museai_image",
           "account": ""
         },
-        "x": 700,
-        "y": 2010
+        "x": 1040,
+        "y": 1750
       },
       {
         "id": "v14",
@@ -584,8 +592,8 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 1040,
-        "y": 2010
+        "x": 1360,
+        "y": 1750
       },
       {
         "id": "t14",
@@ -594,8 +602,8 @@
           "start": 0.0,
           "end": 3.0
         },
-        "x": 1380,
-        "y": 2010
+        "x": 1680,
+        "y": 1750
       },
       {
         "id": "pvid_person",
@@ -603,8 +611,8 @@
           "kind": "prompt",
           "text": "Làm động ảnh đính kèm tự nhiên, mượt: GIỮ NGUYÊN CHÍNH người, trang phục VÀ BỐI CẢNH trong ảnh (không đổi mặt/đồ/địa điểm), chuyển động nhẹ (cử chỉ, ánh mắt, động tác nấu/ăn), quay dọc 9:16 kiểu UGC, chỉ tiếng động môi trường."
         },
-        "x": 1040,
-        "y": 2200
+        "x": 1360,
+        "y": 1920
       },
       {
         "id": "pvid_food",
@@ -612,15 +620,15 @@
           "kind": "prompt",
           "text": "Làm động ảnh đính kèm: GIỮ NGUYÊN khung CẬN món ăn VÀ bối cảnh bàn bếp trong ảnh, CHỈ món ăn + hơi nước/lửa + tối đa MỘT BÀN TAY chuyển động nhẹ. TUYỆT ĐỐI KHÔNG thêm gương mặt/người mới, KHÔNG đổi địa điểm, KHÔNG thu nhỏ khung. Dọc 9:16 UGC."
         },
-        "x": 1040,
-        "y": 2360
+        "x": 1360,
+        "y": 2070
       },
       {
         "id": "ghep",
         "kind": {
           "kind": "concat"
         },
-        "x": 1720,
+        "x": 2000,
         "y": 700
       },
       {
@@ -629,615 +637,622 @@
           "kind": "save",
           "out_dir": ""
         },
-        "x": 2020,
+        "x": 2300,
         "y": 700
       }
     ],
     "edges": [
       {
         "id": "e1",
+        "from": "bgp",
+        "from_port": "out",
+        "to": "bgimg",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e2",
         "from": "p1",
         "from_port": "out",
         "to": "img1",
         "to_port": "prompt"
       },
       {
-        "id": "e2",
-        "from": "nv",
-        "from_port": "out",
-        "to": "img1",
-        "to_port": "refs"
-      },
-      {
         "id": "e3",
-        "from": "ao",
+        "from": "nv",
         "from_port": "out",
         "to": "img1",
         "to_port": "refs"
       },
       {
         "id": "e4",
-        "from": "bc",
+        "from": "ao",
         "from_port": "out",
         "to": "img1",
         "to_port": "refs"
       },
       {
         "id": "e5",
-        "from": "heo",
+        "from": "bgimg",
         "from_port": "out",
         "to": "img1",
         "to_port": "refs"
       },
       {
         "id": "e6",
+        "from": "heo",
+        "from_port": "out",
+        "to": "img1",
+        "to_port": "refs"
+      },
+      {
+        "id": "e7",
         "from": "img1",
         "from_port": "out",
         "to": "v1",
         "to_port": "refs"
       },
       {
-        "id": "e7",
+        "id": "e8",
         "from": "pvid_person",
         "from_port": "out",
         "to": "v1",
         "to_port": "prompt"
       },
       {
-        "id": "e8",
+        "id": "e9",
         "from": "v1",
         "from_port": "out",
         "to": "t1",
         "to_port": "in"
       },
       {
-        "id": "e9",
+        "id": "e10",
         "from": "t1",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e10",
+        "id": "e11",
         "from": "p2",
         "from_port": "out",
         "to": "img2",
         "to_port": "prompt"
       },
       {
-        "id": "e11",
+        "id": "e12",
         "from": "img2",
         "from_port": "out",
         "to": "v2",
         "to_port": "refs"
       },
       {
-        "id": "e12",
+        "id": "e13",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v2",
         "to_port": "prompt"
       },
       {
-        "id": "e13",
+        "id": "e14",
         "from": "v2",
         "from_port": "out",
         "to": "t2",
         "to_port": "in"
       },
       {
-        "id": "e14",
+        "id": "e15",
         "from": "t2",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e15",
+        "id": "e16",
         "from": "p3",
         "from_port": "out",
         "to": "img3",
         "to_port": "prompt"
       },
       {
-        "id": "e16",
+        "id": "e17",
         "from": "img3",
         "from_port": "out",
         "to": "v3",
         "to_port": "refs"
       },
       {
-        "id": "e17",
+        "id": "e18",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v3",
         "to_port": "prompt"
       },
       {
-        "id": "e18",
+        "id": "e19",
         "from": "v3",
         "from_port": "out",
         "to": "t3",
         "to_port": "in"
       },
       {
-        "id": "e19",
+        "id": "e20",
         "from": "t3",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e20",
+        "id": "e21",
         "from": "p4",
         "from_port": "out",
         "to": "img4",
         "to_port": "prompt"
       },
       {
-        "id": "e21",
+        "id": "e22",
         "from": "img4",
         "from_port": "out",
         "to": "v4",
         "to_port": "refs"
       },
       {
-        "id": "e22",
+        "id": "e23",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v4",
         "to_port": "prompt"
       },
       {
-        "id": "e23",
+        "id": "e24",
         "from": "v4",
         "from_port": "out",
         "to": "t4",
         "to_port": "in"
       },
       {
-        "id": "e24",
+        "id": "e25",
         "from": "t4",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e25",
+        "id": "e26",
         "from": "p5",
         "from_port": "out",
         "to": "img5",
         "to_port": "prompt"
       },
       {
-        "id": "e26",
-        "from": "nv",
-        "from_port": "out",
-        "to": "img5",
-        "to_port": "refs"
-      },
-      {
         "id": "e27",
-        "from": "ao",
+        "from": "nv",
         "from_port": "out",
         "to": "img5",
         "to_port": "refs"
       },
       {
         "id": "e28",
-        "from": "bc",
+        "from": "ao",
         "from_port": "out",
         "to": "img5",
         "to_port": "refs"
       },
       {
         "id": "e29",
+        "from": "bgimg",
+        "from_port": "out",
+        "to": "img5",
+        "to_port": "refs"
+      },
+      {
+        "id": "e30",
         "from": "img5",
         "from_port": "out",
         "to": "v5",
         "to_port": "refs"
       },
       {
-        "id": "e30",
+        "id": "e31",
         "from": "pvid_person",
         "from_port": "out",
         "to": "v5",
         "to_port": "prompt"
       },
       {
-        "id": "e31",
+        "id": "e32",
         "from": "v5",
         "from_port": "out",
         "to": "t5",
         "to_port": "in"
       },
       {
-        "id": "e32",
+        "id": "e33",
         "from": "t5",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e33",
+        "id": "e34",
         "from": "p6",
         "from_port": "out",
         "to": "img6",
         "to_port": "prompt"
       },
       {
-        "id": "e34",
+        "id": "e35",
         "from": "img6",
         "from_port": "out",
         "to": "v6",
         "to_port": "refs"
       },
       {
-        "id": "e35",
+        "id": "e36",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v6",
         "to_port": "prompt"
       },
       {
-        "id": "e36",
+        "id": "e37",
         "from": "v6",
         "from_port": "out",
         "to": "t6",
         "to_port": "in"
       },
       {
-        "id": "e37",
+        "id": "e38",
         "from": "t6",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e38",
+        "id": "e39",
         "from": "p7",
         "from_port": "out",
         "to": "img7",
         "to_port": "prompt"
       },
       {
-        "id": "e39",
+        "id": "e40",
         "from": "img7",
         "from_port": "out",
         "to": "v7",
         "to_port": "refs"
       },
       {
-        "id": "e40",
+        "id": "e41",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v7",
         "to_port": "prompt"
       },
       {
-        "id": "e41",
+        "id": "e42",
         "from": "v7",
         "from_port": "out",
         "to": "t7",
         "to_port": "in"
       },
       {
-        "id": "e42",
+        "id": "e43",
         "from": "t7",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e43",
+        "id": "e44",
         "from": "p8",
         "from_port": "out",
         "to": "img8",
         "to_port": "prompt"
       },
       {
-        "id": "e44",
+        "id": "e45",
         "from": "img8",
         "from_port": "out",
         "to": "v8",
         "to_port": "refs"
       },
       {
-        "id": "e45",
+        "id": "e46",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v8",
         "to_port": "prompt"
       },
       {
-        "id": "e46",
+        "id": "e47",
         "from": "v8",
         "from_port": "out",
         "to": "t8",
         "to_port": "in"
       },
       {
-        "id": "e47",
+        "id": "e48",
         "from": "t8",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e48",
+        "id": "e49",
         "from": "p9",
         "from_port": "out",
         "to": "img9",
         "to_port": "prompt"
       },
       {
-        "id": "e49",
+        "id": "e50",
         "from": "img9",
         "from_port": "out",
         "to": "v9",
         "to_port": "refs"
       },
       {
-        "id": "e50",
+        "id": "e51",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v9",
         "to_port": "prompt"
       },
       {
-        "id": "e51",
+        "id": "e52",
         "from": "v9",
         "from_port": "out",
         "to": "t9",
         "to_port": "in"
       },
       {
-        "id": "e52",
+        "id": "e53",
         "from": "t9",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e53",
+        "id": "e54",
         "from": "p10",
         "from_port": "out",
         "to": "img10",
         "to_port": "prompt"
       },
       {
-        "id": "e54",
+        "id": "e55",
         "from": "img10",
         "from_port": "out",
         "to": "v10",
         "to_port": "refs"
       },
       {
-        "id": "e55",
+        "id": "e56",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v10",
         "to_port": "prompt"
       },
       {
-        "id": "e56",
+        "id": "e57",
         "from": "v10",
         "from_port": "out",
         "to": "t10",
         "to_port": "in"
       },
       {
-        "id": "e57",
+        "id": "e58",
         "from": "t10",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e58",
+        "id": "e59",
         "from": "p11",
         "from_port": "out",
         "to": "img11",
         "to_port": "prompt"
       },
       {
-        "id": "e59",
-        "from": "nv",
-        "from_port": "out",
-        "to": "img11",
-        "to_port": "refs"
-      },
-      {
         "id": "e60",
-        "from": "ao",
+        "from": "nv",
         "from_port": "out",
         "to": "img11",
         "to_port": "refs"
       },
       {
         "id": "e61",
-        "from": "bc",
+        "from": "ao",
         "from_port": "out",
         "to": "img11",
         "to_port": "refs"
       },
       {
         "id": "e62",
+        "from": "bgimg",
+        "from_port": "out",
+        "to": "img11",
+        "to_port": "refs"
+      },
+      {
+        "id": "e63",
         "from": "img11",
         "from_port": "out",
         "to": "v11",
         "to_port": "refs"
       },
       {
-        "id": "e63",
+        "id": "e64",
         "from": "pvid_person",
         "from_port": "out",
         "to": "v11",
         "to_port": "prompt"
       },
       {
-        "id": "e64",
+        "id": "e65",
         "from": "v11",
         "from_port": "out",
         "to": "t11",
         "to_port": "in"
       },
       {
-        "id": "e65",
+        "id": "e66",
         "from": "t11",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e66",
+        "id": "e67",
         "from": "p12",
         "from_port": "out",
         "to": "img12",
         "to_port": "prompt"
       },
       {
-        "id": "e67",
+        "id": "e68",
         "from": "img12",
         "from_port": "out",
         "to": "v12",
         "to_port": "refs"
       },
       {
-        "id": "e68",
+        "id": "e69",
         "from": "pvid_food",
         "from_port": "out",
         "to": "v12",
         "to_port": "prompt"
       },
       {
-        "id": "e69",
+        "id": "e70",
         "from": "v12",
         "from_port": "out",
         "to": "t12",
         "to_port": "in"
       },
       {
-        "id": "e70",
+        "id": "e71",
         "from": "t12",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e71",
+        "id": "e72",
         "from": "p13",
         "from_port": "out",
         "to": "img13",
         "to_port": "prompt"
       },
       {
-        "id": "e72",
-        "from": "nv",
-        "from_port": "out",
-        "to": "img13",
-        "to_port": "refs"
-      },
-      {
         "id": "e73",
-        "from": "ao",
+        "from": "nv",
         "from_port": "out",
         "to": "img13",
         "to_port": "refs"
       },
       {
         "id": "e74",
-        "from": "bc",
+        "from": "ao",
         "from_port": "out",
         "to": "img13",
         "to_port": "refs"
       },
       {
         "id": "e75",
+        "from": "bgimg",
+        "from_port": "out",
+        "to": "img13",
+        "to_port": "refs"
+      },
+      {
+        "id": "e76",
         "from": "img13",
         "from_port": "out",
         "to": "v13",
         "to_port": "refs"
       },
       {
-        "id": "e76",
+        "id": "e77",
         "from": "pvid_person",
         "from_port": "out",
         "to": "v13",
         "to_port": "prompt"
       },
       {
-        "id": "e77",
+        "id": "e78",
         "from": "v13",
         "from_port": "out",
         "to": "t13",
         "to_port": "in"
       },
       {
-        "id": "e78",
+        "id": "e79",
         "from": "t13",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e79",
+        "id": "e80",
         "from": "p14",
         "from_port": "out",
         "to": "img14",
         "to_port": "prompt"
       },
       {
-        "id": "e80",
+        "id": "e81",
         "from": "nv",
         "from_port": "out",
         "to": "img14",
         "to_port": "refs"
       },
       {
-        "id": "e81",
+        "id": "e82",
         "from": "ao",
         "from_port": "out",
         "to": "img14",
         "to_port": "refs"
       },
       {
-        "id": "e82",
-        "from": "bc",
+        "id": "e83",
+        "from": "bgimg",
         "from_port": "out",
         "to": "img14",
         "to_port": "refs"
       },
       {
-        "id": "e83",
+        "id": "e84",
         "from": "img14",
         "from_port": "out",
         "to": "v14",
         "to_port": "refs"
       },
       {
-        "id": "e84",
+        "id": "e85",
         "from": "pvid_person",
         "from_port": "out",
         "to": "v14",
         "to_port": "prompt"
       },
       {
-        "id": "e85",
+        "id": "e86",
         "from": "v14",
         "from_port": "out",
         "to": "t14",
         "to_port": "in"
       },
       {
-        "id": "e86",
+        "id": "e87",
         "from": "t14",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e87",
+        "id": "e88",
         "from": "ghep",
         "from_port": "out",
         "to": "save",
