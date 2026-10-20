@@ -448,6 +448,9 @@ mod tests {
     /// `parse("interrupted")` tra ve bien the moi.
     #[test]
     fn run_status_parse_interrupted() {
-        assert_eq!(RunStatus::parse("interrupted"), Some(RunStatus::Interrupted));
+        assert_eq!(
+            RunStatus::parse("interrupted"),
+            Some(RunStatus::Interrupted)
+        );
     }
 }

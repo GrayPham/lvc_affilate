@@ -176,9 +176,13 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 requeued.push(id);
             }
         }
+        // Run-robustness B: run dang chay bi tat giua chung KHONG phai loi -> danh dau
+        // `Interrupted` (khong `Failed`) de khoi phuc + user tu bam "Chay tiep" (quyet dinh
+        // 2026-10-20: khong tu chay tiep, khong tu y ton credit). Ten truong `runs_failed` GIU
+        // NGUYEN (chi la danh sach id da cham) de khong phai doi caller.
         let runs_failed = self
             .run_repo
-            .fail_running(now, "RESTART: app khoi dong lai")
+            .interrupt_running(now, "RESTART: app khoi dong lai")
             .await?;
         Ok(RequeueReport {
             requeued,
@@ -651,7 +655,7 @@ mod tests {
         assert!(b.finished_at.is_some());
 
         let run = f.engine.run_repo.get("r1").await.unwrap().unwrap();
-        assert_eq!(run.status, lvc_store::RunStatus::Failed);
+        assert_eq!(run.status, lvc_store::RunStatus::Interrupted);
     }
 
     /// (5) Huy giua poll (R4, giong `generate_video`): `Cancelled`, `conversation_id`/`account`

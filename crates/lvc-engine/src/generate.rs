@@ -44,7 +44,7 @@ use lvc_core::{
     mode_fallback_chain, video_timeout,
 };
 use lvc_node_api::Registry;
-use lvc_store::{AccountRow, Db, RunRepo, TaskRepo};
+use lvc_store::{AccountRow, Db, NodeStateRepo, RunRepo, TaskRepo};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -169,6 +169,10 @@ pub struct Engine<D: BrowserDriver + 'static> {
     // pub(crate): Task 7 (P3) `dag.rs` doc/ghi truc tiep (cung ly do voi driver/tasks/limits/cfg
     // o tren) — repo cac lan chay workflow (`runs`).
     pub(crate) run_repo: RunRepo,
+    /// Run-robustness B: trang thai MUC NODE cua moi run (`dag.rs` `run_steps` ghi inline o moi
+    /// chuyen trang thai node) — de khoi phuc khi mo lai app. `pub(crate)`: `dag.rs` ghi, lenh
+    /// `run_node_states` (lvc-app) doc qua `Engine`.
+    pub(crate) node_states: NodeStateRepo,
     // pub(crate): Task 7 (P3) `dag.rs`: token huy THEO RUN (khac `cancels` — theo `task_id`);
     // `Engine::run_graph` dang ky, `Engine::cancel_run` huy, xoa khi run ket thuc. Moi canh video
     // cua run dang ky token con cua token nay qua `cancels().register_child` (fix-round 1, C1) —
@@ -387,6 +391,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             events: EngineEvents::new(),
             cancels: CancelRegistry::new(),
             run_repo: RunRepo::new(&db),
+            node_states: NodeStateRepo::new(&db),
             run_tokens: DashMap::new(),
             db,
             registry: OnceLock::new(),

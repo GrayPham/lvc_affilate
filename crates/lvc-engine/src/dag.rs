@@ -387,6 +387,53 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         self.emit_node_state_err(run_id, node_id, state, counts, None);
     }
 
+    /// Run-robustness B: ghi trang thai node vao `node_states` (ben hoa de khoi phuc khi mo lai
+    /// app). Goi inline-await TRONG `run_steps` (async) NGAY SAU moi `emit_node_state*` — awaited
+    /// theo thu tu nen trang thai moi (vd `done`) khong bi `running` cu de len. Ghi hong KHONG
+    /// lam sap run (chi `warn!`) — su kien van phat, dia van la nguon su that cho output.
+    async fn persist_node_state(
+        &self,
+        run_id: &str,
+        node_id: &str,
+        state: &str,
+        counts: (u32, u32, u32, u32),
+        error: Option<&str>,
+    ) {
+        if let Err(e) = self
+            .node_states
+            .upsert(run_id, node_id, state, counts, error, now_unix())
+            .await
+        {
+            warn!(run_id, node_id, error = %e, "khong ghi duoc node_states");
+        }
+    }
+
+    /// Run-robustness B: quet `downloads_dir` tim file output cua tung node theo ten TAT DINH
+    /// `{run_id}_{node_id}_...` (vd `museai.rs`/`veo3.rs` dat ten). Tra `node_id -> duong dan` cho
+    /// MOI node co it nhat MOT file (file DAU TIEN theo thu tu doc thu muc — du cho mot "dai dien"
+    /// preview, khop `emit_preview_if_media`). Nhan `node_ids` TUONG MINH (tu `node_states`) de
+    /// khop dung tien to `{run_id}_{node_id}_` — KHONG parse mu ten file (`node_id` co the chua `_`).
+    /// Thu muc khong ton tai/rong -> map rong, khong loi (app moi chua chay gi).
+    #[must_use]
+    pub fn node_outputs(&self, run_id: &str, node_ids: &[String]) -> HashMap<String, String> {
+        let mut out = HashMap::new();
+        let Ok(entries) = std::fs::read_dir(&self.cfg.downloads_dir) else {
+            return out;
+        };
+        let names: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
+        for node_id in node_ids {
+            let prefix = format!("{run_id}_{node_id}_");
+            if let Some(name) = names.iter().find(|n| n.starts_with(&prefix)) {
+                let path = self.cfg.downloads_dir.join(name);
+                out.insert(node_id.clone(), path.to_string_lossy().into_owned());
+            }
+        }
+        out
+    }
+
     /// Khoi tao mot lan chay: phat `queued` cho MOI node (mang dung `total`), dung `Services` (co
     /// dich vu `DolaVideoHost`) va clone `Limits`. Tach khoi [`Engine::run_steps`] cho gon.
     fn start_run(
@@ -522,7 +569,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
     /// I2: phat trang thai CUOI cho cac node CHUA KIP CHAY khi run dung som (huy/`hard_stop`) —
     /// `cancelled` (huy nguoi dung, khong loi) hoac `failed` (mot node khac loi nghiem trong, ghi ly
     /// do vao nhat ky de giai thich vi sao node nay khong chay).
-    fn emit_pending_terminal(
+    async fn emit_pending_terminal(
         &self,
         run_id: &str,
         graph: &Graph,
@@ -551,6 +598,15 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     (0, total, 0, total),
                     pending_err.clone(),
                 );
+                // Run-robustness B: ben hoa luon (cung nguon voi emit — khong drift).
+                self.persist_node_state(
+                    run_id,
+                    &n.id,
+                    pending_state,
+                    (0, total, 0, total),
+                    pending_err.as_deref(),
+                )
+                .await;
             }
         }
     }
@@ -620,6 +676,19 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             &token,
         );
 
+        // Run-robustness B: ben hoa trang thai "queued" (start_run da PHAT su kien queued o tren;
+        // o day ghi them vao `node_states` de khoi phuc duoc ke ca khi app tat truoc khi node chay).
+        for n in &graph.nodes {
+            self.persist_node_state(
+                &run_id,
+                &n.id,
+                NODE_QUEUED,
+                (0, total_of(&n.id), 0, 0),
+                None,
+            )
+            .await;
+        }
+
         let mut outputs: HashMap<String, Outputs> = HashMap::new();
         let mut touched: HashSet<String> = HashSet::new();
         let mut failures: Vec<String> = Vec::new();
@@ -646,10 +715,20 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     (total, total, 0, total),
                     Some(msg.clone()),
                 );
+                self.persist_node_state(
+                    &run_id,
+                    node_id,
+                    NODE_FAILED,
+                    (total, total, 0, total),
+                    Some(&msg),
+                )
+                .await;
                 failures.push(msg);
                 continue;
             };
             self.emit_node_state(&run_id, node_id, NODE_RUNNING, (0, total, 0, 0));
+            self.persist_node_state(&run_id, node_id, NODE_RUNNING, (0, total, 0, 0), None)
+                .await;
             let ctx = NodeCtx {
                 run_id: run_id.clone(),
                 workflow_id: workflow_id.clone(),
@@ -685,8 +764,16 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                         node_id,
                         state,
                         (c.done, c.total, c.ok, c.failed),
-                        node_err,
+                        node_err.clone(),
                     );
+                    self.persist_node_state(
+                        &run_id,
+                        node_id,
+                        state,
+                        (c.done, c.total, c.ok, c.failed),
+                        node_err.as_deref(),
+                    )
+                    .await;
                     if let Some(f) = res.failure {
                         failures.push(f);
                     }
@@ -703,6 +790,14 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                         (total, total, 0, total),
                         Some(e.message.clone()),
                     );
+                    self.persist_node_state(
+                        &run_id,
+                        node_id,
+                        NODE_FAILED,
+                        (total, total, 0, total),
+                        Some(&e.message),
+                    )
+                    .await;
                     if e.fatal {
                         hard_stop = Some(e.message);
                     } else {
@@ -720,7 +815,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                 &touched,
                 token.is_cancelled(),
                 hard_stop.as_deref(),
-            );
+            )
+            .await;
         }
 
         // I1: "chot" tasks_ready KHONG DIEU KIEN (xem doc `RunHandle::tasks_ready`).
@@ -1342,6 +1438,66 @@ mod tests {
             },
         ];
         assert_eq!(events, expected);
+    }
+
+    // ---- Run-robustness B: node_states ghi inline + node_outputs quet dia ----
+
+    /// Sau mot run thanh cong, MOI node co dung MOT dong `node_states` mang trang thai CUOI
+    /// (`done`, `done==total`) — de khoi phuc khi mo lai app.
+    #[tokio::test]
+    async fn node_states_moi_node_co_dong_trang_thai_cuoi() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("src.mp4");
+        std::fs::write(&src, b"fake-mp4-bytes").unwrap();
+
+        let (dir, engine, _db, _driver) = build_engine(&["acc1"], 1, happy_steps(1, &src)).await;
+        let out_dir = dir.path().join("out");
+        let graph = linear_graph("canh 1", &out_dir);
+
+        let handle = engine
+            .run_graph("wf1", &graph, noop_hooks_factory())
+            .await
+            .unwrap();
+        let run_id = handle.run_id.clone();
+        handle.join.await.unwrap();
+
+        let rows = engine.node_states.list_for_run(&run_id).await.unwrap();
+        let mut by_node: std::collections::HashMap<String, _> =
+            rows.into_iter().map(|r| (r.node_id.clone(), r)).collect();
+        for n in ["pr", "vid", "sv"] {
+            let r = by_node
+                .remove(n)
+                .unwrap_or_else(|| panic!("thieu node_states cho {n}"));
+            assert_eq!(r.state, NODE_DONE, "{n}");
+            assert_eq!(r.done, r.total, "{n} done==total");
+        }
+    }
+
+    /// `node_outputs` khop dung tien to `{run_id}_{node_id}_` — KHONG nham node khac co tien to
+    /// gan giong (`node_id` chua dau gach duoi). Thu muc rong -> map rong.
+    #[tokio::test]
+    async fn node_outputs_khop_tien_to_node_id() {
+        let (dir, engine, _db, _driver) = build_engine(&["acc1"], 1, Vec::new()).await;
+        let downloads = dir.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::write(downloads.join("runX_im_scene_1_0.png"), b"img").unwrap();
+        std::fs::write(downloads.join("runX_other_0.mp4"), b"vid").unwrap();
+
+        let got = engine.node_outputs("runX", &["im_scene_1".to_string()]);
+        assert_eq!(got.len(), 1);
+        assert!(
+            got["im_scene_1"].ends_with("runX_im_scene_1_0.png"),
+            "{got:?}"
+        );
+    }
+
+    /// Thu muc downloads khong ton tai -> map rong, khong panic (app moi, chua chay gi).
+    #[tokio::test]
+    async fn node_outputs_thu_muc_khong_ton_tai() {
+        let (_dir, engine, _db, _driver) = build_engine(&["acc1"], 1, Vec::new()).await;
+        // build_engine chua tao san `downloads` -> khong ton tai.
+        let got = engine.node_outputs("runX", &["n1".to_string()]);
+        assert!(got.is_empty());
     }
 
     /// I1 (fix-round 1, P3c Task 1, MUST): `tasks_ready` phai thuc day VOI DU 3 `TaskRef` ma KHONG
