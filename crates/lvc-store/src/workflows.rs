@@ -158,6 +158,9 @@ pub enum RunStatus {
     Completed,
     Failed,
     Cancelled,
+    /// Run dang chay khi app bi tat/build lai — boot danh dau `Interrupted` (KHONG `Failed`) de
+    /// giu lai cho khoi phuc + chay tiep (user quyet, khong tu chay lai). Xem `interrupt_running`.
+    Interrupted,
 }
 
 impl RunStatus {
@@ -168,6 +171,7 @@ impl RunStatus {
             Self::Completed => "completed",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
+            Self::Interrupted => "interrupted",
         }
     }
 
@@ -178,6 +182,7 @@ impl RunStatus {
             "completed" => Some(Self::Completed),
             "failed" => Some(Self::Failed),
             "cancelled" => Some(Self::Cancelled),
+            "interrupted" => Some(Self::Interrupted),
             _ => None,
         }
     }
@@ -324,6 +329,33 @@ impl RunRepo {
             .map(|r| r.try_get::<String, _>("id").map_err(StoreError::from))
             .collect()
     }
+
+    /// Nhu [`RunRepo::fail_running`] nhung dat `Interrupted` thay vi `Failed` — dung khi boot
+    /// (`Engine::requeue_on_start`): run dang chay bi tat giua chung KHONG phai loi, giu lai de
+    /// khoi phuc + user tu bam "Chay tiep"/"Chay lai node loi" (quyet dinh 2026-10-20: khong tu
+    /// chay tiep de khong tu y ton credit). Tra ve danh sach `id` da danh dau.
+    ///
+    /// # Errors
+    /// `StoreError::Sqlx` khi truy vấn/ghi thất bại.
+    pub async fn interrupt_running(
+        &self,
+        now: f64,
+        error: &str,
+    ) -> Result<Vec<String>, StoreError> {
+        let rows = sqlx::query(
+            "UPDATE runs SET status = ?2, error = ?3, finished_at = ?4 WHERE status = ?1
+             RETURNING id",
+        )
+        .bind(RunStatus::Running.as_str())
+        .bind(RunStatus::Interrupted.as_str())
+        .bind(error)
+        .bind(now)
+        .fetch_all(self.db.pool())
+        .await?;
+        rows.iter()
+            .map(|r| r.try_get::<String, _>("id").map_err(StoreError::from))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -341,6 +373,7 @@ mod tests {
             RunStatus::Completed,
             RunStatus::Failed,
             RunStatus::Cancelled,
+            RunStatus::Interrupted,
         ] {
             assert_eq!(
                 serde_json::to_value(s).unwrap(),
@@ -386,5 +419,35 @@ mod tests {
             repo.fail_running(9001.0, "x").await.unwrap(),
             Vec::<String>::new()
         );
+    }
+
+    /// `interrupt_running` dat trang thai `Interrupted` (khong `Failed`) cho run dang chay luc boot
+    /// — giu lai de khoi phuc/chay tiep (khong mat); run da xong khong bi dong toi.
+    #[tokio::test]
+    async fn interrupt_running_dat_trang_thai_interrupted() {
+        let db = Db::open_memory().await.unwrap();
+        let repo = RunRepo::new(&db);
+        repo.create("r1", "wf1", RunStatus::Running, 1.0)
+            .await
+            .unwrap();
+        repo.create("r2", "wf1", RunStatus::Completed, 1.0)
+            .await
+            .unwrap();
+
+        let ids = repo.interrupt_running(9000.0, "RESTART").await.unwrap();
+        assert_eq!(ids, vec!["r1".to_string()]);
+
+        let r1 = repo.get("r1").await.unwrap().unwrap();
+        assert_eq!(r1.status, RunStatus::Interrupted);
+        assert_eq!(r1.error, "RESTART");
+
+        let r2 = repo.get("r2").await.unwrap().unwrap();
+        assert_eq!(r2.status, RunStatus::Completed, "khong dung run da xong");
+    }
+
+    /// `parse("interrupted")` tra ve bien the moi.
+    #[test]
+    fn run_status_parse_interrupted() {
+        assert_eq!(RunStatus::parse("interrupted"), Some(RunStatus::Interrupted));
     }
 }
