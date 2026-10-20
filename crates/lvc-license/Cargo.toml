@@ -24,5 +24,9 @@ aes.workspace = true
 cbc.workspace = true
 rand.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# device.rs: doc MachineGuid tu registry lam device_id on dinh.
+winreg.workspace = true
+
 [lints]
 workspace = true
