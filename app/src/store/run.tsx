@@ -343,6 +343,11 @@ export function reconcileNodeStatesFromDb(
   return { ...state, nodes, runId };
 }
 
+/** Phần C: có node nào ở trạng thái `failed` không? — RunBar hiện nút "Chạy lại node lỗi". */
+export function hasFailedNode(nodes: Record<string, NodeRunState>): boolean {
+  return Object.values(nodes).some((n) => n.state === "failed");
+}
+
 interface RunStore extends RunState {
   /**
    * Ghi nhan `runId` cua run vua `run_start` tra ve — KHONG ghi de neu da co `runId` (mot su kien

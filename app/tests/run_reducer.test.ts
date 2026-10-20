@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyEvent,
   EMPTY_RUN_STATE,
+  hasFailedNode,
   reconcileFromRunRow,
   reconcileNodeStatesFromDb,
   reconcileTasksFromDb,
@@ -407,5 +408,22 @@ describe("reconcileNodeStatesFromDb — khoi phuc nodes tu NodeStateDto (run-rob
     const next = reconcileNodeStatesFromDb(EMPTY_RUN_STATE, [nodeStateDto("r9", "n1")]);
     expect(next.runId).toBe("r9");
     expect(next.nodes["n1"]?.state).toBe("done");
+  });
+});
+
+describe("hasFailedNode (run-robustness C)", () => {
+  it("true khi co node failed", () => {
+    const state = reconcileNodeStatesFromDb({ ...EMPTY_RUN_STATE, runId: "r1" }, [
+      nodeStateDto("r1", "a", { state: "done" }),
+      nodeStateDto("r1", "b", { state: "failed", error: "x" }),
+    ]);
+    expect(hasFailedNode(state.nodes)).toBe(true);
+  });
+
+  it("false khi khong co node failed", () => {
+    const state = reconcileNodeStatesFromDb({ ...EMPTY_RUN_STATE, runId: "r1" }, [
+      nodeStateDto("r1", "a", { state: "done" }),
+    ]);
+    expect(hasFailedNode(state.nodes)).toBe(false);
   });
 });

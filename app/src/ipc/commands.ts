@@ -146,6 +146,12 @@ export async function runNodeOutputs(runId: string): Promise<Record<string, stri
   return z.record(z.string(), z.string()).parse(res);
 }
 
+// Run-robustness C: chay lai CHI node loi + node phia sau (tai dung output node da xong) -> run moi.
+export async function runRetryFailed(runId: string, graph: Graph): Promise<RunInfo> {
+  const res = await invoke<unknown>("run_retry_failed", { runId, graph });
+  return RunInfoSchema.parse(res);
+}
+
 // ---- tasks.rs -----------------------------------------------------------------------------
 
 export async function taskList(runId: string | null, limit: number): Promise<TaskDto[]> {

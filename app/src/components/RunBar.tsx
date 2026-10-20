@@ -6,12 +6,13 @@ import { z } from "zod";
 
 import { newEphemeralWorkflowId, useGraphStore, useGraphStoreApi } from "../store/graph";
 import { useQueueStore } from "../store/queue";
-import { useRunStore, useRunStoreApi } from "../store/run";
+import { hasFailedNode, useRunStore, useRunStoreApi } from "../store/run";
 import { registerRunOwner, unregisterRunOwner } from "../store/runRegistry";
 import { useWorkflowUi } from "../store/workflowUi";
 import {
   isIpcError,
   runCancel,
+  runRetryFailed,
   runStart,
   templateSavePrivate,
   workflowSave,
@@ -47,6 +48,8 @@ export default function RunBar() {
 
   const runId = useRunStore((s) => s.runId);
   const runStatus = useRunStore((s) => s.status);
+  // Phần C: có node lỗi -> hiện nút "Chạy lại node lỗi" (chỉ khi run đã kết thúc).
+  const retryable = useRunStore((s) => s.status !== null && hasFailedNode(s.nodes));
   const beginRun = useRunStore((s) => s.beginRun);
   const clearRun = useRunStore((s) => s.clearRun);
   // P-tabs: instance store run cua TAB nay — dang ky lam "chu" cua runId vua tao de
@@ -162,6 +165,28 @@ export default function RunBar() {
       const info = await runStart(workflowId, graph);
       // Dang ky TAB NAY la chu cua runId vua tao TRUOC `beginRun` — flush dung trinh tu neu su kien
       // "queued" da toi truoc do bi dem lai trong runRegistry (xem doc o do).
+      registerRunOwner(info.runId, runStoreApi);
+      beginRun(info.runId);
+    } catch (e) {
+      setMessage(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Phần C: chạy lại CHỈ node lỗi + node phía sau (tái dùng cảnh đã xong — không tốn credit lại).
+  // Backend tạo run MỚI, seed output node đã xong. Mirror `handleRun` (đăng ký chủ run + beginRun).
+  async function handleRetryFailed(): Promise<void> {
+    if (!runId) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const oldRunId = runId;
+      const info = await runRetryFailed(oldRunId, toGraph());
+      unregisterRunOwner(oldRunId);
+      clearRun();
       registerRunOwner(info.runId, runStoreApi);
       beginRun(info.runId);
     } catch (e) {
@@ -430,6 +455,17 @@ export default function RunBar() {
         >
           Huỷ
         </button>
+        {retryable ? (
+          <button
+            type="button"
+            disabled={busy || running}
+            title="Chạy lại chỉ các node lỗi + ghép lại — cảnh đã xong được giữ nguyên, không tốn credit lại"
+            className="rounded-lg border border-amber-500/50 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void handleRetryFailed()}
+          >
+            ↻ Chạy lại node lỗi
+          </button>
+        ) : null}
         <span className="mx-1 h-5 w-px bg-fill2" />
         <button
           type="button"
