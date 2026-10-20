@@ -117,7 +117,11 @@ export const PORTS: Record<NodeKindTag, { inputs: PortSpec[]; outputs: PortSpec[
     outputs: [{ name: "out", type: "video" }],
   },
   museai_image: {
-    inputs: [{ name: "prompt", type: "text" }],
+    inputs: [
+      { name: "prompt", type: "text" },
+      // Ảnh tham chiếu để khoá nhân vật (pipeline ảnh-trước) — khớp cổng `refs` của museai_video.
+      { name: "refs", type: "image" },
+    ],
     outputs: [{ name: "out", type: "image" }],
   },
   tts: {
