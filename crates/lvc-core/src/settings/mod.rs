@@ -47,6 +47,8 @@ pub use storage::{
 pub const THREADS_MAX: usize = 64;
 
 const THREADS_DEFAULT: usize = 1;
+/// Phần A (run-robustness): số node đồ thị chạy song song. Mặc định 1 = tuần tự như trước.
+const NODE_THREADS_DEFAULT: usize = 1;
 const SILENT_MODE_DEFAULT: bool = false;
 const MODE_FALLBACK_DEFAULT: bool = true;
 const ACCOUNTS_DIR_DEFAULT: &str = "";
@@ -58,6 +60,9 @@ const OUTPUT_DIR_DEFAULT: &str = "downloads";
 pub struct AppSettings {
     /// Khoá `threads` — số lượng luồng tạo video đồng thời, 1..=[`THREADS_MAX`].
     pub threads: usize,
+    /// Khoá `node_threads` (Phần A) — số NODE đồ thị chạy song song, 1..=[`THREADS_MAX`]; 1 = tuần
+    /// tự. Khác `threads` (gate từng job video); đây gate ở tầng node của scheduler.
+    pub node_threads: usize,
     /// Khoá `silent_mode` — Python lưu "1"/"0".
     pub silent_mode: bool,
     /// Khoá `mode_fallback` — config.py `MODE_FALLBACK`: hết lượt mode này thì tự xoay sang mode
@@ -104,6 +109,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             threads: THREADS_DEFAULT,
+            node_threads: NODE_THREADS_DEFAULT,
             silent_mode: SILENT_MODE_DEFAULT,
             mode_fallback: MODE_FALLBACK_DEFAULT,
             accounts_dir: ACCOUNTS_DIR_DEFAULT.to_string(),
@@ -124,17 +130,24 @@ impl Default for AppSettings {
     }
 }
 
-fn parse_threads(map: &HashMap<String, String>, warnings: &mut Vec<String>) -> usize {
-    match map.get("threads") {
-        None => THREADS_DEFAULT,
+/// Parse một khoá "số luồng" trong [1, `THREADS_MAX`]; 0/sai → `default`, vượt trần → `THREADS_MAX`.
+/// Dùng chung cho `threads` và `node_threads` (Phần A).
+fn parse_thread_count(
+    map: &HashMap<String, String>,
+    key: &str,
+    default: usize,
+    warnings: &mut Vec<String>,
+) -> usize {
+    match map.get(key) {
+        None => default,
         Some(raw) => match raw.trim().parse::<usize>() {
             Ok(0) | Err(_) => {
-                invalid(warnings, "threads", raw, THREADS_DEFAULT);
-                THREADS_DEFAULT
+                invalid(warnings, key, raw, default);
+                default
             }
             Ok(n) if n > THREADS_MAX => {
                 warnings.push(format!(
-                    "threads: {n} vuot gioi han {THREADS_MAX}, dung {THREADS_MAX}"
+                    "{key}: {n} vuot gioi han {THREADS_MAX}, dung {THREADS_MAX}"
                 ));
                 THREADS_MAX
             }
@@ -178,7 +191,13 @@ impl AppSettings {
     pub fn from_map(map: &HashMap<String, String>) -> (Self, Vec<String>) {
         let mut warnings = Vec::new();
         let settings = Self {
-            threads: parse_threads(map, &mut warnings),
+            threads: parse_thread_count(map, "threads", THREADS_DEFAULT, &mut warnings),
+            node_threads: parse_thread_count(
+                map,
+                "node_threads",
+                NODE_THREADS_DEFAULT,
+                &mut warnings,
+            ),
             silent_mode: parse_bool(map, "silent_mode", SILENT_MODE_DEFAULT, &mut warnings),
             mode_fallback: parse_bool(map, "mode_fallback", MODE_FALLBACK_DEFAULT, &mut warnings),
             accounts_dir: get_string(map, "accounts_dir", ACCOUNTS_DIR_DEFAULT),
@@ -230,6 +249,7 @@ impl AppSettings {
     pub fn to_map(&self) -> HashMap<String, String> {
         HashMap::from([
             ("threads".to_string(), self.threads.to_string()),
+            ("node_threads".to_string(), self.node_threads.to_string()),
             (
                 "silent_mode".to_string(),
                 bool_str(self.silent_mode).to_string(),
@@ -559,6 +579,7 @@ mod tests {
     fn roundtrip_to_map_roi_from_map_bang_gia_tri_goc() {
         let original = AppSettings {
             threads: 12,
+            node_threads: 4,
             silent_mode: true,
             mode_fallback: false,
             accounts_dir: "C:/acc".to_string(),
@@ -598,6 +619,7 @@ mod tests {
     fn serde_json_pin_wire_strings_mac_dinh() {
         let v = serde_json::to_value(AppSettings::default()).unwrap();
         assert_eq!(v["threads"], serde_json::json!(1));
+        assert_eq!(v["nodeThreads"], serde_json::json!(1));
         assert_eq!(v["defaultMode"], serde_json::json!("fast"));
         assert_eq!(v["defaultModel"], serde_json::json!("seedance-2.0"));
         assert_eq!(v["defaultRatio"], serde_json::json!("9:16"));
@@ -608,6 +630,20 @@ mod tests {
         assert_eq!(v["onError"], serde_json::json!("skip"));
         assert_eq!(v["restBetween"], serde_json::json!(30));
         assert_eq!(v["missingAccount"], serde_json::json!("skip"));
+    }
+
+    /// Phần A: `node_threads` mặc định 1; parse từ map + `to_map` (key `node_threads`).
+    #[test]
+    fn node_threads_default_parse_to_map() {
+        assert_eq!(AppSettings::default().node_threads, 1);
+        let mut map = std::collections::HashMap::new();
+        map.insert("node_threads".to_string(), "3".to_string());
+        let (s, _w) = AppSettings::from_map(&map);
+        assert_eq!(s.node_threads, 3);
+        assert_eq!(
+            s.to_map().get("node_threads").map(String::as_str),
+            Some("3")
+        );
     }
 
     #[test]
