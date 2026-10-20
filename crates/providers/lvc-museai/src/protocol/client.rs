@@ -575,6 +575,54 @@ fn is_echoed_ref(bytes: &[u8], ref_fps: &HashSet<[u8; 32]>) -> bool {
     ref_fps.contains(&fp)
 }
 
+/// Tải các ref ảnh MỚI về `output_dir`, BỎ ảnh "echo" (trùng khít một ảnh ref đã upload). Trả
+/// `(ảnh thật tải được, danh sách lỗi/echo)`. `attempt` chỉ để ghi vào thông điệp lỗi.
+async fn download_new_images(
+    fs: &MuseFilesystem,
+    images: &[ImageRef],
+    output_dir: &std::path::Path,
+    ref_fps: &HashSet<[u8; 32]>,
+    request_timeout: Duration,
+    attempt: usize,
+) -> (Vec<std::path::PathBuf>, Vec<String>) {
+    let mut downloaded = Vec::new();
+    let mut errors = Vec::new();
+    let mut used_names: HashSet<String> = HashSet::new();
+    for (index, r) in images.iter().enumerate() {
+        let mut filename = filename_for_image(r, index);
+        let mut suffix = 1u32;
+        while used_names.contains(&filename) || output_dir.join(&filename).exists() {
+            let stem = std::path::Path::new(&filename_for_image(r, index))
+                .file_stem()
+                .map_or_else(
+                    || format!("muse_image_{}", index + 1),
+                    |s| s.to_string_lossy().into_owned(),
+                );
+            let ext = std::path::Path::new(&filename_for_image(r, index))
+                .extension()
+                .map_or_else(|| "webp".to_string(), |e| e.to_string_lossy().into_owned());
+            filename = format!("{stem}_{suffix}.{ext}");
+            suffix += 1;
+        }
+        used_names.insert(filename.clone());
+        let destination = output_dir.join(&filename);
+        match download_image(fs, r, &destination, request_timeout).await {
+            Ok(()) => match std::fs::read(&destination) {
+                Ok(bytes) if !ref_fps.is_empty() && is_echoed_ref(&bytes, ref_fps) => {
+                    let _ = std::fs::remove_file(&destination);
+                    errors.push(format!(
+                        "lan {attempt} anh[{}]: muse.ai tra lai nguyen anh ref (echo), da bo",
+                        index + 1
+                    ));
+                }
+                _ => downloaded.push(destination),
+            },
+            Err(e) => errors.push(format!("lan {attempt} anh[{}] {}: {e}", index + 1, r.identity())),
+        }
+    }
+    (downloaded, errors)
+}
+
 /// Luồng đầy đủ sinh ẢNH TĨNH (không phải video) — tự gắn hướng dẫn rõ ràng vào prompt (xem
 /// [`build_image_prompt`]) → chờ ảnh mới xuất hiện trong lịch sử → tải xuống `output_dir`.
 ///
@@ -601,91 +649,86 @@ pub async fn generate_image(
     };
 
     let baseline_history = history(conn, params.session_id, 80, request_timeout).await?;
-    let baseline: HashSet<String> = extract_image_refs(&baseline_history)
+    let mut baseline: HashSet<String> = extract_image_refs(&baseline_history)
         .iter()
         .map(ImageRef::identity)
         .collect();
 
-    let events = chat_stream(
-        conn,
-        params.device_id,
-        &prompt,
-        // Ảnh tham chiếu để KHOÁ nhân vật (pipeline ảnh-trước) — đối xứng `generate_video`.
-        params.images,
-        params.session_id,
-        stream_timeout,
-    )
-    .await?;
-    let resolved_session = resolve_session_id(
-        conn,
-        params.session_id,
-        &events,
-        &sessions_before,
-        request_timeout,
-    )
-    .await;
-
-    let images = wait_for_images(
-        conn,
-        &baseline,
-        &WaitForImagesParams {
-            session_id: resolved_session.as_deref(),
-            timeout: params.timeout,
-            poll_interval,
-            settle,
-            min_images: params.min_images,
-            request_timeout,
-        },
-    )
-    .await?;
-
     let fs = MuseFilesystem::new(conn.clone());
     // Vân tay các ảnh ref đã upload — để BỎ ảnh "echo" (muse.ai trả lại nguyên ảnh ref).
     let ref_fps = ref_fingerprints(params.images);
-    let mut downloaded = Vec::new();
-    let mut download_errors = Vec::new();
-    let mut used_names: HashSet<String> = HashSet::new();
-    for (index, r) in images.iter().enumerate() {
-        let mut filename = filename_for_image(r, index);
-        let mut suffix = 1u32;
-        while used_names.contains(&filename) || params.output_dir.join(&filename).exists() {
-            let stem = std::path::Path::new(&filename_for_image(r, index))
-                .file_stem()
-                .map_or_else(
-                    || format!("muse_image_{}", index + 1),
-                    |s| s.to_string_lossy().into_owned(),
-                );
-            let ext = std::path::Path::new(&filename_for_image(r, index))
-                .extension()
-                .map_or_else(|| "webp".to_string(), |e| e.to_string_lossy().into_owned());
-            filename = format!("{stem}_{suffix}.{ext}");
-            suffix += 1;
+    // CHỈ thử lại khi CÓ ảnh ref (echo chỉ xảy ra lúc đó): nếu một lần sinh trả TOÀN ảnh echo
+    // (0 ảnh thật), sinh lại — muse.ai agent đôi khi "trả lại ảnh đính kèm" ở lần đầu rồi sinh
+    // thật ở lần sau. Tối đa 2 lần, tiếp tục CÙNG phiên chat để agent giữ ngữ cảnh.
+    let max_attempts = if ref_fps.is_empty() { 1 } else { 2 };
+    let mut download_errors: Vec<String> = Vec::new();
+    let mut resolved_session: Option<String> = params.session_id.map(str::to_string);
+    let mut last_images: Vec<ImageRef> = Vec::new();
+
+    for attempt in 1..=max_attempts {
+        let events = chat_stream(
+            conn,
+            params.device_id,
+            &prompt,
+            // Ảnh tham chiếu để KHOÁ nhân vật (pipeline ảnh-trước) — đối xứng `generate_video`.
+            params.images,
+            resolved_session.as_deref(),
+            stream_timeout,
+        )
+        .await?;
+        resolved_session = resolve_session_id(
+            conn,
+            resolved_session.as_deref(),
+            &events,
+            &sessions_before,
+            request_timeout,
+        )
+        .await;
+
+        let images = wait_for_images(
+            conn,
+            &baseline,
+            &WaitForImagesParams {
+                session_id: resolved_session.as_deref(),
+                timeout: params.timeout,
+                poll_interval,
+                settle,
+                min_images: params.min_images,
+                request_timeout,
+            },
+        )
+        .await?;
+
+        let (downloaded, errs) = download_new_images(
+            &fs,
+            &images,
+            params.output_dir,
+            &ref_fps,
+            request_timeout,
+            attempt,
+        )
+        .await;
+        download_errors.extend(errs);
+
+        if !downloaded.is_empty() {
+            return Ok(ImageGenerationResult {
+                session_id: resolved_session,
+                images,
+                downloaded,
+                download_errors,
+            });
         }
-        used_names.insert(filename.clone());
-        let destination = params.output_dir.join(&filename);
-        match download_image(&fs, r, &destination, request_timeout).await {
-            Ok(()) => {
-                // Nếu ảnh tải về trùng khít một ảnh ref đã upload → muse.ai KHÔNG sinh ảnh mới mà
-                // trả lại ref; BỎ file này (không tính là kết quả) để không "làm động cái sheet".
-                match std::fs::read(&destination) {
-                    Ok(bytes) if !ref_fps.is_empty() && is_echoed_ref(&bytes, &ref_fps) => {
-                        let _ = std::fs::remove_file(&destination);
-                        download_errors.push(format!(
-                            "anh[{}]: muse.ai tra lai nguyen anh ref (echo), da bo",
-                            index + 1
-                        ));
-                    }
-                    _ => downloaded.push(destination),
-                }
-            }
-            Err(e) => download_errors.push(format!("anh[{}] {}: {e}", index + 1, r.identity())),
+        // Toàn echo/0 ảnh thật → thêm các ref vừa thấy vào baseline để lần sau chỉ lấy ảnh MỚI.
+        for r in &images {
+            baseline.insert(r.identity());
         }
+        last_images = images;
     }
 
     Ok(ImageGenerationResult {
         session_id: resolved_session,
-        images,
-        downloaded,
+        images: last_images,
+        downloaded: Vec::new(),
         download_errors,
     })
 }
