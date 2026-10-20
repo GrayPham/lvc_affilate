@@ -1,7 +1,7 @@
 {
-  "name": "MuseAI: Reel món ăn — nạp ảnh người mẫu + quần áo (hook dắt thú cưng)",
+  "name": "MuseAI: Reel món ăn — khoá nhân vật (ảnh trước → video)",
   "category": "Bán hàng/Sản phẩm",
-  "description": "Nạp 2 ảnh (NGƯỜI MẪU + SẢN PHẨM QUẦN ÁO) → cả hai làm tham chiếu cho MỖI cảnh video để MuseAI giữ đồng nhất gương mặt + trang phục. 6 cảnh (hook dắt con heo → mang nguyên liệu → sơ chế → nấu → bày món → chốt) đều nối vào node 'Nối video' để ghép thành 1 reel dọc 9:16. NHỚ nạp 2 ảnh vào 2 node đầu trước khi chạy; bấm 'Tự sắp xếp' để xem sơ đồ gọn. Tài khoản MuseAI để trống = tự chọn.",
+  "description": "Pipeline KHOÁ NHÂN VẬT: mỗi cảnh TẠO ẢNH tĩnh trước (từ ảnh nhân vật + trang phục, riêng cảnh 1 thêm con heo) rồi DỰNG VIDEO 3s từ chính ảnh đó → cùng mặt + cùng đầm ở mọi cảnh. 6 cảnh ghép lại bằng node Nối video. Nạp sẵn ảnh từ thư mục image/.",
   "graph": {
     "version": 2,
     "nodes": [
@@ -9,30 +9,55 @@
         "id": "nv",
         "kind": {
           "kind": "image_upload",
-          "paths": [],
-          "label": "ảnh người mẫu"
+          "paths": [
+            "D:/LVCMedia/lvc_affilate/image/mau.png"
+          ],
+          "label": "Ảnh nhân vật (character sheet)"
         },
         "x": 40,
-        "y": 60
+        "y": 80
       },
       {
         "id": "ao",
         "kind": {
           "kind": "image_upload",
-          "paths": [],
-          "label": "sản phẩm quần áo"
+          "paths": [
+            "D:/LVCMedia/lvc_affilate/image/trangphuc.png"
+          ],
+          "label": "Ảnh trang phục (đầm yếm nâu)"
         },
         "x": 40,
-        "y": 320
+        "y": 340
+      },
+      {
+        "id": "heo",
+        "kind": {
+          "kind": "image_upload",
+          "paths": [
+            "D:/LVCMedia/lvc_affilate/image/heo.png"
+          ],
+          "label": "Ảnh con heo (đạo cụ hook)"
+        },
+        "x": 40,
+        "y": 600
       },
       {
         "id": "p1",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 1 — Người mẫu mặc đúng bộ đầm trong ảnh DẮT MỘT CON HEO đi trong hành lang căn hộ, biểu cảm tươi tắn hào hứng nhìn thẳng camera gây tò mò (HOOK mở đầu bất ngờ). Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
+          "text": "Cảnh 1 — Cô gái đứng ở hành lang căn hộ sáng, một tay DẮT MỘT CON HEO hồng (theo ảnh con heo), nhìn thẳng camera, biểu cảm tươi tắn hào hứng (mở đầu bất ngờ gây tò mò). — GIỮ ĐÚNG cô gái trong ảnh tham chiếu: gương mặt, tóc nâu dài gợn sóng, mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng. Ảnh dọc 9:16, chụp điện thoại kiểu UGC đời thường, ánh sáng mềm."
         },
-        "x": 40,
-        "y": 600
+        "x": 380,
+        "y": 80
+      },
+      {
+        "id": "img1",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 760,
+        "y": 80
       },
       {
         "id": "v1",
@@ -42,17 +67,26 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 430,
-        "y": 600
+        "x": 1120,
+        "y": 80
       },
       {
         "id": "p2",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 2 — Người mẫu (vẫn bộ đầm đó) bước vào bếp bê giỏ nguyên liệu tươi, mỉm cười khoe nguyên liệu. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
+          "text": "Cảnh 2 — Cô gái đứng trong căn bếp hiện đại, hai tay bê một giỏ mây đầy rau củ tươi, mỉm cười khoe nguyên liệu. — GIỮ ĐÚNG cô gái trong ảnh tham chiếu: gương mặt, tóc nâu dài gợn sóng, mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng. Ảnh dọc 9:16, chụp điện thoại kiểu UGC đời thường, ánh sáng mềm."
         },
-        "x": 40,
-        "y": 750
+        "x": 380,
+        "y": 315
+      },
+      {
+        "id": "img2",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 760,
+        "y": 315
       },
       {
         "id": "v2",
@@ -62,17 +96,26 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 430,
-        "y": 750
+        "x": 1120,
+        "y": 315
       },
       {
         "id": "p3",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 3 — Cận cảnh người mẫu rửa và sơ chế nguyên liệu trên quầy bếp, thau inox sáng, tay thao tác dứt khoát. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
+          "text": "Cảnh 3 — Cận cảnh cô gái bên quầy bếp đang sơ chế và rửa rau củ trong thau inox sáng, tay thao tác gọn gàng dứt khoát. — GIỮ ĐÚNG cô gái trong ảnh tham chiếu: gương mặt, tóc nâu dài gợn sóng, mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng. Ảnh dọc 9:16, chụp điện thoại kiểu UGC đời thường, ánh sáng mềm."
         },
-        "x": 40,
-        "y": 900
+        "x": 380,
+        "y": 550
+      },
+      {
+        "id": "img3",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 760,
+        "y": 550
       },
       {
         "id": "v3",
@@ -82,17 +125,26 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 430,
-        "y": 900
+        "x": 1120,
+        "y": 550
       },
       {
         "id": "p4",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 4 — Cận cảnh thả thịt và rau củ vào nồi nước đang sôi trên bếp, hơi nước bốc lên. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
+          "text": "Cảnh 4 — Cận cảnh nồi nước đang sôi trên bếp, tay cô gái thả thịt và rau củ vào nồi, hơi nước bốc lên nghi ngút. — GIỮ ĐÚNG cô gái trong ảnh tham chiếu: gương mặt, tóc nâu dài gợn sóng, mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng. Ảnh dọc 9:16, chụp điện thoại kiểu UGC đời thường, ánh sáng mềm."
         },
-        "x": 40,
-        "y": 1050
+        "x": 380,
+        "y": 785
+      },
+      {
+        "id": "img4",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 760,
+        "y": 785
       },
       {
         "id": "v4",
@@ -102,17 +154,26 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 430,
-        "y": 1050
+        "x": 1120,
+        "y": 785
       },
       {
         "id": "p5",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 5 — Người mẫu múc món ăn nóng hổi ra đĩa và trang trí đẹp mắt, góc máy từ trên xuống. Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
+          "text": "Cảnh 5 — Cô gái múc món ăn nóng ra đĩa và trang trí đẹp mắt, góc máy nhìn từ trên xuống mặt bàn bếp. — GIỮ ĐÚNG cô gái trong ảnh tham chiếu: gương mặt, tóc nâu dài gợn sóng, mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng. Ảnh dọc 9:16, chụp điện thoại kiểu UGC đời thường, ánh sáng mềm."
         },
-        "x": 40,
-        "y": 1200
+        "x": 380,
+        "y": 1020
+      },
+      {
+        "id": "img5",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 760,
+        "y": 1020
       },
       {
         "id": "v5",
@@ -122,17 +183,26 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 430,
-        "y": 1200
+        "x": 1120,
+        "y": 1020
       },
       {
         "id": "p6",
         "kind": {
           "kind": "prompt",
-          "text": "Cảnh 6 — Người mẫu bê đĩa món ăn nóng hổi khoe thẳng vào camera, mỉm cười mời người xem (chốt). Dọc 9:16, quay bằng điện thoại chân thực kiểu UGC, GIỮ ĐÚNG gương mặt người mẫu VÀ BỘ TRANG PHỤC theo 2 ảnh tham chiếu, clip ngắn khoảng 3 giây, chỉ tiếng động môi trường."
+          "text": "Cảnh 6 — Cô gái bê đĩa món ăn nóng hổi khoe thẳng vào camera, mỉm cười mời người xem (chốt đơn). — GIỮ ĐÚNG cô gái trong ảnh tham chiếu: gương mặt, tóc nâu dài gợn sóng, mặc ĐẦM YẾM NÂU ôm dáng + cao gót đế xuồng trắng. Ảnh dọc 9:16, chụp điện thoại kiểu UGC đời thường, ánh sáng mềm."
         },
-        "x": 40,
-        "y": 1350
+        "x": 380,
+        "y": 1255
+      },
+      {
+        "id": "img6",
+        "kind": {
+          "kind": "museai_image",
+          "account": ""
+        },
+        "x": 760,
+        "y": 1255
       },
       {
         "id": "v6",
@@ -142,16 +212,25 @@
           "aspect": "9:16",
           "duration": 3
         },
-        "x": 430,
-        "y": 1350
+        "x": 1120,
+        "y": 1255
+      },
+      {
+        "id": "pvid",
+        "kind": {
+          "kind": "prompt",
+          "text": "Làm động ảnh đính kèm một cách tự nhiên và mượt mà: GIỮ NGUYÊN CHÍNH người và trang phục trong ảnh, chuyển động nhẹ trong ~3 giây (cử chỉ tay, ánh mắt, hơi nước, nụ cười), quay dọc kiểu UGC bằng điện thoại, chỉ có tiếng động môi trường, không nhạc nền lớn."
+        },
+        "x": 1120,
+        "y": 1530
       },
       {
         "id": "ghep",
         "kind": {
           "kind": "concat"
         },
-        "x": 900,
-        "y": 1050
+        "x": 1500,
+        "y": 660
       },
       {
         "id": "save",
@@ -159,8 +238,8 @@
           "kind": "save",
           "out_dir": ""
         },
-        "x": 1300,
-        "y": 1050
+        "x": 1820,
+        "y": 660
       }
     ],
     "edges": [
@@ -168,172 +247,263 @@
         "id": "e1",
         "from": "p1",
         "from_port": "out",
-        "to": "v1",
+        "to": "img1",
         "to_port": "prompt"
       },
       {
         "id": "e2",
         "from": "nv",
         "from_port": "out",
-        "to": "v1",
+        "to": "img1",
         "to_port": "refs"
       },
       {
         "id": "e3",
         "from": "ao",
         "from_port": "out",
-        "to": "v1",
+        "to": "img1",
         "to_port": "refs"
       },
       {
         "id": "e4",
+        "from": "heo",
+        "from_port": "out",
+        "to": "img1",
+        "to_port": "refs"
+      },
+      {
+        "id": "e5",
+        "from": "img1",
+        "from_port": "out",
+        "to": "v1",
+        "to_port": "refs"
+      },
+      {
+        "id": "e6",
+        "from": "pvid",
+        "from_port": "out",
+        "to": "v1",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e7",
         "from": "v1",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e5",
+        "id": "e8",
         "from": "p2",
+        "from_port": "out",
+        "to": "img2",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e9",
+        "from": "nv",
+        "from_port": "out",
+        "to": "img2",
+        "to_port": "refs"
+      },
+      {
+        "id": "e10",
+        "from": "ao",
+        "from_port": "out",
+        "to": "img2",
+        "to_port": "refs"
+      },
+      {
+        "id": "e11",
+        "from": "img2",
+        "from_port": "out",
+        "to": "v2",
+        "to_port": "refs"
+      },
+      {
+        "id": "e12",
+        "from": "pvid",
         "from_port": "out",
         "to": "v2",
         "to_port": "prompt"
       },
       {
-        "id": "e6",
-        "from": "nv",
-        "from_port": "out",
-        "to": "v2",
-        "to_port": "refs"
-      },
-      {
-        "id": "e7",
-        "from": "ao",
-        "from_port": "out",
-        "to": "v2",
-        "to_port": "refs"
-      },
-      {
-        "id": "e8",
+        "id": "e13",
         "from": "v2",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e9",
+        "id": "e14",
         "from": "p3",
+        "from_port": "out",
+        "to": "img3",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e15",
+        "from": "nv",
+        "from_port": "out",
+        "to": "img3",
+        "to_port": "refs"
+      },
+      {
+        "id": "e16",
+        "from": "ao",
+        "from_port": "out",
+        "to": "img3",
+        "to_port": "refs"
+      },
+      {
+        "id": "e17",
+        "from": "img3",
+        "from_port": "out",
+        "to": "v3",
+        "to_port": "refs"
+      },
+      {
+        "id": "e18",
+        "from": "pvid",
         "from_port": "out",
         "to": "v3",
         "to_port": "prompt"
       },
       {
-        "id": "e10",
-        "from": "nv",
-        "from_port": "out",
-        "to": "v3",
-        "to_port": "refs"
-      },
-      {
-        "id": "e11",
-        "from": "ao",
-        "from_port": "out",
-        "to": "v3",
-        "to_port": "refs"
-      },
-      {
-        "id": "e12",
+        "id": "e19",
         "from": "v3",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e13",
+        "id": "e20",
         "from": "p4",
+        "from_port": "out",
+        "to": "img4",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e21",
+        "from": "nv",
+        "from_port": "out",
+        "to": "img4",
+        "to_port": "refs"
+      },
+      {
+        "id": "e22",
+        "from": "ao",
+        "from_port": "out",
+        "to": "img4",
+        "to_port": "refs"
+      },
+      {
+        "id": "e23",
+        "from": "img4",
+        "from_port": "out",
+        "to": "v4",
+        "to_port": "refs"
+      },
+      {
+        "id": "e24",
+        "from": "pvid",
         "from_port": "out",
         "to": "v4",
         "to_port": "prompt"
       },
       {
-        "id": "e14",
-        "from": "nv",
-        "from_port": "out",
-        "to": "v4",
-        "to_port": "refs"
-      },
-      {
-        "id": "e15",
-        "from": "ao",
-        "from_port": "out",
-        "to": "v4",
-        "to_port": "refs"
-      },
-      {
-        "id": "e16",
+        "id": "e25",
         "from": "v4",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e17",
+        "id": "e26",
         "from": "p5",
+        "from_port": "out",
+        "to": "img5",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e27",
+        "from": "nv",
+        "from_port": "out",
+        "to": "img5",
+        "to_port": "refs"
+      },
+      {
+        "id": "e28",
+        "from": "ao",
+        "from_port": "out",
+        "to": "img5",
+        "to_port": "refs"
+      },
+      {
+        "id": "e29",
+        "from": "img5",
+        "from_port": "out",
+        "to": "v5",
+        "to_port": "refs"
+      },
+      {
+        "id": "e30",
+        "from": "pvid",
         "from_port": "out",
         "to": "v5",
         "to_port": "prompt"
       },
       {
-        "id": "e18",
-        "from": "nv",
-        "from_port": "out",
-        "to": "v5",
-        "to_port": "refs"
-      },
-      {
-        "id": "e19",
-        "from": "ao",
-        "from_port": "out",
-        "to": "v5",
-        "to_port": "refs"
-      },
-      {
-        "id": "e20",
+        "id": "e31",
         "from": "v5",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e21",
+        "id": "e32",
         "from": "p6",
+        "from_port": "out",
+        "to": "img6",
+        "to_port": "prompt"
+      },
+      {
+        "id": "e33",
+        "from": "nv",
+        "from_port": "out",
+        "to": "img6",
+        "to_port": "refs"
+      },
+      {
+        "id": "e34",
+        "from": "ao",
+        "from_port": "out",
+        "to": "img6",
+        "to_port": "refs"
+      },
+      {
+        "id": "e35",
+        "from": "img6",
+        "from_port": "out",
+        "to": "v6",
+        "to_port": "refs"
+      },
+      {
+        "id": "e36",
+        "from": "pvid",
         "from_port": "out",
         "to": "v6",
         "to_port": "prompt"
       },
       {
-        "id": "e22",
-        "from": "nv",
-        "from_port": "out",
-        "to": "v6",
-        "to_port": "refs"
-      },
-      {
-        "id": "e23",
-        "from": "ao",
-        "from_port": "out",
-        "to": "v6",
-        "to_port": "refs"
-      },
-      {
-        "id": "e24",
+        "id": "e37",
         "from": "v6",
         "from_port": "out",
         "to": "ghep",
         "to_port": "in"
       },
       {
-        "id": "e25",
+        "id": "e38",
         "from": "ghep",
         "from_port": "out",
         "to": "save",
