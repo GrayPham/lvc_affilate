@@ -75,3 +75,12 @@ song CÙNG account → 2 Chromium cùng `profile_dir` sẽ kẹt profile lock. G
 (`lvc-engine/src/museai.rs`) giữ lease per-`profile_dir` (`BootstrapLocks`), nối tiếp CHỈ phần
 `fetch_bootstrap`, thả trước WebSocket để generation (~phút) chạy chồng. Lease do Engine giữ, chia
 cho cả 2 host image+video (cùng run).
+
+## Mỗi cảnh một SESSION riêng + retry 502 (2026-10-20)
+- GỐC RỄ lỗi "dồn 20 sự kiện vào 1 chat chính" + ảnh đính kèm không lên + hay 502: host gọi
+  generate_video/image với `session_id: None` → đẩy vào chat chính muse.ai. Bản tham chiếu
+  (`service.py:507`) luôn `session_id or str(uuid.uuid4())` → MỖI cảnh một chat riêng. Fix: host
+  (`lvc-engine/src/museai.rs`) đặt `session_id: Some(uuid::new_v4())` mỗi job (video + image).
+- 502 Bad Gateway hay xảy ra ở bước KẾT NỐI Hatch → thêm `connect_with_retry` (retry khi
+  `MuseError::is_transient()` = 429/5xx, backoff 3s→×2 trần 30s, 4 lượt, tôn trọng huỷ). Mirror Veo3
+  retry 5xx. Lỗi generation-phase (Rpc 502 giữa chừng) CHƯA reconnect — follow-up nếu còn gặp.

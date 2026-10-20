@@ -19,6 +19,7 @@ use lvc_museai::protocol::auth::{MuseBootstrap, parse_bootstrap_html};
 use lvc_museai::protocol::client::{
     GenerateImageParams, GenerateVideoParams, generate_image, generate_video,
 };
+use lvc_museai::protocol::errors::MuseError;
 use lvc_museai::protocol::transport::HatchConnection;
 use lvc_museai::{
     ImageJob, ImageJobDone, ImageJobsReport, MuseaiImageHost, MuseaiVideoHost, VideoJob,
@@ -205,6 +206,46 @@ async fn fetch_bootstrap_with_session(
     })
 }
 
+/// Phần fix 502: kết nối Hatch có TỰ THỬ LẠI khi lỗi TẠM THỜI (502/5xx/429) — mirror cách Veo3
+/// retry 5xx (`api.py`). Backoff 3s → ×2, trần 30s, tối đa 4 lượt; huỷ thì dừng ngay. Lỗi CỐ ĐỊNH
+/// (vd prompt sai) thì fail luôn, không thử lại vô ích.
+async fn connect_with_retry(
+    ws_url: &str,
+    locale: &str,
+    cancel: &CancellationToken,
+) -> Result<HatchConnection, MuseError> {
+    const MAX_ATTEMPTS: u32 = 4;
+    let mut delay = Duration::from_secs(3);
+    let mut last_err: Option<MuseError> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        if cancel.is_cancelled() {
+            break;
+        }
+        match HatchConnection::connect(ws_url, locale, HANDSHAKE_TIMEOUT).await {
+            Ok(c) => return Ok(c),
+            Err(e) => {
+                let transient = e.is_transient();
+                warn!(
+                    attempt,
+                    transient, "museai: ket noi Hatch that bai, se thu lai neu tam thoi"
+                );
+                last_err = Some(e);
+                if !transient || attempt == MAX_ATTEMPTS {
+                    break;
+                }
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => break,
+                    () = tokio::time::sleep(delay) => {}
+                }
+                delay = (delay * 2).min(Duration::from_secs(30));
+            }
+        }
+    }
+    Err(last_err
+        .unwrap_or_else(|| MuseError::Protocol("ket noi Hatch that bai (het luot thu)".into())))
+}
+
 /// Bề mặt NODE thực `MuseaiVideoHost` cho MỘT lần chạy — mở trình duyệt lấy bootstrap + kết nối
 /// Hatch MỘT LẦN cho cả lô `jobs` (giả định mọi job trong CÙNG một lần gọi `generate_videos` dùng
 /// CHUNG một `credential_id` — node chỉ có một tham số `account` tĩnh, giống `veo3_video`).
@@ -282,11 +323,10 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
             }
         };
         let ws_url = bootstrap.websocket_url();
-        let conn =
-            match HatchConnection::connect(&ws_url, &bootstrap.locale, HANDSHAKE_TIMEOUT).await {
-                Ok(c) => c,
-                Err(e) => return Self::fail_all(&jobs, &format!("ket noi Hatch that bai: {e}")),
-            };
+        let conn = match connect_with_retry(&ws_url, &bootstrap.locale, &self.cancel).await {
+            Ok(c) => c,
+            Err(e) => return Self::fail_all(&jobs, &format!("ket noi Hatch that bai: {e}")),
+        };
 
         let mut report = VideoJobsReport::default();
         for job in jobs {
@@ -298,11 +338,15 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
                     .push(format!("canh {}: da huy", job.scene_index));
                 continue;
             }
+            // MỖI cảnh một SESSION (chat) RIÊNG — UUID mới, mirror bản tham chiếu
+            // (`service.py`: `session_id or str(uuid.uuid4())`). Tránh dồn cả chục cảnh vào MỘT
+            // chat chính của muse.ai (nặng → chậm/502/ảnh đính kèm không lên).
+            let session_id = uuid::Uuid::new_v4().to_string();
             let params = GenerateVideoParams {
                 prompt: &job.prompt,
                 device_id: node_id,
                 output_dir: &self.downloads_dir,
-                session_id: None,
+                session_id: Some(&session_id),
                 timeout: Duration::from_secs(600),
                 min_videos: 1,
                 aspect: job.aspect.as_deref(),
@@ -429,11 +473,10 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
             }
         };
         let ws_url = bootstrap.websocket_url();
-        let conn =
-            match HatchConnection::connect(&ws_url, &bootstrap.locale, HANDSHAKE_TIMEOUT).await {
-                Ok(c) => c,
-                Err(e) => return Self::fail_all(&jobs, &format!("ket noi Hatch that bai: {e}")),
-            };
+        let conn = match connect_with_retry(&ws_url, &bootstrap.locale, &self.cancel).await {
+            Ok(c) => c,
+            Err(e) => return Self::fail_all(&jobs, &format!("ket noi Hatch that bai: {e}")),
+        };
 
         let mut report = ImageJobsReport::default();
         for job in jobs {
@@ -444,11 +487,13 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
                     .push(format!("canh {}: da huy", job.scene_index));
                 continue;
             }
+            // MỖI cảnh một SESSION (chat) RIÊNG — xem ghi chú ở `generate_videos`.
+            let session_id = uuid::Uuid::new_v4().to_string();
             let params = GenerateImageParams {
                 prompt: &job.prompt,
                 device_id: node_id,
                 output_dir: &self.downloads_dir,
-                session_id: None,
+                session_id: Some(&session_id),
                 timeout: Duration::from_secs(300),
                 min_images: 1,
                 images: &job.images,
