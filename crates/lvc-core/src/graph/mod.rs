@@ -4,6 +4,7 @@
 
 mod edge;
 mod node;
+mod retry;
 #[cfg(test)]
 pub(crate) mod test_catalog;
 mod validate;
@@ -12,6 +13,7 @@ pub use edge::Edge;
 pub use node::{
     Catalog, Category, CredentialReq, Node, NodeData, NodeManifest, PortSpec, PortType,
 };
+pub use retry::descendants;
 pub use validate::{GraphError, topo_order, validate};
 
 use serde::{Deserialize, Serialize};
