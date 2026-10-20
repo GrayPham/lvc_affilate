@@ -273,6 +273,26 @@ fn new_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4())
 }
 
+/// Run-robustness B (THUAN, de test rieng): ten file `name` co chua TOKEN `{run_id}_{node_id}` voi
+/// RANH GIOI dung khong? Ranh gioi truoc token: dau chuoi HOAC ngay sau `_` (sau tag `concat_`/
+/// `trim_`/...). Ranh gioi sau token: `_` (truoc `{scene}`) HOAC `.` (truoc duoi file). Nho ranh
+/// gioi nay, `concat_{run}_{node}.mp4` va `{run}_{node}_0.png` deu khop, nhung `{run}_{node}abc`
+/// (`node_id` khac dai hon) thi khong.
+fn name_matches_token(name: &str, token: &str) -> bool {
+    let mut from = 0;
+    while let Some(rel) = name[from..].find(token) {
+        let start = from + rel;
+        let end = start + token.len();
+        let before_ok = start == 0 || name.as_bytes()[start - 1] == b'_';
+        let after_ok = matches!(name.as_bytes().get(end), Some(b'_' | b'.'));
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
 impl<D: BrowserDriver + 'static> Engine<D> {
     /// Chay MOT lan workflow. Do thi duoc migrate ve dinh dang hien tai, roi `Registry::prepare`
     /// (validate + preview tung node) — loi tra `Err` NGAY, KHONG tao dong `runs`. Tra
@@ -408,12 +428,17 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         }
     }
 
-    /// Run-robustness B: quet `downloads_dir` tim file output cua tung node theo ten TAT DINH
-    /// `{run_id}_{node_id}_...` (vd `museai.rs`/`veo3.rs` dat ten). Tra `node_id -> duong dan` cho
-    /// MOI node co it nhat MOT file (file DAU TIEN theo thu tu doc thu muc — du cho mot "dai dien"
-    /// preview, khop `emit_preview_if_media`). Nhan `node_ids` TUONG MINH (tu `node_states`) de
-    /// khop dung tien to `{run_id}_{node_id}_` — KHONG parse mu ten file (`node_id` co the chua `_`).
-    /// Thu muc khong ton tai/rong -> map rong, khong loi (app moi chua chay gi).
+    /// Run-robustness B: quet `downloads_dir` tim file output cua tung node theo ten TAT DINH. Hai
+    /// quy uoc dat ten cung ton tai (CO Y khong ep node theo mot khuon — engine KHONG biet kind):
+    /// - Node sinh canh (`museai.rs`/`veo3.rs`/apimedia): `{run_id}_{node_id}_{scene}.ext`.
+    /// - Node lap rap (concat/trim/audio/frame): `{tag}_{run_id}_{node_id}.ext` (vd
+    ///   `concat_{run_id}_{node_id}.mp4`) — KHONG bat dau bang `{run_id}`, KHONG co `_{scene}`.
+    ///
+    /// Khop ca hai bang cach tim TOKEN `{run_id}_{node_id}` co RANH GIOI: dung dau chuoi hoac ngay
+    /// sau `_` (sau tag), va ngay sau token la `_` (canh) hoac `.` (duoi file). Tra `node_id ->
+    /// duong dan` cho MOI node co it nhat MOT file (file DAU TIEN doc duoc — du cho mot "dai dien"
+    /// preview, khop `emit_preview_if_media`). Nhan `node_ids` TUONG MINH (tu `node_states`) —
+    /// KHONG parse mu. Thu muc khong ton tai/rong -> map rong, khong loi (app moi chua chay gi).
     #[must_use]
     pub fn node_outputs(&self, run_id: &str, node_ids: &[String]) -> HashMap<String, String> {
         let mut out = HashMap::new();
@@ -425,8 +450,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .filter_map(|e| e.file_name().into_string().ok())
             .collect();
         for node_id in node_ids {
-            let prefix = format!("{run_id}_{node_id}_");
-            if let Some(name) = names.iter().find(|n| n.starts_with(&prefix)) {
+            let token = format!("{run_id}_{node_id}");
+            if let Some(name) = names.iter().find(|n| name_matches_token(n, &token)) {
                 let path = self.cfg.downloads_dir.join(name);
                 out.insert(node_id.clone(), path.to_string_lossy().into_owned());
             }
@@ -1488,6 +1513,48 @@ mod tests {
         assert!(
             got["im_scene_1"].ends_with("runX_im_scene_1_0.png"),
             "{got:?}"
+        );
+    }
+
+    /// Node LAP RAP (concat/trim/audio/frame) dat ten `{tag}_{run_id}_{node_id}.ext` — KHONG bat
+    /// dau bang `{run_id}` va KHONG co `_{scene}` duoi. `node_outputs` van phai khop (video reel
+    /// cuoi — node "Noi video" — la thu nguoi dung muon thay nhat sau khi mo lai app).
+    #[tokio::test]
+    async fn node_outputs_khop_ca_node_lap_rap() {
+        let (dir, engine, _db, _driver) = build_engine(&["acc1"], 1, Vec::new()).await;
+        let downloads = dir.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        // concat: `concat_{run}_{node}.mp4`; trim: `trim_{run}_{node}.mp4`.
+        std::fs::write(downloads.join("concat_runX_nC.mp4"), b"reel").unwrap();
+        std::fs::write(downloads.join("trim_runX_nT.mp4"), b"t").unwrap();
+
+        let got = engine.node_outputs("runX", &["nC".to_string(), "nT".to_string()]);
+        assert!(got["nC"].ends_with("concat_runX_nC.mp4"), "{got:?}");
+        assert!(got["nT"].ends_with("trim_runX_nT.mp4"), "{got:?}");
+    }
+
+    /// `name_matches_token` (thuan): khop ca hai quy uoc, chan nham `node_id` dai hon.
+    #[test]
+    fn name_matches_token_ranh_gioi() {
+        let tok = "run1_nA";
+        assert!(super::name_matches_token("run1_nA_0.png", tok), "canh");
+        assert!(
+            super::name_matches_token("concat_run1_nA.mp4", tok),
+            "lap rap"
+        );
+        assert!(
+            super::name_matches_token("split_audio_run1_nA.m4a", tok),
+            "tag dai"
+        );
+        // node_id khac dai hon (nA vs nAB) KHONG duoc khop nham.
+        assert!(
+            !super::name_matches_token("run1_nAB_0.png", tok),
+            "node_id dai hon"
+        );
+        // khong co token.
+        assert!(
+            !super::name_matches_token("run1_nZ_0.png", tok),
+            "node khac"
         );
     }
 
