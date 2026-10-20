@@ -61,6 +61,9 @@ struct PublicTemplate {
     description: String,
     #[serde(default = "default_category")]
     category: String,
+    /// Ảnh thu nhỏ cho thẻ "Kho mẫu" — data URI (`data:image/...;base64,...`) hoặc rỗng.
+    #[serde(default)]
+    thumbnail: String,
     graph: Graph,
 }
 
@@ -178,7 +181,7 @@ fn public_doc(id: &str, raw: &str) -> Option<TemplateDoc> {
             description: t.description,
             scope: "public".to_string(),
             category: t.category,
-            thumbnail: String::new(),
+            thumbnail: t.thumbnail,
             updated_at: 0.0,
             node_count,
             version: String::new(),
