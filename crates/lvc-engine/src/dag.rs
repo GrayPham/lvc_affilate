@@ -205,6 +205,12 @@ struct RunJob {
     token: CancellationToken,
     hooks_factory: HooksFactory,
     tasks_ready_tx: watch::Sender<Vec<TaskRef>>,
+    /// Phần C (chạy lại node lỗi): output SEED sẵn cho các node đã xong (không chạy lại) — nạp vào
+    /// `outputs` TRƯỚC vòng lặp để node phía sau `gather_inputs` thấy. Run thường = rỗng.
+    seed_outputs: HashMap<String, Outputs>,
+    /// Phần C: node BỎ QUA thực thi (đã xong, dùng `seed_outputs`) — emit `done` ngay, không gọi
+    /// `exec` (không tốn credit). Run thường = rỗng.
+    skip: HashSet<String>,
 }
 
 /// P4a (ADR-R014): dich vu `DolaVideoHost` cho MOT lan chay — node `dola_video` goi qua
@@ -310,6 +316,34 @@ impl<D: BrowserDriver + 'static> Engine<D> {
         graph: &Graph,
         hooks_factory: HooksFactory,
     ) -> Result<RunHandle, EngineError> {
+        self.run_graph_seeded(
+            workflow_id,
+            graph,
+            hooks_factory,
+            HashMap::new(),
+            HashSet::new(),
+        )
+        .await
+    }
+
+    /// Phần C (chạy lại node lỗi): như [`Engine::run_graph`] nhưng SEED sẵn output cho các node đã
+    /// xong (`seed_outputs`) và BỎ QUA thực thi chúng (`skip`) — chỉ node lỗi + node phía sau chạy
+    /// lại, tái dùng file cũ (không tốn credit). Run thường gọi với hai map rỗng.
+    ///
+    /// # Errors
+    /// `EngineError::Graph` khi đồ thị không hợp lệ / lỗi tham số node.
+    #[allow(
+        clippy::unused_async,
+        reason = "giu async de khop chu ky cong khai (Tauri command async goi ham nay)"
+    )]
+    pub async fn run_graph_seeded(
+        self: &Arc<Self>,
+        workflow_id: &str,
+        graph: &Graph,
+        hooks_factory: HooksFactory,
+        seed_outputs: HashMap<String, Outputs>,
+        skip: HashSet<String>,
+    ) -> Result<RunHandle, EngineError> {
         let graph = migrate(graph.clone());
         let registry = self.registry();
         let prepared = registry.prepare(&graph, &self.limits)?;
@@ -327,6 +361,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             token: token.clone(),
             hooks_factory,
             tasks_ready_tx,
+            seed_outputs,
+            skip,
         };
         let engine = Arc::clone(self);
         let join = tokio::spawn(async move { engine.run_graph_task(job).await });
@@ -690,6 +726,8 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             token,
             hooks_factory,
             tasks_ready_tx,
+            seed_outputs,
+            skip,
         } = job;
         let total_of = |id: &str| prepared.jobs.get(id).copied().unwrap_or(1);
         let (services, limits) = self.start_run(
@@ -714,7 +752,9 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             .await;
         }
 
-        let mut outputs: HashMap<String, Outputs> = HashMap::new();
+        // Phần C: nạp output SEED (node đã xong ở lần chạy trước) để node phía sau `gather_inputs`
+        // thấy — chúng được BỎ QUA thực thi trong vòng lặp (xem `skip`).
+        let mut outputs: HashMap<String, Outputs> = seed_outputs;
         let mut touched: HashSet<String> = HashSet::new();
         let mut failures: Vec<String> = Vec::new();
         let mut hard_stop: Option<String> = None;
@@ -730,6 +770,18 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             };
             touched.insert(node_id.clone());
             let total = total_of(node_id);
+            // Phần C: node đã xong lần trước (có trong `skip` + đã seed output) -> emit `done` ngay,
+            // KHÔNG gọi `exec` (không tốn credit), preview lại từ output seed.
+            if skip.contains(node_id) {
+                let c = (total, total, total, 0);
+                self.emit_node_state(&run_id, node_id, NODE_DONE, c);
+                self.persist_node_state(&run_id, node_id, NODE_DONE, c, None)
+                    .await;
+                if let Some(seeded) = outputs.get(node_id) {
+                    self.emit_preview_if_media(&run_id, node_id, seeded);
+                }
+                continue;
+            }
             let Some(exec) = registry.get(&node.kind.kind) else {
                 // prepare() da chan kind la — chi phong thu.
                 let msg = format!("node {node_id}: kind {} chua cai", node.kind.kind);
@@ -804,6 +856,20 @@ impl<D: BrowserDriver + 'static> Engine<D> {
                     }
                     if !failed {
                         self.emit_preview_if_media(&run_id, node_id, &res.outputs);
+                        // Phần C: lưu Outputs (JSON) node đã xong để "chạy lại node lỗi" seed lại,
+                        // không chạy lại (không tốn credit). Ghi hỏng chỉ `warn`, không sập run.
+                        match serde_json::to_string(&res.outputs) {
+                            Ok(json) => {
+                                if let Err(e) =
+                                    self.node_states.set_outputs(&run_id, node_id, &json).await
+                                {
+                                    warn!(run_id, node_id, error = %e, "khong luu duoc node outputs");
+                                }
+                            }
+                            Err(e) => {
+                                warn!(run_id, node_id, error = %e, "khong serialize duoc node outputs");
+                            }
+                        }
                     }
                     outputs.insert(node_id.clone(), res.outputs);
                 }
@@ -1556,6 +1622,58 @@ mod tests {
             !super::name_matches_token("run1_nZ_0.png", tok),
             "node khac"
         );
+    }
+
+    /// Phần C: `run_graph_seeded` BỎ QUA node trong `skip` (đã xong lần trước, có `seed_outputs`) —
+    /// KHÔNG gọi driver (không tốn credit), node phía sau dùng output seed, run vẫn hoàn tất.
+    #[tokio::test]
+    async fn run_graph_seeded_bo_qua_node_skip_khong_chay() {
+        let (dir, engine, _db, driver) = build_engine(&["acc1"], 1, Vec::new()).await;
+        let out_dir = dir.path().join("out");
+        let graph = linear_graph("canh 1", &out_dir);
+
+        // File video "da xong" tu lan truoc (seed cho node `vid`).
+        let seeded_file = dir.path().join("seeded_vid.mp4");
+        std::fs::write(&seeded_file, b"seeded-mp4").unwrap();
+        let mut vid_out = Outputs::new();
+        vid_out.insert(
+            "out".to_string(),
+            vec![Value::Video(lvc_node_api::Asset {
+                path: seeded_file.clone(),
+                ..Default::default()
+            })],
+        );
+        let mut seed = HashMap::new();
+        seed.insert("vid".to_string(), vid_out);
+        let skip: HashSet<String> = ["vid".to_string()].into_iter().collect();
+
+        let handle = engine
+            .run_graph_seeded("wf1", &graph, noop_hooks_factory(), seed, skip)
+            .await
+            .unwrap();
+        let run_id = handle.run_id.clone();
+        handle.join.await.unwrap();
+
+        // `vid` bi skip -> KHONG mo driver (khong ton credit).
+        assert!(
+            driver.calls.lock().unwrap().is_empty(),
+            "vid skip khong duoc mo driver"
+        );
+        assert_eq!(
+            engine.run_repo.get(&run_id).await.unwrap().unwrap().status,
+            RunStatus::Completed
+        );
+        let states = engine.node_states.list_for_run(&run_id).await.unwrap();
+        assert!(
+            states
+                .iter()
+                .any(|s| s.node_id == "vid" && s.state == NODE_DONE),
+            "{states:?}"
+        );
+        // sv (Luu) da nhan output SEED cua vid va luu ra out_dir (>=1 file) — chung to seed chay
+        // xuyen toi node phia sau du vid bi skip.
+        let saved = std::fs::read_dir(&out_dir).map_or(0, |rd| rd.flatten().count());
+        assert!(saved >= 1, "sv phai luu it nhat 1 file tu output seed");
     }
 
     /// Thu muc downloads khong ton tai -> map rong, khong panic (app moi, chua chay gi).
