@@ -7,6 +7,7 @@
 //!
 //! LUẬT: KHÔNG log bí mật (password, license key, JWT, session plaintext, Fernet key).
 
+pub mod client;
 pub mod crypto;
 pub mod device;
 pub mod session;

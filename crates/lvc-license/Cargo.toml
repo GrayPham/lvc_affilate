@@ -23,6 +23,12 @@ sha2.workspace = true
 aes.workspace = true
 cbc.workspace = true
 rand.workspace = true
+# client.rs: HTTP toi server cap phep (rustls). JWT chi base64url-decode payload lay 'sub'.
+reqwest.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+wiremock.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 # device.rs: doc MachineGuid tu registry lam device_id on dinh.
