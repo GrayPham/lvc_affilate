@@ -115,7 +115,10 @@ mod tests {
     fn fernet_round_trip() {
         let key = [7u8; 32];
         let token = fernet_encrypt(&key, b"hello muse", 0, [0u8; 16]);
-        assert_eq!(fernet_decrypt(&key, &token).as_deref(), Some(&b"hello muse"[..]));
+        assert_eq!(
+            fernet_decrypt(&key, &token).as_deref(),
+            Some(&b"hello muse"[..])
+        );
     }
 
     #[test]
@@ -143,10 +146,7 @@ mod tests {
         let (der, token) = combined.split_at(91);
         let eph_pub = p256::PublicKey::from_public_key_der(der).unwrap();
         // ECDH phía server + HKDF cùng info -> cùng khoá Fernet.
-        let shared = p256::ecdh::diffie_hellman(
-            server_sk.to_nonzero_scalar(),
-            eph_pub.as_affine(),
-        );
+        let shared = p256::ecdh::diffie_hellman(server_sk.to_nonzero_scalar(), eph_pub.as_affine());
         let mut key = [0u8; 32];
         hkdf::Hkdf::<sha2::Sha256>::new(None, shared.raw_secret_bytes())
             .expand(b"license verification", &mut key)

@@ -45,4 +45,3 @@ mod tests {
         assert!(crate::crypto::encrypt_data(super::PUBLIC_KEY_PEM, &json!({"x":1})).is_ok());
     }
 }
-

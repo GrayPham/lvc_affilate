@@ -47,6 +47,10 @@ struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
 /// `tracing::error!` TRUOC khi propagate — ban release khong co console (xem `main.rs`) nen day dong
 /// duy nhat con lai trong `logs/app.log` giai thich vi sao ung dung khong mo duoc.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "invoke_handler! liet ke toan bo lenh Tauri - danh sach dai la tat yeu"
+)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

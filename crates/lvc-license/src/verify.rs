@@ -191,7 +191,10 @@ pub fn check_license_response(
         .ok_or(GuardError::MissingData)?;
 
     // Lớp 1: chữ ký BẮT BUỘC.
-    let signature = result.get("signature").and_then(Value::as_str).unwrap_or("");
+    let signature = result
+        .get("signature")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if signature.is_empty() {
         return Err(GuardError::NoSignature);
     }
@@ -373,6 +376,8 @@ mod tests {
         let r = check_license_response(&result, &pem, "N1", "DEV1", "KEY1", NOW + 90_000, 86400);
         assert!(matches!(r, Err(GuardError::TooOld)));
         // trong ngưỡng -> Ok
-        assert!(check_license_response(&result, &pem, "N1", "DEV1", "KEY1", NOW + 1000, 86400).is_ok());
+        assert!(
+            check_license_response(&result, &pem, "N1", "DEV1", "KEY1", NOW + 1000, 86400).is_ok()
+        );
     }
 }

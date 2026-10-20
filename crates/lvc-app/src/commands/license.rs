@@ -15,8 +15,7 @@ use super::IpcError;
 fn now_unix() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// Trạng thái cổng bản quyền (giữ qua `app.manage`). `auth` = `(JWT token, username)` sau khi đăng
@@ -124,16 +123,16 @@ pub async fn license_activate_impl(
     })
 }
 
-/// Đăng xuất — xoá session cache + token bộ nhớ.
-///
-/// # Errors
-/// Không lỗi (xoá file best-effort).
-pub fn license_logout_impl(st: &LicenseState) -> Result<(), IpcError> {
+/// Đăng xuất — xoá session cache + token bộ nhớ (best-effort, không lỗi).
+pub fn license_logout_impl(st: &LicenseState) {
     let _ = std::fs::remove_file(&st.session_path);
     *st.auth.lock().expect("license auth mutex") = None;
-    Ok(())
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan State so huu - bien gioi IPC"
+)]
 #[tauri::command]
 pub fn license_status(state: tauri::State<'_, LicenseState>) -> LicenseStatusView {
     license_status_impl(&state)
@@ -164,9 +163,13 @@ pub async fn license_activate(
     license_activate_impl(&state, &license_key).await
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri command nhan State so huu - bien gioi IPC"
+)]
 #[tauri::command]
-pub fn license_logout(state: tauri::State<'_, LicenseState>) -> Result<(), IpcError> {
-    license_logout_impl(&state)
+pub fn license_logout(state: tauri::State<'_, LicenseState>) {
+    license_logout_impl(&state);
 }
 
 #[cfg(test)]
