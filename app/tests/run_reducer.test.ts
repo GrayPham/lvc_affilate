@@ -8,10 +8,25 @@ import {
   applyEvent,
   EMPTY_RUN_STATE,
   reconcileFromRunRow,
+  reconcileNodeStatesFromDb,
   reconcileTasksFromDb,
   type RunState,
 } from "../src/store/run";
-import type { EngineEvent, RunRow, TaskDto } from "../src/ipc/types";
+import type { EngineEvent, NodeStateDto, RunRow, TaskDto } from "../src/ipc/types";
+
+function nodeStateDto(runId: string, nodeId: string, over: Partial<NodeStateDto> = {}): NodeStateDto {
+  return {
+    runId,
+    nodeId,
+    state: "done",
+    done: 1,
+    total: 1,
+    ok: 1,
+    failed: 0,
+    error: "",
+    ...over,
+  };
+}
 
 function stage(taskId: string, stg: string, elapsedMs: number, detail: string | null = null): EngineEvent {
   return { type: "task_stage", taskId, stage: stg, detail, elapsedMs };
@@ -361,5 +376,36 @@ describe("reconcileTasksFromDb — dong bo tung task tu TaskDto (review C2)", ()
     const next = reconcileTasksFromDb(state, [taskDto("t1", "r-khac")]);
     expect(next).toBe(state);
     expect(next.tasks["t1"]).toBeUndefined();
+  });
+});
+
+// Run-robustness B/D: khoi phuc trang thai MUC NODE tu bang `node_states` (`run_node_states`) khi
+// mo lai app — node da xong hien xong, node loi hien do + giu thong diep loi (NodeLogPanel doc
+// thang `nodes[id]`). KHONG auto chay tiep (chi dung lai trang thai).
+describe("reconcileNodeStatesFromDb — khoi phuc nodes tu NodeStateDto (run-robustness B)", () => {
+  it("dat nodes tu moi dong (done + failed giu error)", () => {
+    const state: RunState = { ...EMPTY_RUN_STATE, runId: "r1" };
+    const next = reconcileNodeStatesFromDb(state, [
+      nodeStateDto("r1", "im_scene_1", { state: "done" }),
+      nodeStateDto("r1", "vid_1", { state: "failed", ok: 0, failed: 1, error: "echo ref" }),
+    ]);
+    expect(next.nodes["im_scene_1"]?.state).toBe("done");
+    expect(next.nodes["vid_1"]?.state).toBe("failed");
+    expect(next.nodes["vid_1"]?.error).toBe("echo ref");
+    // error rong ("" trong DB) -> null (khop NodeRunState.error).
+    expect(next.nodes["im_scene_1"]?.error).toBeNull();
+  });
+
+  it("dong thuoc run KHAC bi bo qua", () => {
+    const state: RunState = { ...EMPTY_RUN_STATE, runId: "r1" };
+    const next = reconcileNodeStatesFromDb(state, [nodeStateDto("r-khac", "n1")]);
+    expect(next).toBe(state);
+    expect(next.nodes["n1"]).toBeUndefined();
+  });
+
+  it("runId null thi NHAN (adopt) runId tu dong dau", () => {
+    const next = reconcileNodeStatesFromDb(EMPTY_RUN_STATE, [nodeStateDto("r9", "n1")]);
+    expect(next.runId).toBe("r9");
+    expect(next.nodes["n1"]?.state).toBe("done");
   });
 });

@@ -8,7 +8,7 @@
 // failed, trang thai ket thuc.
 import { createContext, useContext, type ReactNode } from "react";
 import { create, useStore, type StoreApi, type UseBoundStore } from "zustand";
-import type { EngineEvent, RunRow, TaskDto } from "../ipc/types";
+import type { EngineEvent, NodeStateDto, RunRow, TaskDto } from "../ipc/types";
 
 /** Trang thai mot task (canh) suy ra tu chuoi `task_stage`/`task_done`/`task_failed`. */
 export interface TaskRunState {
@@ -303,6 +303,46 @@ export function reconcileTasksFromDb(state: RunState, dtos: readonly TaskDto[]):
   return { ...state, tasks, nodeVideos, nodes };
 }
 
+/**
+ * Run-robustness B/D: khoi phuc trang thai MUC NODE tu bang `node_states` (`run_node_states`) khi
+ * mo lai app/tab — dat thang `nodes[nodeId]` tu moi dong (node_states DA la trang thai cap node,
+ * khong phai gom tu `tasks` nhu `reconcileTasksFromDb`). `error` rong "" -> null (khop
+ * `NodeRunState.error`). Bo qua dong khac `state.runId` (phong nham run); `runId` dang null ->
+ * NHAN (adopt) tu dong dau (giong luong boot: chua biet runId thi lay theo cac dong doc duoc).
+ */
+export function reconcileNodeStatesFromDb(
+  state: RunState,
+  rows: readonly NodeStateDto[],
+): RunState {
+  let nodes = state.nodes;
+  let runId = state.runId;
+  for (const row of rows) {
+    if (runId !== null && row.runId !== runId) {
+      continue;
+    }
+    if (runId === null) {
+      runId = row.runId;
+    }
+    const next: NodeRunState = {
+      nodeId: row.nodeId,
+      state: row.state,
+      done: row.done,
+      total: row.total,
+      ok: row.ok,
+      failed: row.failed,
+      error: row.error !== "" ? row.error : null,
+    };
+    if (nodes === state.nodes) {
+      nodes = { ...state.nodes };
+    }
+    nodes[row.nodeId] = next;
+  }
+  if (nodes === state.nodes && runId === state.runId) {
+    return state;
+  }
+  return { ...state, nodes, runId };
+}
+
 interface RunStore extends RunState {
   /**
    * Ghi nhan `runId` cua run vua `run_start` tra ve — KHONG ghi de neu da co `runId` (mot su kien
@@ -320,6 +360,12 @@ interface RunStore extends RunState {
   clearRun: () => void;
   /** Dong bo lai tu DB (`run_list`/`task_list`) — xem `reconcileFromRunRow`/`reconcileTasksFromDb`. */
   reconcile: (row: RunRow | null, tasks: readonly TaskDto[]) => void;
+  /**
+   * Run-robustness B: khoi phuc run khi mo lai app — dung `node_states` (`run_node_states`) dung
+   * lai `nodes`, `node_outputs` (`run_node_outputs`) dung lai preview `nodeVideos`. Dat `runId`
+   * (neu chua co) nhung KHONG chay tiep (quyet dinh 2026-10-20: khoi phuc roi cho bam).
+   */
+  restoreNodes: (rows: readonly NodeStateDto[], outputs: Record<string, string>) => void;
 }
 
 export type RunStoreApi = UseBoundStore<StoreApi<RunStore>>;
@@ -335,6 +381,21 @@ export function createRunStore(): RunStoreApi {
       set((s) => {
         const afterRow = row ? reconcileFromRunRow(s, row) : s;
         return reconcileTasksFromDb(afterRow, tasks);
+      }),
+    restoreNodes: (rows, outputs) =>
+      set((s) => {
+        const afterNodes = reconcileNodeStatesFromDb(s, rows);
+        // Gop preview tu dia (quet downloads_dir) — khong ghi de path da co san (vd su kien song).
+        let nodeVideos = afterNodes.nodeVideos;
+        for (const [nodeId, path] of Object.entries(outputs)) {
+          if (nodeVideos[nodeId] === undefined) {
+            if (nodeVideos === afterNodes.nodeVideos) {
+              nodeVideos = { ...afterNodes.nodeVideos };
+            }
+            nodeVideos[nodeId] = path;
+          }
+        }
+        return nodeVideos === afterNodes.nodeVideos ? afterNodes : { ...afterNodes, nodeVideos };
       }),
   }));
 }

@@ -65,7 +65,7 @@ import { useGraphStore, useGraphStoreApi } from "../store/graph";
 import { useRunStoreApi } from "../store/run";
 import { useUiStore } from "../store/uiStore";
 import { useWorkflowUi } from "../store/workflowUi";
-import { runList, taskList } from "../ipc/commands";
+import { runList, runNodeOutputs, runNodeStates, taskList } from "../ipc/commands";
 import { errorText } from "../ipc/error_text";
 
 // `NodeTypes` (`@xyflow/react`) la `Record<string, ComponentType<NodeProps & {data:any,
@@ -181,16 +181,45 @@ function WorkflowCanvas() {
   // unmount (doi tab). Chi can khi con `runId` nhung `status` van `null` (chua biet ket thuc chua).
   useEffect(() => {
     const { runId, status } = runApi.getState();
-    if (!runId || status !== null) {
+    // (a) Dang theo doi mot run chua ket thuc (vd vua doi tab): dong bo lai tu DB phong bo lo
+    // `run_done`/`task_*` trong luc trang unmount.
+    if (runId && status === null) {
+      Promise.all([runList(20), taskList(runId, 200)])
+        .then(([rows, tasks]) => {
+          const row = rows.find((r) => r.id === runId) ?? null;
+          runApi.getState().reconcile(row, tasks);
+        })
+        .catch((e: unknown) => {
+          console.warn("khong the dong bo lai trang thai run tu DB:", errorText(e));
+        });
       return;
     }
-    Promise.all([runList(20), taskList(runId, 200)])
-      .then(([rows, tasks]) => {
-        const row = rows.find((r) => r.id === runId) ?? null;
+    // (b) Da co runId (run da ket thuc, van dang hien) -> khong can lam gi.
+    if (runId) {
+      return;
+    }
+    // (c) Run-robustness B: KHONG con runId (vd mo lai app sau khi build/tat) -> gan lai run GAN
+    // NHAT cua CHINH workflow nay (khop `workflow_id`), khoi phuc `nodes` (node_states) + preview
+    // (node_outputs) + tung canh Dola (task_list). KHONG tu chay tiep (quyet dinh 2026-10-20:
+    // khoi phuc roi cho bam "Chay tiep"/"Chay lai node loi").
+    const workflowId = graphApi.getState().workflowId;
+    runList(30)
+      .then(async (rows) => {
+        const row = rows.find((r) => r.workflowId === workflowId);
+        if (!row) {
+          return;
+        }
+        const [states, outputs, tasks] = await Promise.all([
+          runNodeStates(row.id),
+          runNodeOutputs(row.id),
+          taskList(row.id, 200),
+        ]);
+        runApi.getState().beginRun(row.id);
         runApi.getState().reconcile(row, tasks);
+        runApi.getState().restoreNodes(states, outputs);
       })
       .catch((e: unknown) => {
-        console.warn("khong the dong bo lai trang thai run tu DB:", errorText(e));
+        console.warn("khong khoi phuc duoc run gan nhat tu DB:", errorText(e));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

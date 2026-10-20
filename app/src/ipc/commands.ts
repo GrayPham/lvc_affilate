@@ -22,6 +22,7 @@ import {
   ImportCookiesReportSchema,
   LegacyImportReportSchema,
   NodeCatalogSchema,
+  NodeStateDtoSchema,
   PlanSummarySchema,
   PublishResultSchema,
   QueueItemSchema,
@@ -57,6 +58,7 @@ import {
   type IpcError,
   type LegacyImportReport,
   type NodeCatalog,
+  type NodeStateDto,
   type PlanSummary,
   type ProxyProbe,
   type PublishResult,
@@ -130,6 +132,18 @@ export async function runCancel(runId: string): Promise<boolean> {
 export async function runList(limit: number): Promise<RunRow[]> {
   const res = await invoke<unknown>("run_list", { limit });
   return z.array(RunRowSchema).parse(res);
+}
+
+// Run-robustness B: trang thai muc node (khoi phuc `nodes` khi mo lai app).
+export async function runNodeStates(runId: string): Promise<NodeStateDto[]> {
+  const res = await invoke<unknown>("run_node_states", { runId });
+  return z.array(NodeStateDtoSchema).parse(res);
+}
+
+// Run-robustness B: map node_id -> duong dan output (khoi phuc preview `nodeVideos`).
+export async function runNodeOutputs(runId: string): Promise<Record<string, string>> {
+  const res = await invoke<unknown>("run_node_outputs", { runId });
+  return z.record(z.string(), z.string()).parse(res);
 }
 
 // ---- tasks.rs -----------------------------------------------------------------------------

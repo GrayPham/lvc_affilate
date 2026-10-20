@@ -440,8 +440,25 @@ export type WorkflowDoc = z.infer<typeof WorkflowDocSchema>;
 export const RunInfoSchema = z.object({ runId: z.string() });
 export type RunInfo = z.infer<typeof RunInfoSchema>;
 
-export const RunStatusSchema = z.enum(["running", "completed", "failed", "cancelled"]);
+// `interrupted` (run-robustness B): run dang chay bi tat giua chung khi boot — giu lai de khoi
+// phuc, KHONG phai `failed` (xem `lvc_store::RunStatus::Interrupted`/`interrupt_running`).
+export const RunStatusSchema = z.enum(["running", "completed", "failed", "cancelled", "interrupted"]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
+
+// Run-robustness B: mot dong `node_states` (`run_node_states`) — trang thai MUC NODE cua mot run
+// de khoi phuc khi mo lai app. Khop `NodeRunState` cua store/run.tsx (nhung `error` la chuoi,
+// rong "" khi khong loi — cot DB `NOT NULL DEFAULT ''`, khac event `node_state` co error nullable).
+export const NodeStateDtoSchema = z.object({
+  runId: z.string(),
+  nodeId: z.string(),
+  state: z.string(),
+  done: z.number(),
+  total: z.number(),
+  ok: z.number(),
+  failed: z.number(),
+  error: z.string(),
+});
+export type NodeStateDto = z.infer<typeof NodeStateDtoSchema>;
 
 export const RunRowSchema = z.object({
   id: z.string(),
