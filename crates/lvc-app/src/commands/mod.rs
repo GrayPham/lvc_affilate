@@ -28,6 +28,7 @@ pub mod accounts;
 pub mod cache;
 pub mod credentials;
 pub mod device;
+pub mod license;
 pub mod login;
 pub mod media;
 pub mod proxy;

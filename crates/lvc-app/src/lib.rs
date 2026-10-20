@@ -72,6 +72,13 @@ pub fn run() {
             let state = handle.state::<state::AppState>();
             events::spawn_bridge(handle.clone(), &state.engine);
 
+            // Cong ban quyen LVC Shop: client + file session trong app_data_dir (khong dung DB cu).
+            app.manage(commands::license::LicenseState::new(
+                lvc_license::default_client(),
+                base.join(lvc_license::SESSION_FILE),
+                lvc_license::SESSION_SALT,
+            ));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -128,6 +135,10 @@ pub fn run() {
             commands::login::cookie::login_cookie_text,
             commands::login::cookie::login_cookie_text_bulk,
             commands::login::cookie::login_cookie_relogin,
+            commands::license::license_status,
+            commands::license::license_login,
+            commands::license::license_activate,
+            commands::license::license_logout,
             commands::login::interactive::login_open_interactive,
             commands::templates::template_list,
             commands::templates::template_get,

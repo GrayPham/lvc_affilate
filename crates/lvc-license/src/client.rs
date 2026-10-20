@@ -48,6 +48,12 @@ impl LicenseClient {
         }
     }
 
+    /// `device_id` của máy hiện tại — caller lưu vào session khi kích hoạt.
+    #[must_use]
+    pub fn device_id(&self) -> &str {
+        &self.device_id
+    }
+
     /// Đăng nhập tài khoản → JWT `access_token`.
     ///
     /// # Errors

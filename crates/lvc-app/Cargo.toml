@@ -20,6 +20,7 @@ lvc-store.workspace = true
 lvc-browser.workspace = true
 lvc-engine.workspace = true
 lvc-vault.workspace = true
+lvc-license.workspace = true
 lvc-github.workspace = true
 # P4a (ADR-R014): registry node — MOI node module 1 dong o day + 1 dong o src/registry.rs.
 lvc-node-api.workspace = true

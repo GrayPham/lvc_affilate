@@ -79,6 +79,7 @@ lvc-browser = { path = "crates/lvc-browser" }
 # P4a (ADR-R014): hop dong node + provider + node module.
 lvc-node-api = { path = "crates/lvc-node-api" }
 lvc-vault = { path = "crates/lvc-vault" }
+lvc-license = { path = "crates/lvc-license" }
 lvc-dola = { path = "crates/providers/lvc-dola" }
 node-note = { path = "crates/nodes/node-note" }
 node-script-agent = { path = "crates/nodes/node-script-agent" }
