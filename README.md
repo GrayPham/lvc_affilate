@@ -14,16 +14,24 @@ chạy nền, theo dõi tiến độ theo thời gian thực.
 | P0 | Lõi thuần (`lvc-core`) + tầng lưu trữ SQLite (`lvc-store`) | Xong |
 | P1 | Điều khiển trình duyệt (`lvc-browser`, chromiumoxide) | Xong |
 | P2 | Luồng tạo video Dola thật (`lvc-engine`) | Xong |
-| P3 | Ứng dụng Tauri 2 + UI (4 màn: Workflow/Tác vụ/Cài đặt/Tài khoản) | UI xong, build NSIS thử xong; **chưa chạy live thật trong phiên này** (Task 16 — 3 cảnh → 3 video, tốn credit, cần người dùng đồng ý riêng) |
-| P3b | Auto-login Google/Facebook + TOTP, xoay proxy nâng cao | Kế tiếp |
-| P4a | Node thành module độc lập (`lvc-node-api`, `crates/nodes/*`, registry) — không đổi hành vi | Xong |
-| P4b | Dola ảnh + video qua API app Android (`crates/providers/lvc-dola`) | Kế tiếp |
-| P4c | Kho tài khoản AI (Dola, Google, ChatGPT, API key) | Kế tiếp |
-| P4d | Kho template + canvas/panel kiểu Lumina | Kế tiếp |
-| P5 | Ký/đóng gói chính thức, license, e2e UI tự động | Kế tiếp |
+| P3 | Ứng dụng Tauri 2 + UI (Workflow/Tác vụ/Cài đặt/Tài khoản) + kịch bản (P3c) | Xong |
+| P3b | Auto-login Google/Facebook + TOTP | Kế tiếp |
+| P4a | Node thành module độc lập (`lvc-node-api`, `crates/nodes/*`, registry) | Xong |
+| P4b | Dola ảnh + video qua API app Android (`crates/providers/lvc-dola`) | Xong |
+| P4c | Kho tài khoản AI (`lvc-vault`: Dola, Google, MuseAI, API key + hạn mức/xoay vòng) | Xong |
+| P5 | Node Veo3 ảnh/video (`lvc-veo3`) | Xong |
+| P6 | Node API chính thức (Google/Gemini, Seedance, Grok) + `script_gen`/`script_agent`, TTS | Xong |
+| P7 | Kho template từ xa (`lvc-template-registry`) + Kho mẫu 9:16 | Xong |
+| P8 | Tự cập nhật (`tauri-plugin-updater`, `release.yml`) | Xong |
+| — | Proxy 3 chế độ + hồ sơ cookie Firefox portable | Xong |
+| — | MuseAI ảnh-trước (khoá nhân vật) + mẫu reel món ăn 30s | Xong, đã nghiệm thu live |
+| — | Chạy bền: lưu trạng thái node, khôi phục sau restart, chạy lại node lỗi, chạy song song N node | Xong |
+| — | Đăng nhập + license LVC Shop (`lvc-license`, `LicenseGate`) | Code xong (Task 1–9); **chưa thử với server thật** |
+| — | Ký bộ cài chính thức, e2e UI tự động | Kế tiếp |
 
-Xem "Giới hạn đã biết" bên dưới về việc UI chưa được xác nhận bằng thao tác chuột thật trong
-phiên đóng gói này.
+Kế hoạch chi tiết từng giai đoạn: `docs/superpowers/plans/`, thiết kế: `docs/superpowers/specs/`.
+
+Xem "Giới hạn đã biết" bên dưới.
 
 ## Cấu trúc
 
