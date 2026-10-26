@@ -255,10 +255,12 @@ pub async fn run_start_impl<D: BrowserDriver + 'static>(
 )]
 #[tauri::command]
 pub async fn run_start(
+    license: tauri::State<'_, super::license::LicenseState>,
     state: tauri::State<'_, AppState>,
     workflow_id: String,
     graph: Graph,
 ) -> Result<RunInfo, IpcError> {
+    license.require_licensed()?;
     run_start_impl(&state, &workflow_id, &graph).await
 }
 
@@ -401,10 +403,12 @@ pub async fn run_retry_failed_impl<D: BrowserDriver + 'static>(
 )]
 #[tauri::command]
 pub async fn run_retry_failed(
+    license: tauri::State<'_, super::license::LicenseState>,
     state: tauri::State<'_, AppState>,
     run_id: String,
     graph: Graph,
 ) -> Result<RunInfo, IpcError> {
+    license.require_licensed()?;
     run_retry_failed_impl(&state, &run_id, &graph).await
 }
 

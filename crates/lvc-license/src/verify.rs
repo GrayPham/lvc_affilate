@@ -146,7 +146,7 @@ pub enum GuardError {
 
 /// Đọc mốc ISO về epoch giây UTC (hỗ trợ `Z`, có/không offset, naive = UTC). Khớp `_parse_iso` Veo3.
 #[must_use]
-pub(crate) fn parse_iso_to_unix(s: &str) -> Option<i64> {
+pub fn parse_iso_to_unix(s: &str) -> Option<i64> {
     let s = s.trim();
     if s.is_empty() {
         return None;

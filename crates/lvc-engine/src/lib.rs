@@ -40,6 +40,7 @@ pub mod login;
 // Vault, dung y VeoAccountResolver) + EngineMuseaiJobs (noi bo). Setter
 // Engine::set_museai_account_resolver la API cong khai.
 pub mod museai;
+pub mod museai_sched;
 pub mod pool;
 pub mod profiles;
 pub mod resume;
@@ -69,6 +70,9 @@ pub use events::{EVENT_CAPACITY, EngineEvent, EngineEvents, next_event};
 pub use generate::{Engine, EngineConfig, GenerateOutcome, now_unix};
 pub use limiter::{DynamicLimiter, LimiterHandle, Permit};
 pub use museai::MuseaiAccountResolver;
+pub use museai_sched::{
+    AccountScheduler, Candidate, Lease as MuseaiLease, Outcome as LeaseOutcome,
+};
 pub use pool::{AccountPool, Lease};
 pub use resume::RequeueReport;
 pub use scripts::{ScriptError, ScriptRunError, ScriptRunReport, ScriptRunTask};

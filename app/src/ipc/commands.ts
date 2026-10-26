@@ -714,9 +714,17 @@ export async function licenseLogin(username: string, password: string): Promise<
   await invoke<unknown>("license_login", { username, password });
 }
 
-/** Bước 2: kích hoạt license (cần đã đăng nhập) → trả trạng thái mới. */
-export async function licenseActivate(licenseKey: string): Promise<LicenseStatus> {
-  const res = await invoke<unknown>("license_activate", { licenseKey });
+/**
+ * Bước 2: kích hoạt license (cần đã đăng nhập) → trả trạng thái mới.
+ *
+ * `remember = false` thì backend KHÔNG ghi session xuống máy (và xoá bản cũ), nên lần mở app sau
+ * phải đăng nhập lại — đúng ý ô "Ghi nhớ tài khoản".
+ */
+export async function licenseActivate(
+  licenseKey: string,
+  remember: boolean,
+): Promise<LicenseStatus> {
+  const res = await invoke<unknown>("license_activate", { licenseKey, remember });
   return LicenseStatusSchema.parse(res);
 }
 

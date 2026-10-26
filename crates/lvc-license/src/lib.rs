@@ -10,6 +10,7 @@
 pub mod client;
 pub mod crypto;
 pub mod device;
+pub mod integrity;
 pub mod session;
 pub mod verify;
 
@@ -29,10 +30,10 @@ U6ZyQpmwf5qnDUe44e5lRiKRZIxc6PQVnCmpC+nkGXsHLYc0W++euqS//A==
 -----END PUBLIC KEY-----
 ";
 
-/// Client cấp phép mặc định (hằng số LVC Shop nhúng sẵn).
+/// Client cấp phép mặc định (hằng số LVC Shop nhúng sẵn), bản GIA CỐ — xem `new_hardened`.
 #[must_use]
 pub fn default_client() -> client::LicenseClient {
-    client::LicenseClient::new(API_URL, PUBLIC_KEY_PEM, TOOL_CODE)
+    client::LicenseClient::new_hardened(API_URL, PUBLIC_KEY_PEM, TOOL_CODE)
 }
 
 #[cfg(test)]

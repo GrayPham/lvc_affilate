@@ -19,7 +19,7 @@ mod bootstrap;
 mod commands;
 mod events;
 mod log;
-mod museai;
+pub mod museai;
 mod paths;
 pub mod registry;
 mod state;

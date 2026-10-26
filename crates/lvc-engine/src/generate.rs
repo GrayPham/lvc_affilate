@@ -180,6 +180,9 @@ pub struct Engine<D: BrowserDriver + 'static> {
     /// Phần A: lease bootstrap `MuseAI` per-`profile_dir` — chia cho 2 host image/video trong
     /// `start_run` để node `MuseAI` song song (cùng account) nối tiếp bootstrap (xem `museai`).
     pub(crate) museai_bootstrap_locks: crate::museai::BootstrapLocks,
+    /// Đệm phiên đăng nhập `MuseAI` per-`profile_dir` (xem `museai::BootstrapCache`) — chia cho cả
+    /// 2 host để các node cùng tài khoản không mở Chromium lại mỗi lần.
+    pub(crate) museai_bootstrap_cache: crate::museai::BootstrapCache,
     // pub(crate): Task 7 (P3) `dag.rs`: token huy THEO RUN (khac `cancels` — theo `task_id`);
     // `Engine::run_graph` dang ky, `Engine::cancel_run` huy, xoa khi run ket thuc. Moi canh video
     // cua run dang ky token con cua token nay qua `cancels().register_child` (fix-round 1, C1) —
@@ -401,6 +404,7 @@ impl<D: BrowserDriver + 'static> Engine<D> {
             node_states: NodeStateRepo::new(&db),
             node_threads: Arc::new(AtomicUsize::new(1)),
             museai_bootstrap_locks: Arc::new(DashMap::new()),
+            museai_bootstrap_cache: Arc::new(DashMap::new()),
             run_tokens: DashMap::new(),
             db,
             registry: OnceLock::new(),

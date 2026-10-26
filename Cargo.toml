@@ -133,3 +133,13 @@ unsafe_code = "warn"
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+# Ban phat hanh: gia co chong dich nguoc / va nhi phan (nang chi phi crack, KHONG phai bat kha xam
+# pham). LTO toan chuong trinh + 1 codegen unit cho phep compiler inline xuyen crate, nen cac lop
+# kiem tra ban quyen kho tach thanh mot ham rieng de va; `strip` bo ten ham/symbol.
+# CHAM HON khi build release (chi `cargo tauri build`, khong anh huong dev/test).
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+debug = false

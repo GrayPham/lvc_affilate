@@ -84,3 +84,23 @@ cho cả 2 host image+video (cùng run).
 - 502 Bad Gateway hay xảy ra ở bước KẾT NỐI Hatch → thêm `connect_with_retry` (retry khi
   `MuseError::is_transient()` = 429/5xx, backoff 3s→×2 trần 30s, 4 lượt, tôn trọng huỷ). Mirror Veo3
   retry 5xx. Lỗi generation-phase (Rpc 502 giữa chừng) CHƯA reconnect — follow-up nếu còn gặp.
+
+## Chia tải tài khoản + đệm phiên + chuyển dự phòng (2026-10-21)
+Số liệu từ log/DB thật (không đoán): lấy phiên (bootstrap) chỉ ~3–4s, KHÔNG phải 90s; các lỗi cũ
+tách thành 3 loại khác nhau, đừng gộp:
+1. `khong tim thay truong gatewayUrl trong trang muse.ai` = tài khoản CHƯA đăng nhập/hết phiên.
+2. `profile dang bi tien trinh khac dung: lockfile` = Chromium của profile đang bị khoá.
+3. `khong co anh Muse moi nao trong 300s/600s` = CỐ ĐỊNH theo node (`img6` hỏng cả khi chạy một
+   mình), KHÔNG phải do chia tải. Chưa biết nguyên nhân (nghi muse.ai từ chối prompt/ảnh ref, hoặc chỉ
+   trả lại ảnh "echo"); cần xem phản hồi thật của Hatch — đừng sửa mù `wait_for_images`.
+
+Đã làm (host `lvc-engine/src/museai.rs` + `museai_sched.rs`, resolver `lvc-app/src/museai.rs`):
+- `AccountScheduler`: mỗi tài khoản `DEFAULT_PER_ACCOUNT = 1` job sinh đồng thời; chọn tài khoản
+  RẢNH NHẤT (ít việc, hoà thì lâu chưa dùng), chờ khi tất cả bận. Trước đây vòng xoay chỉ là con trỏ
+  mỗi lần gọi nên `node_threads=3` + 2 tài khoản có thể dồn 2 cảnh vào MỘT tài khoản.
+- Chuyển dự phòng CHỈ ở bước MỞ KẾT NỐI (loại 1, 2): tài khoản lỗi bị cách ly (120s ×2 dần, trần
+  15 phút), thử tài khoản khác tối đa 3 lượt. KHÔNG thử lại giữa lúc đang sinh vì có thể tính phí
+  hai lần. `account` ghim tên thì không xoay; `account` rỗng bỏ tài khoản có `status=expired`.
+- `BootstrapCache` (TTL 300s): tái dùng phiên giữa các node cùng tài khoản; phiên trong đệm bị từ
+  chối (lỗi xác thực, không phải 5xx) thì bỏ và lấy lại ĐÚNG một lần.
+- Node toàn thất bại → cách ly NGẮN 30s để lần chọn sau ưu tiên tài khoản khác.

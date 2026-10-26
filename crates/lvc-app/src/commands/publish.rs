@@ -148,10 +148,12 @@ pub async fn publish_workflow_impl<D: BrowserDriver + 'static>(
 )]
 #[tauri::command]
 pub async fn publish_workflow(
+    license: tauri::State<'_, super::license::LicenseState>,
     state: tauri::State<'_, AppState>,
     credential_id: String,
     form: PublishForm,
 ) -> Result<PublishResult, IpcError> {
+    license.require_licensed()?;
     publish_workflow_impl(&state, &credential_id, &form).await
 }
 

@@ -1,0 +1,51 @@
+{
+  // Debug backend Rust cua app Tauri (LVC Shop). Can extension CodeLLDB: vadimcn.vscode-lldb
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Tauri Dev (fake-driver, khong ton credit)",
+      "cargo": {
+        "args": [
+          "build",
+          "--manifest-path=./crates/lvc-app/Cargo.toml",
+          "--features", "fake-driver"
+        ]
+      },
+      // Khoi dong Vite (frontend) truoc khi chay, giong beforeDevCommand cua tauri.conf.json
+      "preLaunchTask": "ui:dev",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Tauri Dev (LIVE - ton credit Dola!)",
+      "cargo": {
+        "args": [
+          "build",
+          "--manifest-path=./crates/lvc-app/Cargo.toml"
+        ]
+      },
+      "preLaunchTask": "ui:dev",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Tauri Release",
+      "cargo": {
+        "args": [
+          "build",
+          "--release",
+          "--manifest-path=./crates/lvc-app/Cargo.toml"
+        ]
+      },
+      "preLaunchTask": "ui:build"
+    }
+  ]
+}

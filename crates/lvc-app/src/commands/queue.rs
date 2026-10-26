@@ -120,11 +120,13 @@ pub async fn queue_add_impl<D: BrowserDriver + 'static>(
 )]
 #[tauri::command]
 pub async fn queue_add(
+    license: tauri::State<'_, super::license::LicenseState>,
     state: tauri::State<'_, AppState>,
     workflow_id: String,
     name: String,
     graph: Graph,
 ) -> Result<QueueItemDto, IpcError> {
+    license.require_licensed()?;
     queue_add_impl(&state, &workflow_id, &name, &graph).await
 }
 

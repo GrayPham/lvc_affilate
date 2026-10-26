@@ -2,18 +2,17 @@
 // bao, chip tai khoan (goi + ma thiet bi), nut cua so. Chuan LVC Fox (dong bo apps/manager Topbar).
 // Vung keo `data-tauri-drag-region` chi co hieu luc tren CHINH phan tu mang thuoc tinh; nut thi khong.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bell, ChevronDown, Copy, KeyRound, Minus, Moon, Search, Settings as SettingsIcon, Square, Sun, X } from "lucide-react";
+import { Bell, ChevronDown, Copy, KeyRound, Moon, Search, Settings as SettingsIcon, Sun, X } from "lucide-react";
 import { useUiStore } from "../store/uiStore";
 import { deviceId } from "../ipc/commands";
 import { maskDeviceId } from "../format/device";
 import { getVersion } from "@tauri-apps/api/app";
+import { BTN_ICON_ROUND } from "./buttonStyles";
 import { cx } from "./primitives";
+import { WindowButtons } from "./WindowButtons";
 
-const IN_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const ACCOUNT_NAME = "LVC Shop";
-const ROUND =
-  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-panel text-muted shadow-card transition-colors hover:bg-hover hover:text-fg";
+const ROUND = BTN_ICON_ROUND;
 
 /** Menu tha xuong neo duoi mot nut — dong khi bam ra ngoai / Esc. */
 function Dropdown({ open, onClose, children, width = 290 }: { open: boolean; onClose: () => void; children: ReactNode; width?: number }) {
@@ -42,39 +41,6 @@ function Dropdown({ open, onClose, children, width = 290 }: { open: boolean; onC
     </div>
   );
 }
-
-function WindowButtons() {
-  const [maximized, setMaximized] = useState(false);
-  useEffect(() => {
-    if (!IN_TAURI) return;
-    const w = getCurrentWindow();
-    let alive = true;
-    const sync = () => w.isMaximized().then((m) => alive && setMaximized(m)).catch(() => {});
-    sync();
-    const un = w.onResized(sync);
-    return () => {
-      alive = false;
-      un.then((f) => f()).catch(() => {});
-    };
-  }, []);
-  if (!IN_TAURI) return null;
-  const w = () => getCurrentWindow();
-  const btn = "inline-flex h-8 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-fg";
-  return (
-    <div className="ml-1 flex items-center gap-0.5">
-      <button type="button" title="Thu nhỏ" aria-label="Thu nhỏ" className={btn} onClick={() => w().minimize().catch(() => {})}>
-        <Minus size={16} />
-      </button>
-      <button type="button" title={maximized ? "Khôi phục" : "Phóng to"} aria-label={maximized ? "Khôi phục" : "Phóng to"} className={btn} onClick={() => w().toggleMaximize().catch(() => {})}>
-        <Square size={13} />
-      </button>
-      <button type="button" title="Đóng" aria-label="Đóng" className={cx(btn, "hover:bg-danger hover:text-white")} onClick={() => w().close().catch(() => {})}>
-        <X size={17} />
-      </button>
-    </div>
-  );
-}
-
 export function TopBar() {
   const theme = useUiStore((s) => s.theme);
   const setTheme = useUiStore((s) => s.setTheme);

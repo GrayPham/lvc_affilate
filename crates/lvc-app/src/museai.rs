@@ -12,8 +12,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use lvc_engine::MuseaiAccountResolver;
+use lvc_engine::{AccountScheduler, Candidate, MuseaiAccountResolver, MuseaiLease};
 use lvc_vault::Vault;
+use tokio_util::sync::CancellationToken;
 
 /// Resolver backed by [`Vault`]: tra `profile_dir` credential `provider="museai"`,
 /// `kind` `login`/`session`, theo `label` (tên người dùng khai ở tham số `account` của node).
@@ -25,6 +26,9 @@ pub struct VaultMuseaiAccountResolver {
     /// Con trỏ XOAY VÒNG khi `account` rỗng — mỗi lần resolve lấy account kế tiếp để chia tải nhiều
     /// tài khoản (giảm 502/rate-limit, song song thật vì khác `profile_dir`).
     next: AtomicUsize,
+    /// Chia tải theo TẢI THỰC giữa các tài khoản khi node song song (xem `lvc_engine::museai_sched`):
+    /// mỗi tài khoản một chỗ, chọn tài khoản rảnh nhất, cách ly tài khoản vừa lỗi.
+    sched: Arc<AccountScheduler>,
 }
 
 impl VaultMuseaiAccountResolver {
@@ -33,6 +37,54 @@ impl VaultMuseaiAccountResolver {
         Self {
             vault,
             next: AtomicUsize::new(0),
+            sched: Arc::new(AccountScheduler::new()),
+        }
+    }
+
+    /// Danh sách tài khoản dùng được cho yêu cầu `wanted` (đã `trim`). `wanted` RỖNG = tự chọn: mọi
+    /// tài khoản sẵn sàng (`enabled` + có `profile_dir`), BỎ các tài khoản đã kiểm tra ra
+    /// `expired` — không dại dột thử lại tài khoản đã biết hết phiên. `wanted` có tên = ĐÚNG tài khoản
+    /// đó (người dùng đã ghim, không xoay sang tài khoản khác).
+    async fn candidates(&self, wanted: &str) -> Result<Vec<Candidate>, String> {
+        let list = self
+            .vault
+            .list(Some("museai"))
+            .await
+            .map_err(|e| e.to_string())?;
+        let usable = |c: &&lvc_vault::CredentialView| {
+            c.enabled
+                && (c.kind == "login" || c.kind == "session")
+                && c.meta
+                    .get("profile_dir")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|s| !s.is_empty())
+        };
+        let to_candidate = |c: &lvc_vault::CredentialView| Candidate {
+            key: c.id.clone(),
+            profile_dir: PathBuf::from(
+                c.meta
+                    .get("profile_dir")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            ),
+        };
+        if wanted.is_empty() {
+            let cands: Vec<Candidate> = list
+                .iter()
+                .filter(|c| usable(c) && c.status != "expired")
+                .map(to_candidate)
+                .collect();
+            if cands.is_empty() {
+                return Err("khong co tai khoan MuseAI nao san sang (tab Tai khoan AI)".to_string());
+            }
+            Ok(cands)
+        } else {
+            list.iter()
+                .find(|c| usable(c) && c.label == wanted)
+                .map(|c| vec![to_candidate(c)])
+                .ok_or_else(|| {
+                    format!("khong tim thay tai khoan MuseAI '{wanted}' (tab Tai khoan AI)")
+                })
         }
     }
 }
@@ -87,6 +139,16 @@ impl MuseaiAccountResolver for VaultMuseaiAccountResolver {
             })?;
         Ok(PathBuf::from(profile_dir))
     }
+
+    async fn lease(
+        &self,
+        credential_id: &str,
+        avoid: &[String],
+        cancel: &CancellationToken,
+    ) -> Result<MuseaiLease, String> {
+        let cands = self.candidates(credential_id.trim()).await?;
+        self.sched.acquire(&cands, avoid, cancel).await
+    }
 }
 
 #[cfg(test)]
@@ -94,6 +156,7 @@ mod tests {
     use super::*;
     use lvc_store::Db;
     use lvc_vault::{AddCredential, PlainBox};
+    use std::path::Path;
 
     async fn vault() -> Arc<Vault> {
         let db = Db::open_memory().await.unwrap();
@@ -202,5 +265,120 @@ mod tests {
         let r = VaultMuseaiAccountResolver::new(v);
         let err = r.profile_dir("tk-1").await.unwrap_err();
         assert!(err.contains("profile_dir"));
+    }
+
+    // ---- lease: chia tai theo tai thuc ----
+
+    async fn two(v: &Arc<Vault>) -> (String, String) {
+        let a = v.add(&add("tk-1", "C:/p/tk-1")).await.unwrap().id;
+        let b = v.add(&add("tk-2", "C:/p/tk-2")).await.unwrap().id;
+        (a, b)
+    }
+
+    #[tokio::test]
+    async fn lease_hai_node_dong_thoi_roi_vao_hai_tai_khoan_khac_nhau() {
+        let v = vault().await;
+        two(&v).await;
+        let r = VaultMuseaiAccountResolver::new(v);
+        let cancel = CancellationToken::new();
+        let l1 = r.lease("", &[], &cancel).await.unwrap();
+        let l2 = r.lease("", &[], &cancel).await.unwrap();
+        assert_ne!(
+            l1.profile_dir(),
+            l2.profile_dir(),
+            "2 node chay cung luc phai dung 2 tai khoan khac nhau"
+        );
+    }
+
+    #[tokio::test]
+    async fn lease_node_thu_ba_cho_roi_nhan_lai_cho_vua_tra() {
+        let v = vault().await;
+        two(&v).await;
+        let r = Arc::new(VaultMuseaiAccountResolver::new(v));
+        let cancel = CancellationToken::new();
+        let l1 = r.lease("", &[], &cancel).await.unwrap();
+        let _l2 = r.lease("", &[], &cancel).await.unwrap();
+
+        let r2 = Arc::clone(&r);
+        let c2 = cancel.clone();
+        let third = tokio::spawn(async move { r2.lease("", &[], &c2).await });
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        assert!(
+            !third.is_finished(),
+            "ca hai tai khoan dang ban -> phai cho"
+        );
+
+        let freed = l1.profile_dir().to_path_buf();
+        drop(l1);
+        let l3 = tokio::time::timeout(std::time::Duration::from_secs(3), third)
+            .await
+            .expect("duoc danh thuc khi co cho trong")
+            .unwrap()
+            .unwrap();
+        assert_eq!(l3.profile_dir(), freed);
+    }
+
+    #[tokio::test]
+    async fn lease_bo_tai_khoan_da_thu_hong_chuyen_sang_tai_khoan_con_lai() {
+        let v = vault().await;
+        let (a, _b) = two(&v).await;
+        let r = VaultMuseaiAccountResolver::new(v);
+        let l = r.lease("", &[a], &CancellationToken::new()).await.unwrap();
+        assert_eq!(l.profile_dir(), Path::new("C:/p/tk-2"));
+    }
+
+    #[tokio::test]
+    async fn lease_het_tai_khoan_du_phong_bao_loi_ro() {
+        let v = vault().await;
+        let (a, b) = two(&v).await;
+        let r = VaultMuseaiAccountResolver::new(v);
+        let err = r
+            .lease("", &[a, b], &CancellationToken::new())
+            .await
+            .unwrap_err();
+        assert!(err.contains("du phong"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn lease_tai_khoan_da_ghim_khong_bi_xoay_sang_tai_khoan_khac() {
+        let v = vault().await;
+        two(&v).await;
+        let r = VaultMuseaiAccountResolver::new(v);
+        let cancel = CancellationToken::new();
+        // Ghim tk-2: luon tk-2 du tk-1 ranh va dung dau danh sach.
+        for _ in 0..2 {
+            let l = r.lease("tk-2", &[], &cancel).await.unwrap();
+            assert_eq!(l.profile_dir(), Path::new("C:/p/tk-2"));
+        }
+    }
+
+    #[tokio::test]
+    async fn lease_tu_chon_bo_tai_khoan_da_kiem_tra_het_han() {
+        let v = vault().await;
+        let (a, _b) = two(&v).await;
+        v.set_status(&a, "expired").await.unwrap();
+        let r = VaultMuseaiAccountResolver::new(v);
+        let cancel = CancellationToken::new();
+        for _ in 0..3 {
+            let l = r.lease("", &[], &cancel).await.unwrap();
+            assert_eq!(
+                l.profile_dir(),
+                Path::new("C:/p/tk-2"),
+                "khong thu lai tk het han"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn lease_ghim_van_dung_duoc_tai_khoan_het_han_vi_nguoi_dung_chu_dich_chon() {
+        let v = vault().await;
+        let (a, _b) = two(&v).await;
+        v.set_status(&a, "expired").await.unwrap();
+        let r = VaultMuseaiAccountResolver::new(v);
+        let l = r
+            .lease("tk-1", &[], &CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(l.profile_dir(), Path::new("C:/p/tk-1"));
     }
 }

@@ -99,11 +99,13 @@ async fn run_ffmpeg(args: &[&str]) -> Result<(), String> {
 /// `TRIM_INPUT` (thiếu file vào), `TRIM_FAIL` (ffmpeg lỗi / không ghi được).
 #[tauri::command]
 pub async fn trim_video(
+    license: tauri::State<'_, super::license::LicenseState>,
     path: String,
     start: f64,
     end: f64,
     name_hint: Option<String>,
 ) -> Result<String, IpcError> {
+    license.require_licensed()?;
     if tokio::fs::metadata(&path).await.is_err() {
         return Err(IpcError::new(
             "TRIM_INPUT",

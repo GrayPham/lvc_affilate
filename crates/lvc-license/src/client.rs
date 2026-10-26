@@ -31,12 +31,53 @@ pub struct LicenseClient {
 }
 
 impl LicenseClient {
-    /// Tạo client (tính `device_id`/`device_info` của máy hiện tại).
+    /// Tạo client KHÔNG gia cố (tính `device_id`/`device_info` của máy hiện tại). Cho test với server
+    /// giả `http://` và key test; sản phẩm dùng [`LicenseClient::new_hardened`].
     #[must_use]
     pub fn new(
         api_url: impl Into<String>,
         pubkey_pem: impl Into<String>,
         tool_code: impl Into<String>,
+    ) -> Self {
+        Self::with_http(api_url, pubkey_pem, tool_code, reqwest::Client::new())
+    }
+
+    /// Client cho SẢN PHẨM, gia cố chống server giả / nghe lén:
+    ///  - `https_only`: từ chối mọi URL `http://` (không hạ cấp xuống kênh không mã hoá);
+    ///  - `no_proxy`: bỏ qua proxy hệ thống / biến môi trường `HTTP(S)_PROXY`, nên công cụ chặn
+    ///    gói kiểu Fiddler/Charles đặt proxy hệ thống không nhìn thấy lưu lượng;
+    ///  - không theo chuyển hướng: server giả không đẩy được client sang địa chỉ khác;
+    ///  - timeout kết nối/tổng: không treo vô hạn khi bị chặn mạng.
+    ///
+    /// TLS dùng bộ root CA đóng gói sẵn của `rustls-tls`, KHÔNG đọc kho chứng chỉ Windows, nên CA do
+    /// kẻ tấn công tự cài vào máy cũng không được tin.
+    ///
+    /// Đánh đổi: máy chỉ ra được internet qua proxy bắt buộc sẽ không đăng nhập được.
+    ///
+    /// # Panics
+    /// Khi không khởi tạo được bộ TLS — cùng điều kiện làm `reqwest::Client::new` panic.
+    #[must_use]
+    pub fn new_hardened(
+        api_url: impl Into<String>,
+        pubkey_pem: impl Into<String>,
+        tool_code: impl Into<String>,
+    ) -> Self {
+        let http = reqwest::Client::builder()
+            .https_only(true)
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("khoi tao HTTP client cap phep");
+        Self::with_http(api_url, pubkey_pem, tool_code, http)
+    }
+
+    fn with_http(
+        api_url: impl Into<String>,
+        pubkey_pem: impl Into<String>,
+        tool_code: impl Into<String>,
+        http: reqwest::Client,
     ) -> Self {
         Self {
             api_url: api_url.into(),
@@ -44,7 +85,7 @@ impl LicenseClient {
             tool_code: tool_code.into(),
             device_id: device::device_id(),
             device_info: device::device_info(),
-            http: reqwest::Client::new(),
+            http,
         }
     }
 
@@ -254,5 +295,25 @@ mod tests {
             c.verify_license("K", "authtok", "user").await,
             Err(LicenseError::Network)
         ));
+    }
+
+    #[tokio::test]
+    async fn client_gia_co_tu_choi_http_khong_ma_hoa() {
+        // Server giả `http://` (không TLS): client sản phẩm KHÔNG được nói chuyện với nó, dù server
+        // trả lời hợp lệ — chặn hạ cấp xuống kênh không mã hoá / server giả trỏ qua hosts-file.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/login"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "access_token": "t" })))
+            .mount(&server)
+            .await;
+        let hardened = LicenseClient::new_hardened(server.uri(), "dummy", "lvc-shop");
+        assert!(matches!(
+            hardened.authenticate("u", "p").await,
+            Err(LicenseError::Network)
+        ));
+        // Đối chứng: client thường (test) vẫn nói chuyện được với đúng server đó.
+        let plain = LicenseClient::new(server.uri(), "dummy", "lvc-shop");
+        assert_eq!(plain.authenticate("u", "p").await.unwrap(), "t");
     }
 }

@@ -266,11 +266,13 @@ pub async fn script_run_impl<D: BrowserDriver + 'static>(
 )]
 #[tauri::command]
 pub async fn script_run(
+    license: tauri::State<'_, super::license::LicenseState>,
     state: tauri::State<'_, AppState>,
     id: String,
     scene_ids: Vec<String>,
     style: String,
 ) -> Result<ScriptRunReport, IpcError> {
+    license.require_licensed()?;
     script_run_impl(&state, &id, &scene_ids, &style).await
 }
 

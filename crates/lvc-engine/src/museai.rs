@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -30,6 +30,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::museai_sched::{Lease, Outcome};
+
 /// Phần A: khoá bootstrap per-`profile_dir` (một account = một profile Chromium). Khi chạy nhiều
 /// node `MuseAI` song song (cùng account), `fetch_bootstrap` (mở Chromium tại `profile_dir`) PHẢI
 /// nối tiếp — 2 Chromium cùng `profile_dir` sẽ kẹt lock. Engine giữ map này, chia cho cả 2 host
@@ -48,6 +50,130 @@ pub(crate) fn bootstrap_lock(
         .clone()
 }
 
+/// Bộ nhớ đệm phiên đăng nhập (bootstrap) per-`profile_dir`. Trước đây MỖI node `MuseAI` mở một cửa
+/// sổ Chromium thật (tối đa 90s) chỉ để đọc phiên rồi đóng — đồ thị ~25 node là hàng chục lần mở trình
+/// duyệt, và cùng một profile chỉ mở được một lần một lúc. Giờ phiên lấy được dùng lại trong
+/// [`BOOTSTRAP_TTL`]; phiên cũ/hỏng bị bỏ và lấy lại đúng một lần (xem [`open_connection`]).
+///
+/// Chứa admission token: CHỈ trong bộ nhớ, KHÔNG BAO GIỜ log/ghi đĩa.
+pub(crate) type BootstrapCache = Arc<DashMap<String, (Instant, MuseBootstrap)>>;
+
+/// Phiên đã lấy còn được tin trong bao lâu. Ngắn để token hết hạn hiếm khi bị dùng; nếu vẫn hết hạn
+/// thì kết nối lỗi xác thực → bỏ khỏi đệm và lấy lại.
+const BOOTSTRAP_TTL: Duration = Duration::from_secs(300);
+
+/// Tối đa số tài khoản thử cho MỘT node khi tài khoản đang dùng không mở được phiên/kết nối.
+const MAX_ACCOUNT_ATTEMPTS: u32 = 3;
+
+/// Bootstrap còn hạn trong đệm, nếu có. THUẦN theo `now`/`ttl` tiêm vào để test.
+fn cached_bootstrap(
+    cache: &DashMap<String, (Instant, MuseBootstrap)>,
+    key: &str,
+    now: Instant,
+    ttl: Duration,
+) -> Option<MuseBootstrap> {
+    let entry = cache.get(key)?;
+    let (at, b) = entry.value();
+    (now.saturating_duration_since(*at) < ttl).then(|| b.clone())
+}
+
+/// Mở kết nối Hatch cho MỘT `profile_dir`: dùng phiên trong đệm nếu còn hạn, không thì mở Chromium
+/// lấy mới (nối tiếp theo `profile_dir` qua `locks`) rồi lưu đệm. Phiên lấy từ ĐỆM mà kết nối bị từ
+/// chối vì xác thực (không phải lỗi tạm) → bỏ đệm, lấy lại ĐÚNG MỘT lần.
+async fn open_connection(
+    profile_dir: &Path,
+    logs_dir: &Path,
+    locks: &BootstrapLocks,
+    cache: &BootstrapCache,
+    cancel: &CancellationToken,
+) -> Result<HatchConnection, String> {
+    let key = profile_dir.to_string_lossy().into_owned();
+    for attempt in 0..2 {
+        // Khoá CHỈ quanh bước lấy phiên (2 Chromium cùng profile sẽ kẹt lock); kiểm đệm LẠI sau khi
+        // có khoá vì người đứng trước có thể vừa lấy xong — tránh xếp hàng mở Chromium thừa.
+        let (bootstrap, from_cache) = {
+            let lock = bootstrap_lock(locks, &key);
+            let _guard = lock.lock().await;
+            if let Some(b) = cached_bootstrap(cache, &key, Instant::now(), BOOTSTRAP_TTL) {
+                (b, true)
+            } else {
+                let b = fetch_bootstrap(profile_dir, logs_dir)
+                    .await
+                    .map_err(|e| format!("khong lay duoc phien dang nhap muse.ai: {e}"))?;
+                cache.insert(key.clone(), (Instant::now(), b.clone()));
+                (b, false)
+            }
+        };
+        match connect_with_retry(&bootstrap.websocket_url(), &bootstrap.locale, cancel).await {
+            Ok(c) => return Ok(c),
+            Err(e) => {
+                cache.remove(&key);
+                if attempt == 0 && from_cache && !e.is_transient() && !cancel.is_cancelled() {
+                    info!("museai: phien trong dem bi tu choi, lay phien moi");
+                    continue;
+                }
+                return Err(format!("ket noi Hatch that bai: {e}"));
+            }
+        }
+    }
+    Err("ket noi Hatch that bai (het luot thu)".to_string())
+}
+
+/// Mượn một tài khoản (rảnh nhất) rồi mở kết nối; tài khoản không mở được phiên/kết nối thì báo
+/// [`Outcome::AccountFailed`] (bị cách ly) và THỬ TÀI KHOẢN KHÁC, tối đa [`MAX_ACCOUNT_ATTEMPTS`].
+/// Lease không quản lý (resolver mặc định, khoá rỗng) không có "tài khoản khác" nên không thử lại —
+/// tránh mở Chromium 90s lặp lại vô ích trên cùng profile.
+///
+/// Chỉ chuyển dự phòng ở bước MỞ KẾT NỐI (chưa sinh gì) nên không bao giờ sinh/tính phí hai lần.
+async fn acquire_connection(
+    resolver: &dyn MuseaiAccountResolver,
+    credential_id: &str,
+    logs_dir: &Path,
+    locks: &BootstrapLocks,
+    cache: &BootstrapCache,
+    cancel: &CancellationToken,
+) -> Result<(Lease, HatchConnection), String> {
+    let mut avoid: Vec<String> = Vec::new();
+    let mut last_err = String::new();
+    for attempt in 1..=MAX_ACCOUNT_ATTEMPTS {
+        if cancel.is_cancelled() {
+            return Err("da huy".to_string());
+        }
+        let lease = match resolver.lease(credential_id, &avoid, cancel).await {
+            Ok(l) => l,
+            Err(e) if last_err.is_empty() => return Err(e),
+            Err(e) => return Err(format!("{last_err}; {e}")),
+        };
+        match open_connection(lease.profile_dir(), logs_dir, locks, cache, cancel).await {
+            Ok(conn) => return Ok((lease, conn)),
+            Err(e) => {
+                lease.report(Outcome::AccountFailed);
+                warn!(
+                    attempt,
+                    account = lease.key(),
+                    "museai: tai khoan khong mo duoc phien, thu tai khoan khac neu con"
+                );
+                if lease.key().is_empty() {
+                    return Err(e);
+                }
+                avoid.push(lease.key().to_string());
+                last_err = e;
+            }
+        }
+    }
+    Err(last_err)
+}
+
+/// Báo kết quả node cho bộ chia tải: có job xong → tài khoản tốt; toàn thất bại → cách ly NGẮN để
+/// lần chọn sau ưu tiên tài khoản khác (đa phần là 502/quá hạn chờ ảnh — lỗi tạm thời của muse.ai).
+fn settle_lease(lease: &Lease, any_done: bool, any_failed: bool) {
+    if any_done {
+        lease.report(Outcome::Ok);
+    } else if any_failed {
+        lease.report(Outcome::Transient);
+    }
+}
+
 /// Nguồn `profile_dir` cho MỘT `credential_id` (`museai/login` trong `lvc-vault`) — dùng khuôn
 /// `crate::veo3::VeoAccountResolver`, tách riêng (không tái dùng trait đó) vì tên gắn với Veo3,
 /// dễ gây nhầm khi đọc code `MuseAI`.
@@ -56,6 +182,23 @@ pub trait MuseaiAccountResolver: Send + Sync {
     /// # Errors
     /// Chuỗi mô tả AN TOÀN (không chứa bí mật) khi không tìm/không đọc được `profile_dir`.
     async fn profile_dir(&self, credential_id: &str) -> Result<PathBuf, String>;
+
+    /// Mượn một tài khoản cho MỘT node: chọn tài khoản rảnh nhất, chờ nếu tất cả đang bận, bỏ các
+    /// khoá trong `avoid` (tài khoản vừa thất bại ở lượt trước). Thả `Lease` (drop) là trả chỗ.
+    ///
+    /// Mặc định: dùng [`Self::profile_dir`], KHÔNG chia tải, KHÔNG xoay (hành vi cũ — CLI/test).
+    /// Resolver thật (`lvc-app`) ghi đè để chia tải theo [`crate::AccountScheduler`].
+    ///
+    /// # Errors
+    /// Chuỗi mô tả AN TOÀN khi không có tài khoản dùng được / chờ quá lâu / đã huỷ.
+    async fn lease(
+        &self,
+        credential_id: &str,
+        _avoid: &[String],
+        _cancel: &CancellationToken,
+    ) -> Result<Lease, String> {
+        Ok(Lease::unmanaged(self.profile_dir(credential_id).await?))
+    }
 }
 
 /// Resolver mặc định: LUÔN lỗi (dùng khi chưa cắm kho tài khoản — CLI/test) — dùng ý
@@ -325,6 +468,8 @@ pub(crate) struct EngineMuseaiJobs {
     cancel: CancellationToken,
     /// Phần A: lease bootstrap per-`profile_dir` (xem [`BootstrapLocks`]).
     bootstrap_locks: BootstrapLocks,
+    /// Đệm phiên đăng nhập per-`profile_dir` (xem [`BootstrapCache`]).
+    bootstrap_cache: BootstrapCache,
 }
 
 impl EngineMuseaiJobs {
@@ -334,6 +479,7 @@ impl EngineMuseaiJobs {
         resolver: Arc<dyn MuseaiAccountResolver>,
         cancel: CancellationToken,
         bootstrap_locks: BootstrapLocks,
+        bootstrap_cache: BootstrapCache,
     ) -> Self {
         Self {
             downloads_dir,
@@ -341,6 +487,7 @@ impl EngineMuseaiJobs {
             resolver,
             cancel,
             bootstrap_locks,
+            bootstrap_cache,
         }
     }
 
@@ -369,30 +516,21 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
         if self.cancel.is_cancelled() {
             return Self::fail_all(&jobs, "da huy");
         }
-        let profile_dir = match self.resolver.profile_dir(&first.credential_id).await {
-            Ok(dir) => dir,
+        // Mượn MỘT tài khoản (rảnh nhất, chia tải giữa các node song song) + mở kết nối Hatch; tài
+        // khoản không mở được phiên thì tự đổi sang tài khoản khác. `lease` giữ chỗ tới hết hàm —
+        // drop là trả chỗ cho node đang chờ.
+        let (lease, conn) = match acquire_connection(
+            self.resolver.as_ref(),
+            &first.credential_id,
+            &self.logs_dir,
+            &self.bootstrap_locks,
+            &self.bootstrap_cache,
+            &self.cancel,
+        )
+        .await
+        {
+            Ok(x) => x,
             Err(e) => return Self::fail_all(&jobs, &e),
-        };
-        // Phần A: nối tiếp bootstrap theo profile_dir (2 node cùng account không mở 2 Chromium cùng
-        // profile). Giữ khoá CHỈ quanh fetch_bootstrap; thả trước khi kết nối WebSocket (generation
-        // ~phút chạy chồng được).
-        let bootstrap = {
-            let lock = bootstrap_lock(&self.bootstrap_locks, &profile_dir.to_string_lossy());
-            let _guard = lock.lock().await;
-            match fetch_bootstrap(&profile_dir, &self.logs_dir).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Self::fail_all(
-                        &jobs,
-                        &format!("khong lay duoc phien dang nhap muse.ai: {e}"),
-                    );
-                }
-            }
-        };
-        let ws_url = bootstrap.websocket_url();
-        let conn = match connect_with_retry(&ws_url, &bootstrap.locale, &self.cancel).await {
-            Ok(c) => c,
-            Err(e) => return Self::fail_all(&jobs, &format!("ket noi Hatch that bai: {e}")),
         };
 
         let mut report = VideoJobsReport::default();
@@ -462,6 +600,7 @@ impl MuseaiVideoHost for EngineMuseaiJobs {
             }
         }
         conn.close().await;
+        settle_lease(&lease, !report.done.is_empty(), !report.failed.is_empty());
         report
     }
 }
@@ -477,6 +616,8 @@ pub(crate) struct EngineMuseaiImageJobs {
     cancel: CancellationToken,
     /// Phần A: lease bootstrap per-`profile_dir` (xem [`BootstrapLocks`]).
     bootstrap_locks: BootstrapLocks,
+    /// Đệm phiên đăng nhập per-`profile_dir` (xem [`BootstrapCache`]).
+    bootstrap_cache: BootstrapCache,
 }
 
 impl EngineMuseaiImageJobs {
@@ -486,6 +627,7 @@ impl EngineMuseaiImageJobs {
         resolver: Arc<dyn MuseaiAccountResolver>,
         cancel: CancellationToken,
         bootstrap_locks: BootstrapLocks,
+        bootstrap_cache: BootstrapCache,
     ) -> Self {
         Self {
             downloads_dir,
@@ -493,6 +635,7 @@ impl EngineMuseaiImageJobs {
             resolver,
             cancel,
             bootstrap_locks,
+            bootstrap_cache,
         }
     }
 
@@ -521,30 +664,21 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
         if self.cancel.is_cancelled() {
             return Self::fail_all(&jobs, "da huy");
         }
-        let profile_dir = match self.resolver.profile_dir(&first.credential_id).await {
-            Ok(dir) => dir,
+        // Mượn MỘT tài khoản (rảnh nhất, chia tải giữa các node song song) + mở kết nối Hatch; tài
+        // khoản không mở được phiên thì tự đổi sang tài khoản khác. `lease` giữ chỗ tới hết hàm —
+        // drop là trả chỗ cho node đang chờ.
+        let (lease, conn) = match acquire_connection(
+            self.resolver.as_ref(),
+            &first.credential_id,
+            &self.logs_dir,
+            &self.bootstrap_locks,
+            &self.bootstrap_cache,
+            &self.cancel,
+        )
+        .await
+        {
+            Ok(x) => x,
             Err(e) => return Self::fail_all(&jobs, &e),
-        };
-        // Phần A: nối tiếp bootstrap theo profile_dir (2 node cùng account không mở 2 Chromium cùng
-        // profile). Giữ khoá CHỈ quanh fetch_bootstrap; thả trước khi kết nối WebSocket (generation
-        // ~phút chạy chồng được).
-        let bootstrap = {
-            let lock = bootstrap_lock(&self.bootstrap_locks, &profile_dir.to_string_lossy());
-            let _guard = lock.lock().await;
-            match fetch_bootstrap(&profile_dir, &self.logs_dir).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Self::fail_all(
-                        &jobs,
-                        &format!("khong lay duoc phien dang nhap muse.ai: {e}"),
-                    );
-                }
-            }
-        };
-        let ws_url = bootstrap.websocket_url();
-        let conn = match connect_with_retry(&ws_url, &bootstrap.locale, &self.cancel).await {
-            Ok(c) => c,
-            Err(e) => return Self::fail_all(&jobs, &format!("ket noi Hatch that bai: {e}")),
         };
 
         let mut report = ImageJobsReport::default();
@@ -612,14 +746,53 @@ impl MuseaiImageHost for EngineMuseaiImageJobs {
             }
         }
         conn.close().await;
+        settle_lease(&lease, !report.done.is_empty(), !report.failed.is_empty());
         report
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::bootstrap_lock;
+    use super::{BOOTSTRAP_TTL, bootstrap_lock, cached_bootstrap};
     use dashmap::DashMap;
+    use lvc_museai::protocol::auth::MuseBootstrap;
+    use std::time::{Duration, Instant};
+
+    fn boot(admission: &str) -> MuseBootstrap {
+        MuseBootstrap {
+            gateway_url: "https://vm1.example".into(),
+            vm_name: "vm1".into(),
+            admission: admission.into(),
+            notary: None,
+            locale: "vi".into(),
+        }
+    }
+
+    #[test]
+    fn dem_phien_con_han_tra_ve_ban_sao() {
+        let cache = DashMap::new();
+        let t0 = Instant::now();
+        cache.insert("p".to_string(), (t0, boot("tok")));
+        let got = cached_bootstrap(&cache, "p", t0 + Duration::from_secs(10), BOOTSTRAP_TTL);
+        assert_eq!(got, Some(boot("tok")));
+    }
+
+    #[test]
+    fn dem_phien_het_han_thi_khong_dung_lai() {
+        let cache = DashMap::new();
+        let t0 = Instant::now();
+        cache.insert("p".to_string(), (t0, boot("tok")));
+        let late = t0 + BOOTSTRAP_TTL + Duration::from_secs(1);
+        assert_eq!(cached_bootstrap(&cache, "p", late, BOOTSTRAP_TTL), None);
+    }
+
+    #[test]
+    fn dem_khac_profile_khong_lan_nhau() {
+        let cache = DashMap::new();
+        let t0 = Instant::now();
+        cache.insert("p1".to_string(), (t0, boot("tok1")));
+        assert_eq!(cached_bootstrap(&cache, "p2", t0, BOOTSTRAP_TTL), None);
+    }
 
     /// Phần A: cùng `profile_dir` trả CÙNG mutex (nối tiếp bootstrap); khác → mutex khác.
     #[test]

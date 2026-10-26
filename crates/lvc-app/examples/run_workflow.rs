@@ -5,6 +5,11 @@
 //! Chạy: `cargo run -p lvc-app --example run_workflow -- <template.json> <account> <accounts_dir>
 //! <out_dir> <db> <downloads_dir>`
 //! stderr = log; stdout = tóm tắt.
+//!
+//! Biến môi trường tuỳ chọn cho workflow MuseAI:
+//! - `LVC_MUSEAI_VAULT=1`: dùng resolver KHO TÀI KHOẢN thật (chia tải + chuyển dự phòng giữa các
+//!   tài khoản MuseAI trong `<db>`), thay vì một profile cố định. Nên trỏ `<db>` vào BẢN SAO.
+//! - `LVC_NODE_THREADS=N`: số node đồ thị chạy song song (mặc định của engine là 1).
 #![allow(
     clippy::doc_markdown,
     reason = "doc tiếng Việt nhắc tên tham số dòng lệnh, không phải mã"
@@ -135,10 +140,25 @@ async fn main() {
     .expect("Engine::new");
     let engine = Arc::new(engine);
     engine.set_registry(Arc::new(lvc_app_lib::registry::build_registry()));
+    if let Some(n) = std::env::var("LVC_NODE_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        engine.apply_settings(&lvc_core::settings::AppSettings {
+            node_threads: n,
+            ..Default::default()
+        });
+    }
 
     // MuseAI: nối resolver profile cố định (env LVC_MUSEAI_PROFILE) để node museai_image/museai_video
     // mở đúng profile đã đăng nhập. Thiếu env = không chạy được node MuseAI.
-    if let Ok(prof) = std::env::var("LVC_MUSEAI_PROFILE") {
+    if std::env::var_os("LVC_MUSEAI_VAULT").is_some() {
+        let vault = Arc::new(lvc_vault::Vault::new(&db, lvc_vault::default_box()));
+        tracing::info!("MuseAI: dùng resolver kho tài khoản (chia tải)");
+        engine.set_museai_account_resolver(Arc::new(
+            lvc_app_lib::museai::VaultMuseaiAccountResolver::new(vault),
+        ));
+    } else if let Ok(prof) = std::env::var("LVC_MUSEAI_PROFILE") {
         tracing::info!(profile = %prof, "MuseAI profile cố định");
         engine.set_museai_account_resolver(Arc::new(FixedMuseaiProfile(PathBuf::from(prof))));
     }

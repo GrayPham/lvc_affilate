@@ -227,9 +227,11 @@ pub async fn task_resume_impl<D: BrowserDriver + 'static>(
 
 #[tauri::command]
 pub async fn task_resume(
+    license: tauri::State<'_, super::license::LicenseState>,
     state: tauri::State<'_, AppState>,
     id: String,
 ) -> Result<TaskResumeInfo, IpcError> {
+    license.require_licensed()?;
     task_resume_impl(&state, &id).await
 }
 

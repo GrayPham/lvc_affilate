@@ -19,3 +19,7 @@ export const BTN_SM = `${BASE} rounded-full px-3.5 py-2 text-xs font-semibold`;
 export const BTN_NEUTRAL_SM = `${BTN_SM} border border-line bg-panel font-medium text-fg hover:bg-hover`;
 export const BTN_DANGER_SM = `${BTN_SM} border border-danger/35 bg-danger/5 font-medium text-danger hover:border-danger/55 hover:bg-danger/10`;
 export const BTN_PRIMARY_SM = `${BTN_SM} lvc-btn-primary`;
+
+/** Nut bieu tuong TRON tren thanh tren (doi sang/toi, cai dat, chuong) — dung chung voi man khoa. */
+export const BTN_ICON_ROUND =
+  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-panel text-muted shadow-card transition-colors hover:bg-hover hover:text-fg";
